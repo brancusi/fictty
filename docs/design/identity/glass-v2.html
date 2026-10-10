@@ -1,0 +1,1080 @@
+<title>fictty glass, second pass</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Spline+Sans:wght@400;500;600&family=Spline+Sans+Mono:wght@400;500;600&display=swap">
+<style>
+/* Layout concept: one square module (half a terminal cell, ▀) under everything. The specimen pages
+   sit on it quietly; the landing page lets glass panes slide along it, held by a centre axis. */
+:root, .theme-light {
+  /* grounds */
+  --ground: #f2f3f5;      /* gallery: a white wall in daylight */
+  --raised: #fafbfc;
+  --sunken: #e7e9ee;
+  --line: #d8dbe2;
+  /* neutrals: graphite, biased a few degrees toward violet */
+  --ink: #14161c;
+  --ink-2: #545b69;
+  --ink-3: #8a91a0;
+  /* glass tints: transmitted colour, mixed by multiply on a light ground */
+  --glass-cyan: #2fbfd0;
+  --glass-violet: #7a6cf0;
+  --glass-amber: #f2b03c;
+  --glass-rose: #f07196;
+  --glass-smoke: #7c8698;
+  /* semantic */
+  --ok: #18946c;
+  --warn: #a96d05;
+  --err: #cf3a59;
+  --info: #13849f;
+  --focus: #5a4be0;
+  --blend: multiply;
+  /* terminal theme (ANSI 16) */
+  --term-bg: #f2f3f5; --term-fg: #1c1f26; --term-cursor: #7a6cf0; --term-sel: #dcd7fb;
+  --ansi-0: #14161c; --ansi-1: #c8334f; --ansi-2: #16865f; --ansi-3: #a66a00;
+  --ansi-4: #3c55d6; --ansi-5: #6d4fd6; --ansi-6: #0f8aa3; --ansi-7: #d9dce3;
+  --ansi-8: #6b7282; --ansi-9: #e0506c; --ansi-10: #22a676; --ansi-11: #c98a10;
+  --ansi-12: #5a72e8; --ansi-13: #8f6cf0; --ansi-14: #1aa8c4; --ansi-15: #fafbfc;
+
+  --sans: "Spline Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "Spline Sans Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  --m: 24px; /* the module */
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --ground: #0a0b10; --raised: #12141b; --sunken: #07080b; --line: #232731;
+    --ink: #eceff5; --ink-2: #9aa1b0; --ink-3: #636b7b;
+    --glass-cyan: #39d6e6; --glass-violet: #8c7eff; --glass-amber: #ffbd4f; --glass-rose: #ff7aa2; --glass-smoke: #8792a6;
+    --ok: #4fd6a2; --warn: #ffbd4f; --err: #ff6f88; --info: #39d6e6; --focus: #a99fff;
+    --blend: screen;
+    --term-bg: #0a0b10; --term-fg: #dfe3eb; --term-cursor: #8c7eff; --term-sel: #2a2652;
+    --ansi-0: #12141b; --ansi-1: #ff6f88; --ansi-2: #4fd6a2; --ansi-3: #ffbd4f;
+    --ansi-4: #6f8cff; --ansi-5: #a48cff; --ansi-6: #39d6e6; --ansi-7: #c9ceda;
+    --ansi-8: #4c5363; --ansi-9: #ff9aab; --ansi-10: #8ae8c2; --ansi-11: #ffd58a;
+    --ansi-12: #9db2ff; --ansi-13: #c6b5ff; --ansi-14: #8ce9f2; --ansi-15: #f4f6fa;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"], .theme-dark {
+  --ground: #0a0b10; --raised: #12141b; --sunken: #07080b; --line: #232731;
+  --ink: #eceff5; --ink-2: #9aa1b0; --ink-3: #636b7b;
+  --glass-cyan: #39d6e6; --glass-violet: #8c7eff; --glass-amber: #ffbd4f; --glass-rose: #ff7aa2; --glass-smoke: #8792a6;
+  --ok: #4fd6a2; --warn: #ffbd4f; --err: #ff6f88; --info: #39d6e6; --focus: #a99fff;
+  --blend: screen;
+  --term-bg: #0a0b10; --term-fg: #dfe3eb; --term-cursor: #8c7eff; --term-sel: #2a2652;
+  --ansi-0: #12141b; --ansi-1: #ff6f88; --ansi-2: #4fd6a2; --ansi-3: #ffbd4f;
+  --ansi-4: #6f8cff; --ansi-5: #a48cff; --ansi-6: #39d6e6; --ansi-7: #c9ceda;
+  --ansi-8: #4c5363; --ansi-9: #ff9aab; --ansi-10: #8ae8c2; --ansi-11: #ffd58a;
+  --ansi-12: #9db2ff; --ansi-13: #c6b5ff; --ansi-14: #8ce9f2; --ansi-15: #f4f6fa;
+  color-scheme: dark;
+}
+.theme-light { color-scheme: light; }
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body { background: var(--ground); color: var(--ink); font: 400 16px/1.6 var(--sans); padding-inline: clamp(16px, 4vw, 48px); padding-block: 0 96px; -webkit-font-smoothing: antialiased; }
+p { margin: 0; max-width: 64ch; }
+h1, h2, h3, h4 { margin: 0; text-wrap: balance; font-weight: 500; }
+a { color: var(--focus); }
+code, .mono { font-family: var(--mono); }
+button { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 3px; }
+canvas { display: block; max-width: 100%; }
+
+/* ---------- header ---------- */
+.top { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 20; background: color-mix(in srgb, var(--ground) 88%, transparent); backdrop-filter: saturate(1.2) blur(8px); -webkit-backdrop-filter: saturate(1.2) blur(8px); margin-inline: calc(-1 * clamp(16px, 4vw, 48px)); padding: 12px clamp(16px, 4vw, 48px); border-bottom: 1px solid var(--line); }
+.top-in { max-width: 1200px; margin: 0 auto; display: flex; align-items: center; gap: 20px; flex-wrap: wrap; }
+.brand { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.brand canvas { width: 66px; height: 24px; }
+.brand span { font: 500 12px/1.2 var(--mono); color: var(--ink-2); letter-spacing: 0.04em; text-transform: uppercase; }
+.tabs { display: flex; gap: 2px; margin-left: auto; flex-wrap: wrap; }
+.tabs button, .seg button { border: 0; background: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; color: var(--ink-2); font-size: 14px; }
+.tabs button[aria-selected="true"] { color: var(--ink); background: var(--sunken); }
+.tabs button:hover, .seg button:hover { color: var(--ink); }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; padding: 2px; gap: 2px; }
+.seg button { font: 500 12px/1 var(--mono); padding: 6px 9px; }
+.seg button[aria-pressed="true"] { background: var(--sunken); color: var(--ink); }
+
+/* ---------- shared specimen layout ---------- */
+main { max-width: 1200px; margin: 0 auto; }
+.tab { display: grid; gap: calc(var(--m) * 4); padding-block: calc(var(--m) * 2.5) 0; }
+.tab > header { display: grid; gap: 14px; max-width: 760px; }
+.eyebrow { font: 500 12px/1.3 var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-3); }
+.tab > header h1 { font-size: clamp(30px, 4.2vw, 44px); line-height: 1.1; letter-spacing: -0.02em; }
+.lede { font-size: 18px; color: var(--ink-2); }
+.block { display: grid; gap: 22px; }
+.block > h2 { font-size: 24px; letter-spacing: -0.01em; }
+.block > p, .note { color: var(--ink-2); }
+.note { font-size: 14px; }
+.stage { border-radius: 4px; background: var(--ground); color: var(--ink); position: relative; overflow: hidden; }
+.stage.bordered { border: 1px solid var(--line); }
+.stage-label { position: absolute; left: 14px; top: 12px; font: 500 11px/1 var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-3); z-index: 2; }
+.controls { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; }
+.btn { border: 1px solid var(--line); background: var(--raised); border-radius: 8px; padding: 8px 14px; cursor: pointer; font-size: 14px; }
+.btn:hover { border-color: var(--ink-3); }
+.btn.primary { background: var(--ink); color: var(--ground); border-color: var(--ink); }
+.range { display: inline-flex; align-items: center; gap: 10px; font: 500 12px/1 var(--mono); color: var(--ink-2); }
+.range input { accent-color: var(--focus); width: 160px; }
+.seedtag { font: 500 13px/1 var(--mono); color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.seedtag b { color: var(--ink); font-weight: 600; }
+
+.pair { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.pair > * { min-width: 0; }
+@media (max-width: 760px) { .pair { grid-template-columns: 1fr; } }
+
+/* wordmark */
+.hero-stage canvas { width: 100%; aspect-ratio: 30 / 11; }
+.variants { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+@media (max-width: 760px) { .variants { grid-template-columns: repeat(2, 1fr); } }
+.variants button { border: 1px solid var(--line); border-radius: 4px; padding: 0; background: var(--ground); cursor: pointer; display: grid; text-align: left; overflow: hidden; }
+.variants button canvas { width: 100%; aspect-ratio: 30 / 11; }
+.variants button .vl { font: 500 12px/1 var(--mono); color: var(--ink-3); padding: 10px 12px; border-top: 1px solid var(--line); display: flex; justify-content: space-between; }
+.variants button[aria-pressed="true"] { border-color: var(--ink); }
+.variants button[aria-pressed="true"] .vl { color: var(--ink); }
+.rules { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px 32px; padding: 0; margin: 0; list-style: none; }
+.rules li { border-top: 1px solid var(--line); padding-top: 12px; color: var(--ink-2); font-size: 15px; }
+.rules li b { display: block; color: var(--ink); font-weight: 500; margin-bottom: 2px; }
+.construct canvas { width: 100%; aspect-ratio: 30 / 11; }
+
+.marks { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+@media (max-width: 760px) { .marks { grid-template-columns: 1fr; } }
+.markcard { border: 1px solid var(--line); border-radius: 4px; overflow: hidden; display: grid; }
+.markcard .twin { display: grid; grid-template-columns: 1fr 1fr; }
+.markcard .twin > div { display: grid; place-items: center; padding: 28px 0; }
+.markcard canvas { width: 96px; height: 96px; }
+.markcard footer { padding: 12px 14px; border-top: 1px solid var(--line); display: grid; gap: 4px; }
+.markcard footer b { font-weight: 500; display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.markcard footer small { color: var(--ink-2); font-size: 13px; }
+.chosen { font: 500 11px/1 var(--mono); letter-spacing: 0.06em; text-transform: uppercase; color: var(--focus); }
+.sizes { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+@media (max-width: 760px) { .sizes { grid-template-columns: 1fr; } }
+.sizes .stage { padding: 40px 24px 24px; display: grid; gap: 22px; }
+.sizes .row { display: flex; align-items: flex-end; gap: 22px; flex-wrap: wrap; }
+.sizes .row figure { margin: 0; display: grid; gap: 6px; justify-items: start; }
+.sizes figcaption { font: 500 11px/1 var(--mono); color: var(--ink-3); }
+.browser-tab { display: inline-flex; align-items: center; gap: 8px; background: var(--raised); border: 1px solid var(--line); border-bottom: 0; border-radius: 8px 8px 0 0; padding: 7px 14px 7px 10px; font-size: 12px; color: var(--ink); }
+.browser-tab canvas { width: 16px; height: 16px; }
+
+/* colour */
+.tokens { width: 100%; border-collapse: collapse; font-size: 14px; }
+.tokens-wrap { overflow-x: auto; }
+.tokens th { text-align: left; font: 500 11px/1 var(--mono); letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-3); padding: 10px 12px 10px 0; border-bottom: 1px solid var(--line); }
+.tokens td { padding: 10px 12px 10px 0; border-bottom: 1px solid var(--line); vertical-align: middle; }
+.tokens td.name { font: 500 13px/1.3 var(--mono); white-space: nowrap; }
+.tokens td.role { color: var(--ink-2); min-width: 200px; }
+.tokens tr.group td { font: 500 11px/1 var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-3); padding-top: 26px; border-bottom: 0; }
+.chip { display: inline-flex; align-items: center; gap: 8px; font: 400 13px/1 var(--mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.chip i { width: 34px; height: 22px; border-radius: 3px; display: inline-block; box-shadow: inset 0 0 0 1px rgba(127,127,127,0.25); }
+.glassdemo canvas { width: 100%; aspect-ratio: 2 / 1; }
+.ansi { display: grid; grid-template-columns: repeat(8, 1fr); gap: 4px; }
+.ansi div { aspect-ratio: 1 / 1; border-radius: 3px; position: relative; box-shadow: inset 0 0 0 1px rgba(127,127,127,0.2); }
+.ansi div span { position: absolute; left: 5px; bottom: 4px; font: 500 10px/1 var(--mono); mix-blend-mode: difference; color: #fff; }
+.ansiwrap { padding: 40px 18px 18px; display: grid; gap: 14px; }
+.ansiwrap .meta { display: flex; gap: 14px; flex-wrap: wrap; font: 400 12px/1 var(--mono); color: var(--ink-2); }
+
+/* terminal frames */
+.term { background: var(--term-bg); color: var(--term-fg); border-radius: 6px; overflow-x: auto; border: 1px solid var(--line); }
+.term pre { margin: 0; padding: 18px 20px; font: 400 13px/1.36 var(--mono); white-space: pre; tab-size: 4; }
+.term .d { color: var(--ansi-8); } .term .b { color: var(--ansi-5); } .term .c { color: var(--ansi-6); }
+.term .g { color: var(--ansi-2); } .term .y { color: var(--ansi-3); } .term .r { color: var(--ansi-1); }
+.term .u { color: var(--ansi-4); } .term .w { color: var(--ink); font-weight: 600; }
+.term .sel { background: var(--term-sel); }
+.term .cur { background: var(--term-cursor); color: var(--term-bg); }
+
+/* ---------- landing page mock ---------- */
+.browser { border: 1px solid var(--line); border-radius: 10px; overflow: clip; background: var(--ground); }
+.browser-bar { display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-bottom: 1px solid var(--line); background: var(--raised); }
+.browser-bar .dots { display: flex; gap: 6px; } .browser-bar .dots i { width: 10px; height: 10px; border-radius: 50%; background: var(--line); display: block; }
+.browser-bar .url { flex: 1; text-align: center; font: 400 12px/1 var(--mono); color: var(--ink-2); }
+.site { position: relative; overflow: clip; padding-inline: clamp(16px, 4vw, 56px); padding-block: 0 calc(var(--m) * 3); isolation: isolate; }
+.site-in { max-width: 1040px; margin: 0 auto; position: relative; z-index: 1; display: grid; gap: calc(var(--m) * 5); }
+.ghost { position: absolute; z-index: 0; mix-blend-mode: var(--blend); opacity: 0.16; background: linear-gradient(180deg, transparent, var(--gt) 45%, var(--gt) 55%, transparent); pointer-events: none; will-change: transform; }
+.axis { position: absolute; left: 50%; top: 0; bottom: 0; width: 1px; background: linear-gradient(var(--line), transparent 30%, transparent 70%, var(--line)); z-index: 0; opacity: 0.8; }
+.site nav { display: flex; align-items: center; justify-content: space-between; padding-block: 20px; gap: 16px; }
+.site nav canvas { width: 28px; height: 28px; }
+.site nav .links { display: flex; gap: 22px; font-size: 14px; color: var(--ink-2); flex-wrap: wrap; justify-content: flex-end; }
+.site nav .links a { color: inherit; text-decoration: none; }
+.site nav .links a:hover { color: var(--ink); }
+.s-hero { display: grid; gap: calc(var(--m) * 1.25); justify-items: center; text-align: center; }
+.s-hero canvas { width: 100%; aspect-ratio: 40 / 15; cursor: pointer; }
+.s-hero h1 { font-size: clamp(30px, 5vw, 56px); line-height: 1.05; letter-spacing: -0.025em; max-width: 18ch; }
+.s-hero .sub { font-size: 18px; color: var(--ink-2); max-width: 54ch; }
+.ph { font: 500 10px/1 var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--glass-rose); border: 1px dashed currentColor; border-radius: 4px; padding: 4px 6px; vertical-align: middle; }
+.cta { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; align-items: center; }
+.install { display: inline-flex; align-items: center; gap: 12px; border: 1px solid var(--line); border-radius: 8px; padding: 10px 10px 10px 16px; background: var(--raised); font: 400 14px/1 var(--mono); }
+.install button { border: 0; background: var(--sunken); border-radius: 6px; padding: 6px 10px; cursor: pointer; font: 500 12px/1 var(--mono); }
+.states { display: inline-flex; gap: 2px; border: 1px solid var(--line); border-radius: 999px; padding: 3px; }
+.states button { border: 0; background: none; border-radius: 999px; padding: 6px 12px; font: 500 12px/1 var(--mono); color: var(--ink-3); cursor: pointer; }
+.states button[aria-pressed="true"] { color: var(--ink); background: var(--sunken); }
+
+.s-title { display: grid; gap: 10px; justify-items: center; text-align: center; }
+.s-title h2 { font-size: clamp(24px, 3.2vw, 36px); letter-spacing: -0.02em; line-height: 1.1; }
+.s-title p { color: var(--ink-2); }
+
+.steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--m); position: relative; }
+.step { --spread: 1; position: relative; display: grid; align-content: start; gap: 14px; padding: 22px; border-radius: 3px; background: color-mix(in srgb, var(--raised) 72%, transparent); border: 1px solid var(--line); min-width: 0; transition: box-shadow .3s; }
+.step::before { content: ""; position: absolute; inset: 0; border-radius: inherit; mix-blend-mode: var(--blend); opacity: 0.22; pointer-events: none; }
+.step:nth-child(1)::before { background: linear-gradient(160deg, var(--glass-cyan), transparent 70%); }
+.step:nth-child(2)::before { background: linear-gradient(180deg, var(--glass-violet), transparent 75%); }
+.step:nth-child(3)::before { background: linear-gradient(200deg, var(--glass-amber), transparent 70%); }
+.step:nth-child(1) { transform: translate(calc((1 - var(--spread)) * 62%), calc(var(--spread) * -1 * var(--m))); z-index: 1; }
+.step:nth-child(2) { transform: translateY(0); z-index: 2; }
+.step:nth-child(3) { transform: translate(calc((1 - var(--spread)) * -62%), calc(var(--spread) * var(--m))); z-index: 1; }
+.step .n { font: 500 12px/1 var(--mono); color: var(--ink-3); letter-spacing: 0.06em; }
+.step h3 { font-size: 20px; letter-spacing: -0.01em; }
+.step p { color: var(--ink-2); font-size: 15px; }
+.step pre { margin: 0; font: 400 12px/1.55 var(--mono); background: var(--term-bg); color: var(--term-fg); border: 1px solid var(--line); border-radius: 3px; padding: 12px; overflow-x: auto; white-space: pre; }
+.step pre .d { color: var(--ansi-8); } .step pre .b { color: var(--ansi-5); } .step pre .c { color: var(--ansi-6); } .step pre .y { color: var(--ansi-3); } .step pre .g { color: var(--ansi-2); }
+@media (max-width: 860px) { .steps { grid-template-columns: 1fr; } .step:nth-child(n) { transform: none; } }
+
+.demo { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: var(--m); align-items: start; }
+@media (max-width: 980px) { .demo { grid-template-columns: 1fr; } }
+.demo .term pre { min-height: calc(13px * 1.36 * 12 + 36px); }
+.demo .term { position: relative; }
+.log { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.log li button { width: 100%; text-align: left; border: 1px solid transparent; background: none; border-radius: 4px; padding: 10px 12px; cursor: pointer; display: grid; gap: 4px; color: var(--ink-3); transition: color .3s, border-color .3s, background .3s; }
+.log li button code { font-size: 13px; color: inherit; }
+.log li button small { font-size: 13px; line-height: 1.45; }
+.log li button[aria-current="step"] { border-color: var(--line); background: var(--raised); color: var(--ink); }
+.log li button[aria-current="step"] small { color: var(--ink-2); }
+.log li.past button { color: var(--ink-2); }
+.demo-ctrl { display: flex; justify-content: space-between; align-items: center; gap: 10px; font: 500 12px/1 var(--mono); color: var(--ink-3); padding: 4px 4px 0; }
+.demo-ctrl button { border: 1px solid var(--line); background: var(--raised); border-radius: 6px; padding: 6px 10px; cursor: pointer; font: inherit; color: var(--ink-2); }
+.readback { font: 400 11.5px/1.5 var(--mono); white-space: pre; overflow-x: auto; color: var(--ink-2); background: var(--sunken); border-radius: 3px; padding: 8px 10px; margin-top: 4px; }
+
+.blocks { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+@media (max-width: 760px) { .blocks { grid-template-columns: repeat(2, 1fr); } }
+.blk { position: relative; border: 1px solid var(--line); border-radius: 3px; padding: 18px; display: grid; gap: 10px; align-content: start; background: color-mix(in srgb, var(--raised) 60%, transparent); min-height: 150px; }
+.blk::after { content: ""; position: absolute; inset: 0; mix-blend-mode: var(--blend); opacity: 0.22; pointer-events: none; border-radius: inherit; background: linear-gradient(180deg, var(--tint), transparent 65%); }
+.blk .glyph { font: 400 13px/1.25 var(--mono); white-space: pre; color: var(--ink-2); }
+.blk b { font-weight: 500; font-family: var(--mono); font-size: 14px; }
+.blk small { color: var(--ink-2); font-size: 13px; line-height: 1.4; }
+.blk .soon { font: 500 10px/1 var(--mono); color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.06em; }
+
+.s-close { display: grid; gap: 18px; justify-items: center; text-align: center; }
+.s-close canvas { width: min(420px, 100%); aspect-ratio: 30 / 11; }
+.site footer { display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; font-size: 13px; color: var(--ink-3); border-top: 1px solid var(--line); padding-top: 18px; }
+
+/* rationale */
+.principles { counter-reset: p; display: grid; gap: 0; padding: 0; margin: 0; list-style: none; }
+.principles li { display: grid; grid-template-columns: 56px minmax(0, 1fr); gap: 4px 16px; padding: 18px 0; border-top: 1px solid var(--line); }
+.principles li::before { counter-increment: p; content: counter(p, decimal-leading-zero); font: 500 13px/1.6 var(--mono); color: var(--ink-3); grid-row: span 2; }
+.principles b { font-weight: 500; font-size: 18px; }
+.principles span { color: var(--ink-2); max-width: 70ch; }
+.refs { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 12px; }
+.ref { border: 1px solid var(--line); border-radius: 3px; padding: 20px; display: grid; gap: 10px; align-content: start; position: relative; overflow: hidden; }
+.ref h3 { font-size: 18px; }
+.ref .who { font: 500 11px/1 var(--mono); letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-3); }
+.ref p { color: var(--ink-2); font-size: 15px; }
+.ref p b { color: var(--ink); font-weight: 500; }
+.ref .bar { position: absolute; left: 0; right: 0; top: 0; height: 3px; mix-blend-mode: var(--blend); }
+.rejects { display: grid; gap: 0; padding: 0; margin: 0; list-style: none; }
+.rejects li { display: grid; grid-template-columns: minmax(160px, 260px) minmax(0, 1fr); gap: 4px 24px; padding: 14px 0; border-top: 1px solid var(--line); }
+.rejects li b { font-weight: 500; }
+.rejects li span { color: var(--ink-2); }
+@media (max-width: 640px) { .rejects li { grid-template-columns: 1fr; } }
+.open { display: grid; gap: 10px; padding: 0; margin: 0; list-style: none; }
+.open li { padding: 14px 16px; border: 1px solid var(--line); border-radius: 3px; color: var(--ink-2); }
+.open li b { color: var(--ink); font-weight: 500; }
+
+.probe { position: absolute; width: 0; height: 0; overflow: hidden; }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+
+<div class="probe theme-light" id="probeLight" aria-hidden="true"></div>
+<div class="probe theme-dark" id="probeDark" aria-hidden="true"></div>
+
+<div class="top">
+  <div class="top-in">
+    <div class="brand"><canvas id="miniMark" width="132" height="48" aria-label="fictty"></canvas><span>Identity · glass, second pass</span></div>
+    <nav class="tabs" role="tablist" aria-label="Sections">
+      <button role="tab" id="t-wordmark" aria-controls="wordmark" aria-selected="true">Wordmark</button>
+      <button role="tab" id="t-colour" aria-controls="colour" aria-selected="false">Colour</button>
+      <button role="tab" id="t-landing" aria-controls="landing" aria-selected="false">Landing page</button>
+      <button role="tab" id="t-rationale" aria-controls="rationale" aria-selected="false">Rationale</button>
+    </nav>
+    <div class="seg" role="group" aria-label="Theme">
+      <button type="button" data-theme-set="auto" aria-pressed="true">auto</button>
+      <button type="button" data-theme-set="light" aria-pressed="false">day</button>
+      <button type="button" data-theme-set="dark" aria-pressed="false">night</button>
+    </div>
+  </div>
+</div>
+
+<main>
+<!-- ======================= WORDMARK ======================= -->
+<section class="tab" id="wordmark" role="tabpanel" aria-labelledby="t-wordmark">
+  <header>
+    <div class="eyebrow">01 · Wordmark</div>
+    <h1>Every stroke is one pane of glass, slid into place on the cell grid.</h1>
+    <p class="lede">The first pass scattered panes freely and tinted them at random. This pass gives the panes rules: tint by direction, move only along their own axis, in quarter cells. The word stays legible at any seed, and the seed still decides how it lands.</p>
+  </header>
+
+  <div class="block">
+    <div class="pair">
+      <div class="stage bordered hero-stage theme-light"><span class="stage-label">Day · multiply</span><canvas id="heroLight" aria-label="fictty wordmark on a light ground"></canvas></div>
+      <div class="stage bordered hero-stage theme-dark"><span class="stage-label">Night · screen</span><canvas id="heroDark" aria-label="fictty wordmark on a dark ground"></canvas></div>
+    </div>
+    <div class="controls">
+      <button class="btn primary" type="button" id="replay">Throw again</button>
+      <button class="btn" type="button" id="newSeed">New seed</button>
+      <label class="range" for="release">hold <input id="release" type="range" min="0" max="100" value="0"> release</label>
+      <span class="seedtag">seed <b id="seedOut">-</b></span>
+    </div>
+    <p class="note">The chosen form is seed <b id="chosenSeedNote" class="mono">-</b>. Throw again replays the landing: panes slide along their own axis into their fixtures, letter by letter, in about half a second. Drag release to watch the word come apart without losing its rows.</p>
+  </div>
+
+  <div class="block">
+    <h2>Seeded variants</h2>
+    <p>Six seeds from the same rules. They differ in which letters swap their tints, where the one warm pane lands, and which strokes sit a quarter cell off. Pick one to load it above.</p>
+    <div class="variants" id="variants"></div>
+  </div>
+
+  <div class="block construct">
+    <h2>How it's built</h2>
+    <p>Nine rows of square modules (each one half a terminal cell, the ▀ of a half-block): two for ascenders, five for the x-height, two for descenders. Each glyph's runs of cells become panes; where two runs cross, the glass overlaps and the colour deepens by day and brightens at night. That crossing (in f, t, t) is the signature.</p>
+    <div class="stage bordered"><canvas id="construct" aria-label="Construction: the glyph cells on the module grid with each pane outlined"></canvas></div>
+    <ul class="rules">
+      <li><b>Tint by direction</b>Vertical strokes are cyan, horizontal ones violet, single cells amber. The seed may swap a whole letter, never one stroke.</li>
+      <li><b>Slide, don't scatter</b>A pane moves only along its long axis, in steps of a quarter module, at most one step. Crossings always survive.</li>
+      <li><b>One warm light</b>The i's dot is the warm pane. At most one other stroke turns amber or rose, chosen by the seed.</li>
+      <li><b>Small sizes go flat</b>Below eight pixels a module, drift, edges and glow switch off and the panes fill to 85%.</li>
+    </ul>
+  </div>
+
+  <div class="block">
+    <h2>The mark</h2>
+    <p>Three candidates on the same rules, each a few panes and their overlaps. The chosen one is a terminal's block cursor with a second pane laid over it: the cursor says terminal, the overlap says layers.</p>
+    <div class="marks" id="marks"></div>
+  </div>
+
+  <div class="block">
+    <h2>Small sizes</h2>
+    <div class="sizes">
+      <div class="stage bordered theme-light"><span class="stage-label">Day</span><div class="row" id="sizesLight"></div><div class="row" id="wordsLight"></div></div>
+      <div class="stage bordered theme-dark"><span class="stage-label">Night</span><div class="row" id="sizesDark"></div><div class="row" id="wordsDark"></div></div>
+    </div>
+    <p class="note">At 16 px the mark is two rectangles and one overlap, which survives the favicon grid. The wordmark holds down to about 88 px wide (three pixels a module); below that, use the mark.</p>
+  </div>
+</section>
+
+<!-- ======================= COLOUR ======================= -->
+<section class="tab" id="colour" role="tabpanel" aria-labelledby="t-colour" hidden>
+  <header>
+    <div class="eyebrow">02 · Colour</div>
+    <h1>Daylight on a gallery wall, and tubes glowing in a dark room.</h1>
+    <p class="lede">Glass colour is transmitted, so the two grounds mix it differently. By day, tints multiply: overlaps get deeper, like stacked filters. At night, tints add: overlaps get brighter, the edges carry the light, and colour spills onto the ground around each pane, the way Flavin's tubes colour the wall.</p>
+  </header>
+
+  <div class="block glassdemo">
+    <div class="pair">
+      <div class="stage bordered theme-light"><span class="stage-label">ground.day · multiply</span><canvas id="mixLight" aria-label="Glass tints overlapping on the day ground"></canvas></div>
+      <div class="stage bordered theme-dark"><span class="stage-label">ground.night · screen</span><canvas id="mixDark" aria-label="Glass tints overlapping on the night ground"></canvas></div>
+    </div>
+  </div>
+
+  <div class="block">
+    <h2>Tokens</h2>
+    <p>One name, two values. Interfaces read the token; the theme picks the value. Semantic colours are their own tokens even where they share a hue with a tint, so a warning can move without moving the brand.</p>
+    <div class="tokens-wrap"><table class="tokens" id="tokenTable"><thead><tr><th>Token</th><th>Day</th><th>Night</th><th>Role</th></tr></thead><tbody></tbody></table></div>
+  </div>
+
+  <div class="block">
+    <h2>As a terminal theme</h2>
+    <p>The same palette mapped to ANSI 16, so fictty's default look and the brand are one thing. Violet takes the magenta slot; blue is its own colour so <code>ls</code> output still reads. This is the seed for the theme format in phase 2.</p>
+    <div class="pair">
+      <div class="stage bordered theme-light ansiwrap"><span class="stage-label">fictty day</span><div class="ansi" id="ansiLight"></div><div class="meta" id="ansiMetaLight"></div><button class="btn" type="button" data-copy="light">Copy as Ghostty theme</button></div>
+      <div class="stage bordered theme-dark ansiwrap"><span class="stage-label">fictty night</span><div class="ansi" id="ansiDark"></div><div class="meta" id="ansiMetaDark"></div><button class="btn" type="button" data-copy="dark">Copy as Ghostty theme</button></div>
+    </div>
+    <div class="theme-dark"><div class="term"><pre id="termDark"></pre></div></div>
+    <div class="theme-light"><div class="term"><pre id="termLight"></pre></div></div>
+  </div>
+</section>
+
+<!-- ======================= LANDING ======================= -->
+<section class="tab" id="landing" role="tabpanel" aria-labelledby="t-landing" hidden>
+  <header>
+    <div class="eyebrow">03 · Landing page</div>
+    <h1>fictty.com, as a page that assembles itself.</h1>
+    <p class="lede">One module, one centre axis. Panes slide along the grid, never rotate, and every move has a mirror. The hero's panes are the wordmark's twenty strokes; on idle they come apart into a row, regroup into a screen, then find the word again. Click the hero to step through it. It follows the theme switch above.</p>
+  </header>
+
+  <div class="browser">
+    <div class="browser-bar"><div class="dots"><i></i><i></i><i></i></div><div class="url">fictty.com</div><div style="width:42px"></div></div>
+    <div class="site" id="site">
+      <div class="axis" aria-hidden="true"></div>
+      <div class="ghost" data-g="0" style="left:-8%;top:600px;width:30%;height:240px;--gt:var(--glass-cyan)"></div>
+      <div class="ghost" data-g="1" style="right:-8%;top:600px;width:30%;height:240px;--gt:var(--glass-violet)"></div>
+      <div class="ghost" data-g="2" style="left:6%;top:1560px;width:16%;height:480px;--gt:var(--glass-violet)"></div>
+      <div class="ghost" data-g="3" style="right:6%;top:1560px;width:16%;height:480px;--gt:var(--glass-cyan)"></div>
+
+      <div class="site-in">
+        <nav>
+          <canvas id="navMark" width="56" height="56" aria-label="fictty"></canvas>
+          <div class="links"><a href="#landing">Guide</a><a href="#landing">Blog</a><a href="#landing">GitHub</a></div>
+        </nav>
+
+        <section class="s-hero">
+          <canvas id="heroSite" aria-label="Glass panes that assemble into the fictty wordmark, then come apart into a row and a screen"></canvas>
+          <div class="states" role="group" aria-label="Hero state">
+            <button type="button" data-state="word" aria-pressed="true">assembled</button>
+            <button type="button" data-state="row" aria-pressed="false">in a row</button>
+            <button type="button" data-state="screen" aria-pressed="false">as a screen</button>
+          </div>
+          <h1>Terminal screens agents write, patch and read back.</h1>
+          <p class="sub">fictty is a terminal screen an agent writes as one JSON value, edits live by id, and reads back exactly, while its data streams straight from your commands, never through the model.</p>
+          <div class="cta">
+            <span class="install"><span>cargo install fictty</span><button type="button" id="copyInstall">copy</button></span>
+            <a class="btn" href="#landing" style="text-decoration:none">Read the guide</a>
+          </div>
+        </section>
+
+        <section class="s-how" style="display:grid;gap:calc(var(--m)*2)">
+          <div class="s-title"><h2>Push a value. It's a screen. Read it back.</h2><p>Three operations over one socket. The runtime does the rest at frame rate.</p></div>
+          <div class="steps" id="steps">
+            <article class="step">
+              <div class="n">1 · push</div>
+              <h3>The agent writes one value</h3>
+              <p>Components, the data they bind to, keys and theme, as JSON. Small enough to write in one go.</p>
+<pre><span class="d">$</span> fictty push deploy.json
+{<span class="c">"root"</span>: {<span class="c">"type"</span>: <span class="y">"table"</span>,
+  <span class="c">"id"</span>: <span class="y">"svc"</span>, <span class="c">"bind"</span>: <span class="y">"services"</span>},
+ <span class="c">"data"</span>: {<span class="c">"services"</span>: {
+  <span class="c">"cmd"</span>: [<span class="y">"kubectl"</span>, <span class="d">…</span>],
+  <span class="c">"every"</span>: <span class="b">2</span>}}}</pre>
+            </article>
+            <article class="step">
+              <div class="n">2 · screen</div>
+              <h3>The runtime makes it a screen</h3>
+              <p>Drawing, scrolling, selection, focus, mouse and live data, at over 100 fps. Keys run locally; nothing waits on the model.</p>
+<pre><span class="d">╭─</span> <span class="b">Services</span> <span class="d">─────────────────╮</span>
+<span class="d">│</span> api-1   112ms  <span class="g">● healthy</span>  <span class="d">│</span>
+<span class="d">│</span><span class="sel" style="background:var(--term-sel)"> api-2   948ms  <span class="y">▲ slow</span>     </span><span class="d">│</span>
+<span class="d">│</span> web      64ms  <span class="g">● healthy</span>  <span class="d">│</span>
+<span class="d">╰───────────────────────────╯</span></pre>
+            </article>
+            <article class="step">
+              <div class="n">3 · read back</div>
+              <h3>The agent sees what it drew</h3>
+              <p>The frame as text, or the whole state as JSON. Then it patches one node, or throws the screen away.</p>
+<pre><span class="d">$</span> fictty get --state
+{<span class="c">"focus"</span>: <span class="y">"svc"</span>,
+ <span class="c">"selected"</span>: {<span class="c">"svc"</span>: <span class="b">1</span>},
+ <span class="c">"row"</span>: {<span class="c">"name"</span>: <span class="y">"api-2"</span>,
+         <span class="c">"p95"</span>: <span class="b">948</span>}}</pre>
+            </article>
+          </div>
+        </section>
+
+        <section style="display:grid;gap:calc(var(--m)*2)">
+          <div class="s-title"><h2>One screen, from first push to thrown away.</h2><p>An agent watching a deploy. Every step on the right is one command; the frame on the left is what the person sees.</p></div>
+          <div class="demo">
+            <div class="term"><pre id="demoFrame" aria-live="off"></pre></div>
+            <div>
+              <ol class="log" id="demoLog"></ol>
+              <div class="demo-ctrl"><span id="demoState">auto</span><button type="button" id="demoPause">pause</button></div>
+            </div>
+          </div>
+        </section>
+
+        <section style="display:grid;gap:calc(var(--m)*2)">
+          <div class="s-title"><h2>A small alphabet with behaviour built in.</h2><p>Eight blocks that scroll, select and focus on their own. Everything else is an arrangement of them, kept as data.</p></div>
+          <div class="blocks" id="blocks"></div>
+        </section>
+
+        <section class="s-close">
+          <canvas id="closeWord" aria-label="fictty"></canvas>
+          <p class="sub" style="color:var(--ink-2)">fictile, adj.: capable of being moulded. Plus tty, the terminal.</p>
+          <div class="cta"><span class="install"><span>cargo install fictty</span><button type="button" data-copytext="cargo install fictty">copy</button></span></div>
+        </section>
+
+        <footer><span>fictty · MIT</span><span>Built on ratatui and caretline</span></footer>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ======================= RATIONALE ======================= -->
+<section class="tab" id="rationale" role="tabpanel" aria-labelledby="t-rationale" hidden>
+  <header>
+    <div class="eyebrow">04 · Rationale</div>
+    <h1>Light as a building material, in standard units.</h1>
+    <p class="lede">fictty makes interfaces that are assembled in a moment, reshaped while they run, and thrown away. The identity should behave the same way: made of interchangeable units, put together fast, held in place by a grid, and easy to take apart.</p>
+  </header>
+
+  <div class="block">
+    <h2>Principles</h2>
+    <ol class="principles">
+      <li><b>One module</b><span>Everything sits on a square that is half a terminal cell. Panes snap to it; the only off-grid move is a quarter-module slide. The page uses the same module for spacing.</span></li>
+      <li><b>Light, not ink</b><span>Colour is transmitted, never painted. Tints multiply by day and add at night. Only type is opaque.</span></li>
+      <li><b>Units, not illustration</b><span>The wordmark, the mark and the landing hero are arrangements of the same pane. Nothing is drawn that couldn't be taken apart and reused.</span></li>
+      <li><b>Symmetry holds the motion</b><span>Every move has a mirror or a centre. Staggers radiate out from the axis, so even a scatter reads as composed.</span></li>
+      <li><b>Fast in, calm hold, easy out</b><span>Panes land in about half a second, hold still, and release without a fuss. Motion is for state changes only; nothing loops for decoration, and reduced-motion gets the resting state.</span></li>
+    </ol>
+  </div>
+
+  <div class="block">
+    <h2>References, and what each gave</h2>
+    <div class="refs">
+      <article class="ref"><div class="bar" style="background:var(--glass-rose)"></div><div class="who">Dan Flavin</div><h3>The standard tube</h3><p>Flavin used off-the-shelf fluorescent fixtures in a handful of stock colours. <b>Taken:</b> the pane as a stock industrial unit, a fixed small palette, and the night ground, where each pane's light falls onto the wall around it. His rows of vertical tubes became the hero's "in a row" state.</p></article>
+      <article class="ref"><div class="bar" style="background:linear-gradient(90deg,var(--glass-cyan),var(--glass-violet),var(--glass-amber))"></div><div class="who">Larry Bell</div><h3>Coated glass</h3><p>Bell's cubes are glass with vapour-deposited coatings that shift colour at the edges and go clear in the middle. <b>Taken:</b> panes as transparent volumes with no mass, and the iridescent edge: a thin cyan-violet-amber coat along each pane's long side.</p></article>
+      <article class="ref"><div class="bar" style="background:var(--glass-violet)"></div><div class="who">James Turrell</div><h3>Light as the material</h3><p>Turrell builds rooms where the light itself is the object and the aperture frames it. <b>Taken:</b> the night ground leans a little blue-violet instead of neutral black, and the terminal frame is treated as an aperture: colour is something you look into.</p></article>
+      <article class="ref"><div class="bar" style="background:var(--glass-smoke)"></div><div class="who">Donald Judd</div><h3>Stacks and progressions</h3><p>Judd repeated identical units at equal intervals, and sized progressions by rule. <b>Taken:</b> the strict module, equal gaps, the symmetric height progression in the hero row, and the alphabet tiles that swap in mirrored pairs.</p></article>
+      <article class="ref"><div class="bar" style="background:var(--glass-cyan)"></div><div class="who">Josef Albers</div><h3>Interaction of colour</h3><p>Kept from the first pass. <b>Taken:</b> the overlap is where the colour happens, so the crossings in f and t carry the identity.</p></article>
+    </div>
+  </div>
+
+  <div class="block">
+    <h2>Rejected</h2>
+    <ul class="rejects">
+      <li><b>Random tint per pane</b><span>The first pass looked lively but noisy, and no two throws felt like the same brand. Tint now follows stroke direction.</span></li>
+      <li><b>The oversized mark in the lockup</b><span>The large panes beside the word outweighed the letters. The mark is now its own compact symbol, used alone.</span></li>
+      <li><b>Scatter off the axis</b><span>Moving panes sideways broke the letterforms at full scatter. Panes now slide only along their own length.</span></li>
+      <li><b>Frosted glass (backdrop blur)</b><span>It reads as operating-system chrome, not light, and it hides the overlaps that make the colour. Panes stay clear.</span></li>
+      <li><b>Neon glow everywhere</b><span>The night glow is a soft wash on the ground and a bright edge, not a saturated bloom on type or UI.</span></li>
+      <li><b>Rotation, perspective, 3D</b><span>Off the cell grid. A terminal can't do it, so the brand doesn't.</span></li>
+      <li><b>Clay</b><span>Heavy and slow; it read as a craft shop. The name keeps the clay; the look moved on.</span></li>
+    </ul>
+  </div>
+
+  <div class="block">
+    <h2>Open choices</h2>
+    <ul class="open">
+      <li><b>The headline.</b> "Terminal screens agents write, patch and read back" is distilled from the pitch in the scope (write as one value, edit by id, read back exactly), which runs in full as the sub-head. Alternatives: "One value in, one screen out, read back exactly" or the README's "A terminal UI that is one value".</li>
+      <li><b>The mark.</b> Cursor (chosen), crossing or stack. The crossing is the more distinctive shape but reads as a plus sign at 16 px.</li>
+      <li><b>Night as the default.</b> The night ground shows the glass best and most terminals are dark. The site could default to night and follow the system only when asked.</li>
+      <li><b>Hero idle cycle.</b> Assembled, in a row, as a screen, about every five seconds. It could run once on load and then wait for a click.</li>
+      <li><b>Type.</b> Spline Sans and Spline Sans Mono, kept from the first pass for continuity. A narrower grotesk would push the industrial side further.</li>
+    </ul>
+  </div>
+</section>
+</main>
+
+<script>
+(() => {
+'use strict';
+const $ = (s, r = document) => r.querySelector(s);
+const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const DPR = Math.min(2, window.devicePixelRatio || 1);
+
+// ---------- tokens, read from the CSS (one source of truth) ----------
+const probe = { light: $('#probeLight'), dark: $('#probeDark') };
+const tokenOf = (theme, name) => getComputedStyle(probe[theme]).getPropertyValue(name).trim();
+const rgb = (h) => { const n = parseInt(h.replace('#', ''), 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255]; };
+const TINTS = ['cyan', 'violet', 'amber', 'rose', 'smoke'];
+const PAL = {};
+for (const th of ['light', 'dark']) { PAL[th] = { ground: rgb(tokenOf(th, '--ground')), line: rgb(tokenOf(th, '--line')), ink3: rgb(tokenOf(th, '--ink-3')) }; for (const t of TINTS) PAL[th][t] = rgb(tokenOf(th, '--glass-' + t)); }
+const pageDark = () => { const t = document.documentElement.dataset.theme; return t ? t === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches; };
+const rgba = ([r, g, b], a) => `rgba(${r},${g},${b},${a})`;
+
+// ---------- the cell font (unchanged from the first pass): nine rows ----------
+const FONT = {
+  f: ['..##', '.#..', '###.', '.#..', '.#..', '.#..', '.#..', '....', '....'],
+  i: ['.#.', '...', '##.', '.#.', '.#.', '.#.', '###', '...', '...'],
+  c: ['....', '....', '.###', '#...', '#...', '#...', '.###', '....', '....'],
+  t: ['.#..', '.#..', '####', '.#..', '.#..', '.#..', '..##', '....', '....'],
+  y: ['....', '....', '#..#', '#..#', '#..#', '#..#', '.###', '...#', '###.'],
+};
+const WORD = 'fictty', WCOLS = 28, WROWS = 9;
+function wordCells() {
+  const out = []; let x = 0;
+  [...WORD].forEach((ch, li) => { const g = FONT[ch], w = g[0].length; g.forEach((row, ry) => { for (let rx = 0; rx < w; rx++) if (row[rx] === '#') out.push({ x: x + rx, y: ry, li }); }); x += w + 1; });
+  return out;
+}
+// runs of cells become panes: horizontal (h), vertical (v) or a single cell (d)
+function strokes(cells) {
+  const key = (x, y) => x + ',' + y, on = new Map(cells.map((c) => [key(c.x, c.y), c])), has = (x, y) => on.has(key(x, y)), used = new Set(), out = [];
+  for (const c of cells) {
+    if (!has(c.x - 1, c.y)) { let e = c.x; while (has(e + 1, c.y)) e++; if (e > c.x) { out.push({ x0: c.x, y0: c.y, x1: e + 1, y1: c.y + 1, o: 'h', li: c.li }); for (let x = c.x; x <= e; x++) used.add(key(x, c.y)); } }
+    if (!has(c.x, c.y - 1)) { let e = c.y; while (has(c.x, e + 1)) e++; if (e > c.y) { out.push({ x0: c.x, y0: c.y, x1: c.x + 1, y1: e + 1, o: 'v', li: c.li }); for (let y = c.y; y <= e; y++) used.add(key(c.x, y)); } }
+  }
+  for (const c of cells) if (!used.has(key(c.x, c.y))) out.push({ x0: c.x, y0: c.y, x1: c.x + 1, y1: c.y + 1, o: 'd', li: c.li });
+  return out;
+}
+const STROKES = strokes(wordCells());
+
+// ---------- seeded randomness ----------
+function rng(seed) { let a = seed >>> 0; return () => { a = (a + 0x6D2B79F5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
+
+// ---------- the v2 generator: rules, then the seed ----------
+const INSET = 0.07;
+function glassWord(seed) {
+  const R = rng(seed);
+  const swap = [...WORD].map(() => R() < 0.2);
+  const lines = STROKES.map((s, i) => i).filter((i) => STROKES[i].o !== 'd');
+  const accent = R() < 0.7 ? lines[Math.floor(R() * lines.length)] : -1;
+  const accentTint = R() < 0.6 ? 'amber' : 'rose';
+  return STROKES.map((s, i) => {
+    let tint = s.o === 'v' ? 'cyan' : s.o === 'h' ? 'violet' : 'amber';
+    if (swap[s.li] && s.o !== 'd') tint = tint === 'cyan' ? 'violet' : 'cyan';
+    if (i === accent) tint = accentTint;
+    const r = R(), q = r < 0.18 ? -0.25 : r > 0.82 ? 0.25 : 0;
+    const dx = s.o === 'h' ? q : 0, dy = s.o === 'v' ? q : 0;
+    return {
+      x: s.x0 + INSET + dx, y: s.y0 + INSET + dy, w: s.x1 - s.x0 - 2 * INSET, h: s.y1 - s.y0 - 2 * INSET,
+      o: s.o, li: s.li, tint, alpha: 0.62 + R() * 0.14,
+      enter: (R() < 0.5 ? -1 : 1) * (3 + R() * 3), delay: s.li * 0.05 + R() * 0.07, rel: (R() < 0.5 ? -1 : 1) * (0.6 + R() * 0.9),
+    };
+  });
+}
+const expoOut = (x) => (x >= 1 ? 1 : 1 - Math.pow(2, -10 * x));
+const inOut = (x) => (x <= 0 ? 0 : x >= 1 ? 1 : x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2);
+const clamp01 = (x) => Math.max(0, Math.min(1, x));
+// pose a scene at a moment: prog (seconds since the throw), release 0..1
+function pose(scene, prog = 9, release = 0, flat = false) {
+  return scene.map((p) => {
+    const local = clamp01((prog - p.delay) / 0.55), e = expoOut(local);
+    const slide = p.enter * (1 - e) + p.rel * release * 2.2;
+    const along = p.o === 'h' ? [slide, 0] : p.o === 'v' ? [0, slide] : [0, -Math.abs(slide)];
+    let x = p.x + along[0], y = p.y + along[1];
+    if (flat) { x = Math.round((p.x - INSET) * 4) / 4 + INSET; y = Math.round((p.y - INSET) * 4) / 4 + INSET; if (p.o === 'h') x = Math.round(p.x - INSET) + INSET; if (p.o === 'v') y = Math.round(p.y - INSET) + INSET; }
+    return { x, y, w: p.w, h: p.h, o: p.o, tint: p.tint, alpha: (flat ? 0.85 : p.alpha) * Math.min(1, local * 2.5) * (1 - 0.45 * release) };
+  });
+}
+
+// ---------- drawing panes: multiply by day, screen + edge light + wash by night ----------
+function drawPanes(ctx, panes, { s, ox = 0, oy = 0, dark, detail = true }) {
+  const pal = PAL[dark ? 'dark' : 'light'];
+  const R = (p) => { const r = [ox + p.x * s, oy + p.y * s, p.w * s, p.h * s]; if (detail) return r; const x = Math.round(r[0]), y = Math.round(r[1]); return [x, y, Math.max(1, Math.round(r[0] + r[2]) - x), Math.max(1, Math.round(r[1] + r[3]) - y)]; };
+  ctx.save();
+  if (dark && detail) {
+    // the wash: each pane's light falls on the ground around it
+    ctx.globalCompositeOperation = 'screen';
+    for (const p of panes) {
+      if (p.alpha < 0.01) continue; const c = pal[p.tint], [x, y, w, h] = R(p);
+      ctx.shadowColor = rgba(c, 0.75 * p.alpha); ctx.shadowBlur = s * 2.2; ctx.fillStyle = rgba(c, 0.2 * p.alpha); ctx.fillRect(x, y, w, h);
+      ctx.shadowColor = rgba(c, 0.5 * p.alpha); ctx.shadowBlur = s * 0.6; ctx.fillRect(x, y, w, h);
+    }
+    ctx.shadowBlur = 0; ctx.shadowColor = 'transparent';
+  }
+  ctx.globalCompositeOperation = dark ? 'screen' : 'multiply';
+  for (const p of panes) {
+    if (p.alpha < 0.01) continue; const [x, y, w, h] = R(p);
+    ctx.fillStyle = rgba(pal[p.tint], p.alpha * (dark ? (detail ? 0.78 : 0.95) : 1)); ctx.fillRect(x, y, w, h);
+  }
+  if (detail) {
+    for (const p of panes) {
+      if (p.alpha < 0.01) continue; const [x, y, w, h] = R(p), c = pal[p.tint], t = Math.max(1, s * 0.055);
+      if (dark) {
+        // edge light: the whole rim, brighter than the body
+        ctx.globalCompositeOperation = 'screen'; ctx.strokeStyle = rgba(c, 0.85 * p.alpha); ctx.lineWidth = Math.max(1, s * 0.04);
+        ctx.strokeRect(x + ctx.lineWidth / 2, y + ctx.lineWidth / 2, w - ctx.lineWidth, h - ctx.lineWidth);
+      } else {
+        ctx.globalCompositeOperation = 'source-over'; ctx.fillStyle = `rgba(255,255,255,${0.5 * p.alpha})`;
+        ctx.fillRect(x, y, w, Math.max(1, s * 0.03)); ctx.fillRect(x, y, Math.max(1, s * 0.03), h);
+      }
+      // Bell's coat: an iridescent edge along the long side
+      const g = p.o === 'v' ? ctx.createLinearGradient(x, y, x, y + h) : ctx.createLinearGradient(x, y, x + w, y);
+      g.addColorStop(0, rgba(pal.cyan, 0.9)); g.addColorStop(0.5, rgba(pal.violet, 0.9)); g.addColorStop(1, rgba(pal.amber, 0.9));
+      ctx.globalCompositeOperation = dark ? 'screen' : 'multiply'; ctx.globalAlpha = (dark ? 0.75 : 0.55) * p.alpha; ctx.fillStyle = g;
+      if (p.o === 'v') ctx.fillRect(x + w - t, y, t, h); else ctx.fillRect(x, y + h - t, w, t);
+      ctx.globalAlpha = 1;
+    }
+  }
+  ctx.restore();
+}
+
+function fit(cv, cols, rows) {
+  const w = Math.max(40, cv.clientWidth || cv.parentElement.clientWidth);
+  const W = Math.round(w * DPR); const H = Math.round(W * rows / cols);
+  if (cv.width !== W || cv.height !== H) { cv.width = W; cv.height = H; }
+  return W / cols;
+}
+function paintGround(ctx, cv, dark) { ctx.globalCompositeOperation = 'source-over'; ctx.fillStyle = rgba(PAL[dark ? 'dark' : 'light'].ground, 1); ctx.fillRect(0, 0, cv.width, cv.height); }
+function drawWord(cv, scene, { dark, prog = 9, release = 0, cols = 30, rows = 11, pad = [1, 1] }) {
+  const s = fit(cv, cols, rows), ctx = cv.getContext('2d');
+  paintGround(ctx, cv, dark);
+  const flat = s / DPR < 8;
+  drawPanes(ctx, pose(scene, prog, release, flat), { s, ox: pad[0] * s, oy: pad[1] * s, dark, detail: !flat });
+}
+
+// ---------- the mark ----------
+const MARKS = {
+  cursor: { name: 'Cursor', note: 'A block cursor and a pane laid over it. Terminal and layers in one shape.', panes: [
+    { x: 2.5, y: 1.5, w: 6.5, h: 12, o: 'v', tint: 'cyan', alpha: 0.74 },
+    { x: 7, y: 4, w: 6.5, h: 10.5, o: 'v', tint: 'violet', alpha: 0.72 } ] },
+  cross: { name: 'Crossing', note: 'The t of the wordmark: one vertical, one horizontal, one overlap.', panes: [
+    { x: 6, y: 1.5, w: 4, h: 13, o: 'v', tint: 'cyan', alpha: 0.74 },
+    { x: 1.5, y: 5, w: 13, h: 4, o: 'h', tint: 'violet', alpha: 0.72 } ] },
+  stack: { name: 'Stack', note: 'Three panes stepped like a Judd stack. Reads as layers, less as a terminal.', panes: [
+    { x: 1.5, y: 2, w: 9, h: 4.5, o: 'h', tint: 'smoke', alpha: 0.6 },
+    { x: 3.5, y: 5.5, w: 9, h: 4.5, o: 'h', tint: 'cyan', alpha: 0.72 },
+    { x: 5.5, y: 9, w: 9, h: 4.5, o: 'h', tint: 'violet', alpha: 0.72 } ] },
+};
+function drawMark(cv, kind, dark, cssSize, ground = true) {
+  cv.width = Math.round(cssSize * DPR); cv.height = cv.width; cv.style.width = cv.style.height = cssSize + 'px';
+  const ctx = cv.getContext('2d'), s = cv.width / 16; ctx.clearRect(0, 0, cv.width, cv.height);
+  if (ground) { const pal = PAL[dark ? 'dark' : 'light']; ctx.fillStyle = rgba(pal.ground, 1); const r = s * 3.2; ctx.beginPath(); ctx.roundRect(0, 0, cv.width, cv.height, r); ctx.fill(); ctx.save(); ctx.clip(); drawPanes(ctx, MARKS[kind].panes, { s, dark, detail: cssSize >= 48 }); ctx.restore(); }
+  else drawPanes(ctx, MARKS[kind].panes, { s, dark, detail: cssSize >= 48 });
+}
+
+// ================= state =================
+const CHOSEN = 2611;
+const VARIANT_SEEDS = [2611, 1009, 4096, 1618, 77, 31337];
+const state = { seed: CHOSEN, scene: glassWord(CHOSEN), release: 0, t0: performance.now() - 9000 };
+
+// ---------- wordmark tab ----------
+const heroL = $('#heroLight'), heroD = $('#heroDark');
+let heroAnim = 0;
+function drawHeroes() { const prog = (performance.now() - state.t0) / 1000; drawWord(heroL, state.scene, { dark: false, prog, release: state.release }); drawWord(heroD, state.scene, { dark: true, prog, release: state.release }); return prog; }
+function throwWord(animate = true) {
+  cancelAnimationFrame(heroAnim);
+  state.t0 = animate && !reduced ? performance.now() : performance.now() - 9000;
+  const step = () => { const p = drawHeroes(); if (p < 1.2) heroAnim = requestAnimationFrame(step); };
+  step();
+}
+function setSeed(seed, animate = true) {
+  state.seed = seed; state.scene = glassWord(seed); $('#seedOut').textContent = seed;
+  $$('#variants button').forEach((b) => b.setAttribute('aria-pressed', String(+b.dataset.seed === seed)));
+  throwWord(animate);
+}
+$('#replay').addEventListener('click', () => throwWord(true));
+$('#newSeed').addEventListener('click', () => setSeed(Math.floor(Math.random() * 99999)));
+$('#release').addEventListener('input', (e) => { state.release = e.target.value / 100; drawHeroes(); });
+$('#chosenSeedNote').textContent = CHOSEN;
+
+function buildVariants() {
+  const host = $('#variants');
+  VARIANT_SEEDS.forEach((seed) => {
+    const b = document.createElement('button'); b.type = 'button'; b.dataset.seed = seed; b.setAttribute('aria-label', 'Seed ' + seed);
+    const cv = document.createElement('canvas'); const lab = document.createElement('div'); lab.className = 'vl';
+    lab.innerHTML = `<span>seed ${seed}</span><span>${seed === CHOSEN ? 'chosen' : ''}</span>`;
+    b.append(cv, lab); host.append(b); b.addEventListener('click', () => setSeed(seed));
+  });
+}
+function drawVariants() { $$('#variants button').forEach((b) => drawWord($('canvas', b), glassWord(+b.dataset.seed), { dark: pageDark() })); }
+
+function drawConstruct() {
+  const cv = $('#construct'), dark = pageDark(), s = fit(cv, 30, 11), ctx = cv.getContext('2d'), pal = PAL[dark ? 'dark' : 'light'];
+  paintGround(ctx, cv, dark);
+  ctx.strokeStyle = rgba(pal.line, 1); ctx.lineWidth = 1;
+  for (let x = 0; x <= 30; x++) { ctx.beginPath(); ctx.moveTo(Math.round(x * s) + 0.5, 0); ctx.lineTo(Math.round(x * s) + 0.5, cv.height); ctx.stroke(); }
+  for (let y = 0; y <= 11; y++) { ctx.beginPath(); ctx.moveTo(0, Math.round(y * s) + 0.5); ctx.lineTo(cv.width, Math.round(y * s) + 0.5); ctx.stroke(); }
+  // bands: ascender, x-height, descender
+  ctx.fillStyle = rgba(pal.ink3, 0.07); ctx.fillRect(0, 3 * s, cv.width, 5 * s);
+  ctx.fillStyle = rgba(pal.ink3, 0.9); ctx.font = `${Math.round(s * 0.42)}px "Spline Sans Mono", monospace`; ctx.textBaseline = 'middle';
+  [['asc', 2], ['x', 5.5], ['desc', 9]].forEach(([t, y]) => ctx.fillText(t, s * 0.12, y * s));
+  for (const c of wordCells()) { ctx.fillStyle = rgba(pal.ink3, 0.16); ctx.fillRect((c.x + 1) * s + 2, (c.y + 1) * s + 2, s - 4, s - 4); }
+  drawPanes(ctx, pose(state.scene, 9, 0), { s, ox: s, oy: s, dark, detail: false });
+  ctx.setLineDash([Math.max(2, s * 0.12), Math.max(2, s * 0.1)]); ctx.lineWidth = Math.max(1, DPR);
+  for (const p of pose(state.scene, 9, 0)) { ctx.strokeStyle = rgba(pal[p.tint], 1); ctx.strokeRect((p.x + 1) * s, (p.y + 1) * s, p.w * s, p.h * s); }
+  ctx.setLineDash([]);
+}
+
+function buildMarks() {
+  const host = $('#marks');
+  for (const k of ['cursor', 'cross', 'stack']) {
+    const m = MARKS[k], card = document.createElement('article'); card.className = 'markcard';
+    card.innerHTML = `<div class="twin"><div class="theme-light" style="background:var(--ground)"><canvas></canvas></div><div class="theme-dark" style="background:var(--ground)"><canvas></canvas></div></div><footer><b>${m.name}${k === 'cursor' ? '<span class="chosen">chosen</span>' : ''}</b><small>${m.note}</small></footer>`;
+    host.append(card);
+    const [a, b] = $$('canvas', card); drawMark(a, k, false, 96, false); drawMark(b, k, true, 96, false);
+  }
+  for (const [id, dark] of [['#sizesLight', false], ['#sizesDark', true]]) {
+    const row = $(id);
+    for (const n of [128, 64, 32, 16]) { const f = document.createElement('figure'); const cv = document.createElement('canvas'); drawMark(cv, 'cursor', dark, n); f.append(cv); const cap = document.createElement('figcaption'); cap.textContent = n + ' px'; f.append(cap); row.append(f); }
+    const tab = document.createElement('figure'); tab.innerHTML = '<div class="browser-tab"><canvas></canvas><span>fictty</span></div><figcaption>favicon, 16 px</figcaption>'; row.append(tab);
+    drawMark($('canvas', tab), 'cursor', dark, 16, false);
+  }
+}
+function drawSmallWords() {
+  for (const [id, dark] of [['#wordsLight', false], ['#wordsDark', true]]) {
+    const row = $(id); if (!row.childElementCount) for (const w of [240, 140, 88]) { const f = document.createElement('figure'); f.innerHTML = `<canvas style="width:${w}px"></canvas><figcaption>${w} px</figcaption>`; row.append(f); }
+    $$('canvas', row).forEach((cv) => drawWord(cv, glassWord(CHOSEN), { dark }));
+  }
+}
+function drawMiniMark() { const cv = $('#miniMark'); drawWord(cv, glassWord(CHOSEN), { dark: pageDark(), cols: 28.6, rows: 9.8, pad: [0.3, 0.4] }); }
+
+// ---------- colour tab ----------
+const TOKENS = [
+  ['Grounds', [['--ground', 'ground', 'The page and the terminal background. Day is a gallery wall; night is a dark room, leaning blue-violet.'], ['--raised', 'raised', 'Panels and inputs that sit on the ground.'], ['--sunken', 'sunken', 'Wells, selected tabs, code.'], ['--line', 'line', 'Hairlines and borders.']]],
+  ['Glass tints', [['--glass-cyan', 'glass.cyan', 'Vertical strokes. The lead colour.'], ['--glass-violet', 'glass.violet', 'Horizontal strokes; focus and accent in UI.'], ['--glass-amber', 'glass.amber', 'The warm light: the i\'s dot, one pane per throw.'], ['--glass-rose', 'glass.rose', 'The rare second accent (Flavin pink).'], ['--glass-smoke', 'glass.smoke', 'An unlit pane; neutral glass.']]],
+  ['Neutrals', [['--ink', 'ink', 'Text. Graphite by day, daylight-white at night.'], ['--ink-2', 'ink.2', 'Secondary text.'], ['--ink-3', 'ink.3', 'Captions, placeholders, dim terminal text.']]],
+  ['Semantic', [['--ok', 'ok', 'Healthy, done, passed.'], ['--warn', 'warn', 'Slow, pending, needs a look. Darkened by day so it reads as text.'], ['--err', 'err', 'Failed, destructive.'], ['--info', 'info', 'Neutral notice, links in the terminal.'], ['--focus', 'focus', 'Focus rings and the cursor.']]],
+];
+function buildTokens() {
+  const tb = $('#tokenTable tbody');
+  for (const [group, rows] of TOKENS) {
+    tb.insertAdjacentHTML('beforeend', `<tr class="group"><td colspan="4">${group}</td></tr>`);
+    for (const [v, name, role] of rows) {
+      const l = tokenOf('light', v), d = tokenOf('dark', v);
+      tb.insertAdjacentHTML('beforeend', `<tr><td class="name">${name}</td><td><span class="chip"><i style="background:${l}"></i>${l}</span></td><td><span class="chip"><i style="background:${d}"></i>${d}</span></td><td class="role">${role}</td></tr>`);
+    }
+  }
+}
+const ANSI_NAMES = ['black', 'red', 'green', 'yellow', 'blue', 'magenta', 'cyan', 'white'];
+function buildAnsi() {
+  for (const [th, id, meta] of [['light', '#ansiLight', '#ansiMetaLight'], ['dark', '#ansiDark', '#ansiMetaDark']]) {
+    const host = $(id);
+    for (let i = 0; i < 16; i++) { const c = tokenOf(th, '--ansi-' + i); host.insertAdjacentHTML('beforeend', `<div style="background:${c}" title="${i} ${i > 7 ? 'bright ' : ''}${ANSI_NAMES[i % 8]} ${c}"><span>${i}</span></div>`); }
+    $(meta).innerHTML = ['bg', 'fg', 'cursor', 'sel'].map((k) => `<span class="chip"><i style="background:${tokenOf(th, '--term-' + k)};width:14px;height:14px"></i>${k} ${tokenOf(th, '--term-' + k)}</span>`).join('');
+  }
+}
+function ghosttyTheme(th) {
+  const L = [`# fictty ${th === 'dark' ? 'night' : 'day'}`, `background = ${tokenOf(th, '--term-bg')}`, `foreground = ${tokenOf(th, '--term-fg')}`, `cursor-color = ${tokenOf(th, '--term-cursor')}`, `selection-background = ${tokenOf(th, '--term-sel')}`];
+  for (let i = 0; i < 16; i++) L.push(`palette = ${i}=${tokenOf(th, '--ansi-' + i)}`);
+  return L.join('\n');
+}
+async function copy(text, btn) {
+  const old = btn.textContent;
+  try { await navigator.clipboard.writeText(text); btn.textContent = 'Copied'; }
+  catch { btn.textContent = 'Copy failed'; }
+  setTimeout(() => (btn.textContent = old), 1400);
+}
+$$('[data-copy]').forEach((b) => b.addEventListener('click', () => copy(ghosttyTheme(b.dataset.copy), b)));
+$$('[data-copytext]').forEach((b) => b.addEventListener('click', () => copy(b.dataset.copytext, b)));
+$('#copyInstall').addEventListener('click', (e) => copy('cargo install fictty', e.currentTarget));
+
+function drawMix() {
+  for (const [id, dark] of [['#mixLight', false], ['#mixDark', true]]) {
+    const cv = $(id), s = fit(cv, 24, 12), ctx = cv.getContext('2d'); paintGround(ctx, cv, dark);
+    const P = [
+      { x: 3, y: 2, w: 3, h: 8, o: 'v', tint: 'cyan', alpha: 0.72 }, { x: 1.5, y: 4.5, w: 9, h: 2.4, o: 'h', tint: 'violet', alpha: 0.72 },
+      { x: 13, y: 2, w: 2, h: 8, o: 'v', tint: 'smoke', alpha: 0.6 }, { x: 15.5, y: 2, w: 2, h: 8, o: 'v', tint: 'cyan', alpha: 0.72 }, { x: 18, y: 2, w: 2, h: 8, o: 'v', tint: 'violet', alpha: 0.72 },
+      { x: 12, y: 7.6, w: 9.5, h: 1.6, o: 'h', tint: 'amber', alpha: 0.74 }, { x: 8, y: 8.6, w: 5.5, h: 1.6, o: 'h', tint: 'rose', alpha: 0.72 },
+    ];
+    drawPanes(ctx, P, { s, dark });
+    ctx.fillStyle = rgba(PAL[dark ? 'dark' : 'light'].ink3, 1); ctx.font = `${Math.round(s * 0.42)}px "Spline Sans Mono", monospace`;
+    ctx.fillText(dark ? 'overlaps get brighter' : 'overlaps get deeper', s * 1.5, s * 11.3);
+  }
+}
+
+// ---------- terminal frames, composed in cells so every column lines up ----------
+const esc = (t) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;');
+const W = 79;
+const L = (...segs) => segs; // a line is [[text, cls], ...]
+const S = (t, c = '') => [t, c];
+const wlen = (line) => line.reduce((n, [t]) => n + [...t].length, 0);
+const padTo = (line, w, c = '') => { const n = wlen(line); return n < w ? [...line, S(' '.repeat(w - n), c)] : line; };
+function box(title, w, rows) {
+  const out = [L(S('╭─ ', 'd'), S(title, 'b'), S(' ' + '─'.repeat(Math.max(0, w - 5 - [...title].length)) + '╮', 'd'))];
+  for (const r of rows) {
+    const line = r.line || r, sel = r.sel ? ' sel' : '';
+    const inner = padTo([S(' ', sel), ...line.map(([t, c]) => [t, c + sel])], w - 3, sel); inner.push(S(' ', sel));
+    out.push([S('│', 'd'), ...inner, S('│', 'd')]);
+  }
+  out.push(L(S('╰' + '─'.repeat(w - 2) + '╯', 'd')));
+  return out;
+}
+function hcat(a, b, gap = 1) { const n = Math.max(a.length, b.length), wa = Math.max(...a.map(wlen)); const out = []; for (let i = 0; i < n; i++) out.push([...padTo(a[i] || [], wa), S(' '.repeat(gap)), ...(b[i] || [])]); return out; }
+const html = (lines) => lines.map((l) => l.map(([t, c]) => (c.trim() ? `<span class="${c.trim()}">${esc(t)}</span>` : esc(t))).join('')).join('\n');
+const titleBar = (left, right) => { const l = [S('▌', 'b'), S('fictty', 'w'), S(' · ' + left, 'd')]; return [...padTo(l, W - wlen(right)), ...right]; };
+
+const SVC = [
+  ['api-1', 'eu-west', '112ms', ['● healthy', 'g']], ['api-2', 'eu-west', '948ms', ['▲ slow', 'y']], ['web', 'us-east', ' 64ms', ['● healthy', 'g']],
+  ['worker', 'us-east', ' 31ms', ['● healthy', 'g']], ['cron', 'eu-west', '    -', ['○ idle', 'd']],
+];
+function deployFrame({ sel = 1, callout = false } = {}) {
+  const rows = [L(S('service   region    p95     status', 'd'))];
+  SVC.forEach(([n, r, p, st], i) => rows.push({ line: L(S(n.padEnd(10) + r.padEnd(10) + p.padEnd(8)), S(st[0], st[1])), sel: i === sel }));
+  const ev = [['14:02:11', 'api-1', 'healthy', 'g'], ['14:02:12', 'api-2', 'rollout 3/4', 'c'], ['14:02:14', 'web', 'healthy', 'g'], ['14:02:15', 'api-2', 'p95 948ms', 'y'], ['14:02:17', 'worker', 'queue 12', '']];
+  const er = [L(S('time      pod     event', 'd'))].concat(ev.map(([t, p, e, c]) => L(S(t + '  ', 'd'), S(p.padEnd(8)), S(e, c))));
+  const lines = [titleBar('deploy · release 4.12', [S('● live', 'g'), S('  60 fps', 'd')]), L(S(''))];
+  lines.push(...hcat(box('Services', 44, rows), box('Events', 34, er)));
+  if (callout) { lines.push(L(S('     ╰─▶ ', 'b'), S('◆ agent', 'b'), S('  api-2 is 8× slower than the rest since rollout 3/4.'))); }
+  else lines.push(L(S('')));
+  lines.push(L(S('')));
+  lines.push(L(S('j/k move · enter logs · r roll back · q close', 'd')));
+  return lines;
+}
+function confirmFrame(pressed = false) {
+  const w = 48, padL = ' '.repeat(Math.floor((W - w) / 2));
+  const b = box('Roll back?', w, [
+    L(S('api-2  '), S('4.12', 'y'), S(' → '), S('4.11', 'g')), L(S('p95 948ms since 14:02 · 3 of 4 pods', 'd')), L(S('')),
+    L(S(pressed ? '[y] roll back' : '[y] roll back', pressed ? 'cur' : 'b'), S('        '), S('[n] keep 4.12', 'd')),
+  ]);
+  const lines = [titleBar('deploy · question', [S('waiting for you', 'y')]), L(S('')), L(S(''))];
+  b.forEach((l) => lines.push([S(padL), ...l]));
+  lines.push(L(S('')), L(S('')), L(S('y/n answer · esc dismiss', 'd')));
+  return lines;
+}
+function doneFrame(closing = false) {
+  if (closing) return [L(S('▌', 'cur'))];
+  return [titleBar('deploy', [S('done', 'g')]), L(S('')), L(S('  ✓ ', 'g'), S('api-2 rolled back to 4.11')), L(S('    p95 118ms · 4 of 4 pods healthy', 'd')), L(S('')), L(S('  this screen closes in 3s', 'd'))];
+}
+$('#termDark').innerHTML = html(deployFrame({ callout: true }));
+$('#termLight').innerHTML = html(deployFrame({ callout: true }));
+
+// ---------- landing: the demo ----------
+const STEPS = [
+  { cmd: '$ fictty push deploy.json', note: 'A screen from one value. Rows stream from kubectl, never through the model.', frame: () => deployFrame({ sel: 0 }) },
+  { cmd: '· person presses j', note: 'Keys run locally, at frame rate.', frame: () => deployFrame({ sel: 1 }) },
+  { cmd: '$ fictty patch note callout.json', note: 'The agent adds one node. The selection stays put.', frame: () => deployFrame({ sel: 1, callout: true }) },
+  { cmd: '$ fictty screen', note: 'It reads back what it drew, as text.', frame: () => deployFrame({ sel: 1, callout: true }), readback: '│ api-2     eu-west   948ms   ▲ slow\n     ╰─▶ ◆ agent  api-2 is 8× slower…' },
+  { cmd: '$ fictty push confirm.json', note: 'The question replaces the dashboard in one frame.', frame: () => confirmFrame(false) },
+  { cmd: '· person presses y', note: 'The answer comes back as an event.', frame: () => confirmFrame(true) },
+  { cmd: '$ fictty push done.json', note: 'Done. The screen is thrown away.', frame: () => doneFrame(false) },
+];
+const demo = { i: 0, paused: reduced, timer: 0 };
+function buildLog() {
+  const ol = $('#demoLog');
+  STEPS.forEach((s, i) => { const li = document.createElement('li'); li.innerHTML = `<button type="button"><code>${esc(s.cmd)}</code><small>${s.note}</small>${s.readback ? `<div class="readback">${esc(s.readback)}</div>` : ''}</button>`; ol.append(li); $('button', li).addEventListener('click', () => { demo.paused = true; syncPause(); showStep(i); }); });
+}
+function showStep(i) {
+  demo.i = i; $('#demoFrame').innerHTML = html(STEPS[i].frame());
+  $$('#demoLog li').forEach((li, j) => { li.classList.toggle('past', j < i); $('button', li).toggleAttribute('aria-current', false); if (j === i) $('button', li).setAttribute('aria-current', 'step'); const rb = $('.readback', li); if (rb) rb.hidden = j !== i; });
+}
+function syncPause() { $('#demoPause').textContent = demo.paused ? 'play' : 'pause'; $('#demoState').textContent = demo.paused ? `step ${demo.i + 1} of ${STEPS.length}` : 'auto'; }
+function tickDemo() { clearTimeout(demo.timer); if (demo.paused || !landingVisible()) return; demo.timer = setTimeout(() => { showStep((demo.i + 1) % STEPS.length); syncPause(); tickDemo(); }, demo.i === STEPS.length - 1 ? 3600 : 2600); }
+$('#demoPause').addEventListener('click', () => { demo.paused = !demo.paused; syncPause(); tickDemo(); });
+
+// ---------- landing: blocks that swap in mirrored pairs ----------
+const BLOCKS = [
+  ['list', '▸ one\n  two\n  three', 'Scrolls, selects, draws only the rows you can see.', 'cyan'],
+  ['table', 'a   b   c\n─── ─── ───\n1   2   3', 'Columns from templates; 50,000 rows in under a millisecond.', 'violet'],
+  ['tabs', '[one] two\n───────────', 'Switch views without a push.', 'violet'],
+  ['text', '<b>bold</b> {x}', 'Styled markup and templates bound to data.', 'cyan'],
+  ['row · col', '┌──┬────┐\n│  │    │\n└──┴────┘', 'Layout. Flexbox, soon.', 'cyan'],
+  ['layers', '   ╭─────╮\n╰─▶│ hi  │\n   ╰─────╯', 'Callouts, spotlights and arrows over anything.', 'violet'],
+  ['pixels', '▗▄▖ ▗▄\n▐█▌▄▐█▌', 'Cards, plots, SVG and images where the terminal speaks kitty graphics.', 'violet'],
+  ['input', '> roll back_', 'Text fields on caretline.', 'cyan', true],
+];
+function buildBlocks() {
+  const host = $('#blocks');
+  BLOCKS.forEach(([name, glyph, note, tint, soon], i) => {
+    const d = document.createElement('div'); d.className = 'blk'; d.dataset.k = i; d.style.setProperty('--tint', `var(--glass-${tint})`);
+    d.innerHTML = `<div class="glyph">${esc(glyph)}</div><b>${name}</b><small>${note}</small>${soon ? '<span class="soon">soon</span>' : ''}`; host.append(d);
+  });
+}
+let swapT = 0, swapN = 0;
+function swapBlocks() {
+  clearTimeout(swapT); if (reduced || !landingVisible()) return;
+  swapT = setTimeout(() => {
+    const host = $('#blocks'), els = [...host.children], cols = getComputedStyle(host).gridTemplateColumns.split(' ').length;
+    const first = new Map(els.map((e) => [e, e.getBoundingClientRect()]));
+    const order = els.slice(); const rows = Math.ceil(order.length / cols);
+    // swap a mirrored pair in one row, and its point-reflection in the opposite row: rotational symmetry
+    const c = swapN % Math.floor(cols / 2), r = Math.floor(swapN / Math.floor(cols / 2)) % rows; swapN++;
+    const sw = (a, b) => { const t = order[a]; order[a] = order[b]; order[b] = t; };
+    sw(r * cols + c, r * cols + (cols - 1 - c));
+    const r2 = rows - 1 - r; if (r2 !== r) sw(r2 * cols + c, r2 * cols + (cols - 1 - c));
+    order.forEach((e) => host.append(e));
+    for (const e of order) {
+      const a = first.get(e), b = e.getBoundingClientRect(), dx = a.left - b.left, dy = a.top - b.top; if (!dx && !dy) continue;
+      e.animate([{ transform: `translate(${dx}px, ${dy}px)` }, { transform: 'none' }], { duration: 900, easing: 'cubic-bezier(.65,0,.35,1)' });
+    }
+    swapBlocks();
+  }, 3800);
+}
+
+// ---------- landing: the hero, twenty panes in three arrangements ----------
+const HC = 40, HR = 15, HOX = 6, HOY = 3;
+const heroScene = glassWord(CHOSEN);
+const wordRects = pose(heroScene, 9, 0).map((p) => ({ ...p, x: p.x + HOX, y: p.y + HOY }));
+const byX = wordRects.map((r, i) => i).sort((a, b) => (wordRects[a].x + wordRects[a].w / 2) - (wordRects[b].x + wordRects[b].w / 2) || wordRects[a].y - wordRects[b].y);
+function rowState() {
+  // a Flavin row of tubes, heights in a symmetric progression (Judd)
+  const n = wordRects.length, pitch = 1.6, w = 0.62, x0 = HC / 2 - (pitch * (n - 1)) / 2 - w / 2, out = [];
+  byX.forEach((idx, k) => { const d = Math.abs(k - (n - 1) / 2) / ((n - 1) / 2); const h = 2 + 9 * Math.pow(1 - d, 1.15); out[idx] = { x: x0 + k * pitch, y: HR / 2 - h / 2, w, h }; });
+  return out;
+}
+function screenState() {
+  const g = 0.25, S2 = [];
+  S2.push([2, 1, 20 - 2 - g, 1], [20 + g, 1, 18 - g, 1]);                 // title bar, split on the axis
+  for (const [x, w] of [[2, 4.75], [7.25, 4.75], [28, 4.75], [33.25, 4.75]]) for (const [y, h] of [[3, 3], [6.5, 3], [10, 2]]) S2.push([x, y, w, h]); // side tiles, mirrored
+  S2.push([13, 3, 14, 9]);                                                    // the main pane
+  S2.push([15, 4.5, 10, 1]);                                                  // its header line
+  S2.push([14, 8, 5.5, 2.5], [20.5, 8, 5.5, 2.5]);                            // two layers, mirrored
+  S2.push([2, 13, 18 - g, 1], [20 + g, 13, 18 - g, 1]);                       // status bar
+  const slots = S2.map(([x, y, w, h]) => ({ x, y, w, h })).sort((a, b) => (a.x + a.w / 2) - (b.x + b.w / 2) || a.y - b.y);
+  const out = []; byX.forEach((idx, k) => { out[idx] = slots[k]; }); return out;
+}
+const HSTATES = { word: wordRects.map(({ x, y, w, h }) => ({ x, y, w, h })), row: rowState(), screen: screenState() };
+const hero = { cur: HSTATES.word.map((r) => ({ ...r })), from: null, to: 'word', t0: 0, anim: 0, idle: 0, order: ['word', 'row', 'screen'], intro: 0 };
+const heroCv = $('#heroSite');
+function heroDraw(introProg = 9) {
+  const dark = pageDark(), s = fit(heroCv, HC, HR), ctx = heroCv.getContext('2d'); ctx.clearRect(0, 0, heroCv.width, heroCv.height); // transparent: the axis and ghosts show through
+  const panes = hero.cur.map((r, i) => {
+    const p = heroScene[i], local = clamp01((introProg - p.delay) / 0.55), e = expoOut(local);
+    const sl = p.enter * (1 - e); return { ...r, x: r.x + (p.o === 'h' ? sl : 0), y: r.y + (p.o === 'v' ? sl : p.o === 'd' ? -Math.abs(sl) : 0), o: r.h > r.w ? 'v' : 'h', tint: p.tint, alpha: p.alpha * Math.min(1, local * 2.5) };
+  });
+  drawPanes(ctx, panes, { s, dark });
+}
+function heroGo(name, instant = false) {
+  hero.to = name; $$('.states button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.state === name)));
+  const target = HSTATES[name];
+  cancelAnimationFrame(hero.anim);
+  if (instant || reduced) { hero.cur = target.map((r) => ({ ...r })); heroDraw(); return; }
+  hero.from = hero.cur.map((r) => ({ ...r })); hero.t0 = performance.now();
+  const D = 1.15;
+  const step = (now) => {
+    const t = (now - hero.t0) / 1000; let done = true;
+    hero.cur = hero.from.map((a, i) => {
+      const b = target[i], cx = a.x + a.w / 2, delay = (Math.abs(cx - HC / 2) / (HC / 2)) * 0.32; // the stagger radiates from the axis
+      const u = clamp01((t - delay) / D); if (u < 1) done = false;
+      const ex = inOut(u), ey = inOut(clamp01((t - delay - 0.1) / D)); if (t - delay - 0.1 < D) done = false;
+      return { x: a.x + (b.x - a.x) * ex, y: a.y + (b.y - a.y) * ey, w: a.w + (b.w - a.w) * ex, h: a.h + (b.h - a.h) * ey };
+    });
+    heroDraw(); if (!done) hero.anim = requestAnimationFrame(step);
+  };
+  hero.anim = requestAnimationFrame(step);
+}
+function heroIdle() {
+  clearTimeout(hero.idle); if (reduced || !landingVisible()) return;
+  const hold = hero.to === 'word' ? 5200 : 3400;
+  hero.idle = setTimeout(() => { const i = hero.order.indexOf(hero.to); heroGo(hero.order[(i + 1) % 3]); heroIdle(); }, hold);
+}
+function heroIntro() {
+  if (reduced) { heroDraw(); return; }
+  hero.cur = HSTATES.word.map((r) => ({ ...r })); hero.to = 'word'; $$('.states button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.state === 'word')));
+  const t0 = performance.now(); const step = (now) => { const p = (now - t0) / 1000; heroDraw(p); if (p < 1.2) hero.intro = requestAnimationFrame(step); }; hero.intro = requestAnimationFrame(step);
+}
+$$('.states button').forEach((b) => b.addEventListener('click', () => { heroGo(b.dataset.state); heroIdle(); }));
+heroCv.addEventListener('click', () => { const i = hero.order.indexOf(hero.to); heroGo(hero.order[(i + 1) % 3]); heroIdle(); });
+function drawSiteMarks() { drawMark($('#navMark'), 'cursor', pageDark(), 28, false); drawWord($('#closeWord'), glassWord(CHOSEN), { dark: pageDark() }); }
+
+// ---------- landing: scroll ----------
+const site = $('#site');
+let scrollRaf = 0;
+function onScroll() {
+  if (scrollRaf || !landingVisible()) return;
+  scrollRaf = requestAnimationFrame(() => {
+    scrollRaf = 0; const vh = innerHeight;
+    // the three steps start stacked on the axis and slide apart into their columns
+    const st = $('#steps'), r = st.getBoundingClientRect();
+    const spread = reduced || innerWidth <= 860 ? 1 : clamp01((vh * 0.92 - r.top) / (vh * 0.45));
+    $$('.step', st).forEach((e) => e.style.setProperty('--spread', inOut(spread).toFixed(4)));
+    // ghost panes drift toward the axis in mirrored pairs
+    const sr = site.getBoundingClientRect(), prog = clamp01(-sr.top / Math.max(1, sr.height - vh));
+    if (!reduced) $$('.ghost', site).forEach((g) => { const k = +g.dataset.g, dir = k % 2 ? -1 : 1, amp = k < 2 ? 140 : 90; g.style.transform = `translate(${(dir * (prog - 0.3) * amp).toFixed(1)}px, ${(-prog * 120).toFixed(1)}px)`; });
+  });
+}
+addEventListener('scroll', onScroll, { passive: true });
+
+// ---------- tabs and theme ----------
+const TABS = ['wordmark', 'colour', 'landing', 'rationale'];
+const landingVisible = () => !$('#landing').hidden && !document.hidden;
+function showTab(id, push = true) {
+  if (!TABS.includes(id)) id = 'wordmark';
+  TABS.forEach((t) => { $('#' + t).hidden = t !== id; $('#t-' + t).setAttribute('aria-selected', String(t === id)); });
+  if (push) { try { history.replaceState(null, '', '#' + id); } catch {} }
+  requestAnimationFrame(() => {
+    if (id === 'wordmark') { drawHeroes(); drawVariants(); drawConstruct(); drawSmallWords(); }
+    if (id === 'colour') drawMix();
+    if (id === 'landing') { drawSiteMarks(); heroIntro(); showStep(demo.i); syncPause(); tickDemo(); heroIdle(); swapBlocks(); onScroll(); }
+  });
+}
+$$('.tabs button').forEach((b) => b.addEventListener('click', () => { showTab(b.getAttribute('aria-controls')); scrollTo({ top: 0 }); }));
+function setTheme(mode) {
+  if (mode === 'auto') delete document.documentElement.dataset.theme; else document.documentElement.dataset.theme = mode;
+  $$('[data-theme-set]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.themeSet === mode)));
+  try { localStorage.setItem('fictty-theme', mode); } catch {}
+  redrawThemed();
+}
+function redrawThemed() { drawMiniMark(); if (!$('#wordmark').hidden) { drawVariants(); drawConstruct(); } if (!$('#landing').hidden) { heroDraw(); drawSiteMarks(); } }
+$$('[data-theme-set]').forEach((b) => b.addEventListener('click', () => setTheme(b.dataset.themeSet)));
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', redrawThemed);
+document.addEventListener('visibilitychange', () => { if (landingVisible()) { tickDemo(); heroIdle(); swapBlocks(); } });
+let rz = 0; addEventListener('resize', () => { clearTimeout(rz); rz = setTimeout(() => showTab(TABS.find((t) => !$('#' + t).hidden), false), 150); });
+
+// ---------- boot ----------
+buildVariants(); buildMarks(); buildTokens(); buildAnsi(); buildLog(); buildBlocks();
+let saved = 'auto'; try { saved = localStorage.getItem('fictty-theme') || 'auto'; } catch {}
+setTheme(saved);
+$('#seedOut').textContent = CHOSEN;
+$$('#variants button').forEach((b) => b.setAttribute('aria-pressed', String(+b.dataset.seed === CHOSEN)));
+const startTab = (location.hash || '').slice(1);
+showTab(TABS.includes(startTab) ? startTab : 'wordmark', false);
+throwWord(true);
+document.fonts && document.fonts.ready.then(() => { if (!$('#wordmark').hidden) drawConstruct(); });
+})();
+</script>
