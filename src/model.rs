@@ -296,6 +296,10 @@ pub enum Kind {
         /// Shown, dimmed, while the text is empty.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         placeholder: Option<String>,
+        /// `markdown` styles headings, list markers, quotes and inline code (theme parts
+        /// `md.heading`, `md.bullet`, `md.quote`, `md.code`). The text stays plain.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        syntax: Option<String>,
     },
     /// A one-line field (caretline, single-line): an editor whose text never holds a line
     /// break. Enter runs the node's `keys.enter`, so a form submits with a store action.
@@ -477,6 +481,8 @@ pub struct Field<'a> {
     pub placeholder: Option<&'a str>,
     /// One line (an input).
     pub line: bool,
+    /// Markdown styling.
+    pub markdown: bool,
 }
 
 /// What a key does. Names: `quit`, `up`, `down`, `top`, `bottom`, `focus_next`, `focus_prev`,
@@ -562,8 +568,16 @@ impl Node {
     /// An editor or an input: the text component's settings.
     pub fn field(&self) -> Option<Field<'_>> {
         match &self.kind {
-            Kind::Editor { text, doc, placeholder } => Some(Field { seed: text, doc: doc.as_deref(), placeholder: placeholder.as_deref(), line: false }),
-            Kind::Input { text, placeholder } => Some(Field { seed: text, doc: None, placeholder: placeholder.as_deref(), line: true }),
+            Kind::Editor { text, doc, placeholder, syntax } => Some(Field {
+                seed: text,
+                doc: doc.as_deref(),
+                placeholder: placeholder.as_deref(),
+                line: false,
+                markdown: syntax.as_deref() == Some("markdown"),
+            }),
+            Kind::Input { text, placeholder } => {
+                Some(Field { seed: text, doc: None, placeholder: placeholder.as_deref(), line: true, markdown: false })
+            }
             _ => None,
         }
     }

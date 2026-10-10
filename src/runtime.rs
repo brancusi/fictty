@@ -650,6 +650,9 @@ fn mouse(kind: MouseEventKind, x: u16, y: u16, hits: &[Hit], st: &State) -> Opti
     match kind {
         MouseEventKind::Down(MouseButton::Left) => {
             let h = at(false)?;
+            if h.text {
+                return Some(Msg::Point { id: h.id.clone(), col: x - h.rect.x, row: y - h.rect.y });
+            }
             Some(Msg::Click { id: h.id.clone(), row: h.row.filter(|r| *r < 1000), tab: h.tab })
         }
         MouseEventKind::ScrollDown | MouseEventKind::ScrollUp => {

@@ -91,7 +91,9 @@ document with its undo history), each with a revision (`rev`) and who wrote it l
 - **Editors**: `{"type": "editor", "bind": "@notes", "doc": "note/{id}", "text": "# {title}"}` edits
   the entry its template names from the selected note, so a list and an editor make a notes app.
   An editor takes every key but Tab, Shift-Tab and Esc; `input` is the one-line version, and
-  Enter runs its `keys.enter`.
+  Enter runs its `keys.enter`. A click places the caret; `"syntax": "markdown"` styles headings,
+  list markers, quotes and inline code (theme parts `md.heading`, `md.bullet`, `md.quote`,
+  `md.code`) while the text stays plain.
 
 ## Themes
 

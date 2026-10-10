@@ -465,7 +465,8 @@
            2,
            1
           ],
-          "text": "A caretline editor on the store entry `g_scratch`.\n\nSelect with Shift and the arrows, undo with Ctrl-Z.\nOpen this chapter twice: the text is where you left it.\n"
+          "text": "A caretline editor on the store entry `g_scratch`.\n\nSelect with Shift and the arrows, undo with Ctrl-Z.\nOpen this chapter twice: the text is where you left it.\n",
+          "syntax": "markdown"
          },
          {
           "type": "text",
@@ -481,7 +482,8 @@
           "pad": [
            2,
            1
-          ]
+          ],
+          "syntax": "markdown"
          }
         ]
        }

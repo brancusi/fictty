@@ -23,6 +23,8 @@ pub struct Hit {
     pub id: String,
     pub row: Option<usize>,
     pub tab: Option<usize>,
+    /// The text area of an editor or input: a click there places the caret.
+    pub text: bool,
 }
 
 /// The screen's colours: the UI's `theme`, over these defaults.
@@ -112,7 +114,7 @@ impl Cx<'_> {
     }
 
     fn mark(&mut self, id: &str, row: Option<usize>, tab: Option<usize>, rect: Rect) {
-        self.hits.push(Hit { rect, id: id.to_string(), row, tab });
+        self.hits.push(Hit { rect, id: id.to_string(), row, tab, text: false });
         let key = match row {
             Some(r) => cl::AnchorKey::host("row", &format!("{id}#{r}")),
             None if tab.is_some() => return,
@@ -296,12 +298,53 @@ pub fn draw(st: &State, f: &mut Frame) -> Out {
     Out { hits: cx.hits, pics: cx.pics, scaled: cx.scaled, sizes: cx.sizes }
 }
 
-/// How an editor or input looks: its text, the caret, a selection, the placeholder.
+/// How an editor or input looks: its text, the caret, a selection, the placeholder, and its
+/// Markdown styles when it has them.
 struct FieldLook {
     text: Style,
     caret: Style,
     selection: Style,
     placeholder: Style,
+    markdown: Option<Markdown>,
+}
+
+struct Markdown {
+    heading: Style,
+    bullet: Style,
+    quote: Style,
+    code: Style,
+}
+
+/// A text cell's Markdown style: its line's kind (a heading, a quote), the list marker at the
+/// line's start, or inline `code`. `col` is the char's column in its line.
+fn md_style(md: &Markdown, line: &str, col: usize, base: Style) -> Style {
+    let t = line.trim_start();
+    let indent = line.len() - t.len();
+    if t.starts_with('#') {
+        return md.heading;
+    }
+    if t.starts_with("> ") || t == ">" {
+        return md.quote;
+    }
+    let marker = if t.starts_with("- ") || t.starts_with("* ") || t.starts_with("+ ") {
+        Some(1)
+    } else {
+        let digits = t.chars().take_while(char::is_ascii_digit).count();
+        (digits > 0 && t[digits..].starts_with(". ")).then_some(digits + 1)
+    };
+    if let Some(m) = marker
+        && col >= indent
+        && col < indent + m
+    {
+        return md.bullet;
+    }
+    // Inside a pair of backticks (the backticks too).
+    let ticks = line.chars().take(col).filter(|c| *c == '`').count();
+    let here = line.chars().nth(col) == Some('`');
+    if ticks % 2 == 1 || (here && line.chars().skip(col + 1).any(|c| c == '`')) {
+        return md.code;
+    }
+    base
 }
 
 /// An editor's cells, from caretline's own view of it. Until the runtime has told it its size
@@ -330,16 +373,28 @@ fn editor(buf: &mut Buffer, area: Rect, doc: &caretline::Document, view: &caretl
         caretline::view::render(&d, &vs[0])
     };
     for y in 0..frame.height.min(area.height) {
+        // For Markdown: the document line this row shows, and where that line starts.
+        let line = match (&look.markdown, frame.rows.get(y as usize)) {
+            (Some(_), Some(caretline::view::RowInfo::Text { line, .. })) => {
+                let l = d_line(doc, *line);
+                Some((l, doc.text.line_to_char(*line)))
+            }
+            _ => None,
+        };
         for x in 0..frame.width.min(area.width) {
             let cell = frame.cell(x, y);
             if cell.symbol.is_empty() {
                 continue; // the second half of a wide grapheme
             }
+            let text = match (&look.markdown, &line, cell.char_idx) {
+                (Some(md), Some((l, start)), Some(i)) if i as usize >= *start => md_style(md, l, i as usize - start, look.text),
+                _ => look.text,
+            };
             let s = match cell.role {
                 Role::Selection => look.selection,
                 Role::Caret => look.caret,
                 Role::Status | Role::StatusAccent | Role::Hang => look.text.add_modifier(Modifier::DIM),
-                _ => look.text,
+                _ => text,
             };
             buf.set_string(area.x + x, area.y + y, &cell.symbol, s);
         }
@@ -352,6 +407,12 @@ fn editor(buf: &mut Buffer, area: Rect, doc: &caretline::Document, view: &caretl
             c.set_symbol(" ");
         }
     }
+}
+
+/// A document line's text, without its line break.
+fn d_line(doc: &caretline::Document, line: usize) -> String {
+    let l = doc.text.line(line).to_string();
+    l.trim_end_matches(['\n', '\r']).to_string()
 }
 
 fn border_type(edge: Option<&str>) -> BorderType {
@@ -524,13 +585,17 @@ fn node(cx: &mut Cx, n: &Node, f: &mut Frame, area: Rect) {
                 caret: cx.look("editor.caret", style.add_modifier(Modifier::REVERSED)),
                 selection: cx.look("editor.selection", style.add_modifier(Modifier::REVERSED)),
                 placeholder: cx.look("input.placeholder", style.fg(cx.th.dim).add_modifier(Modifier::ITALIC)),
+                markdown: field.markdown.then(|| Markdown {
+                    heading: cx.look("md.heading", style.fg(cx.th.accent).add_modifier(Modifier::BOLD)),
+                    bullet: cx.look("md.bullet", style.fg(cx.th.accent)),
+                    quote: cx.look("md.quote", style.fg(cx.th.dim).add_modifier(Modifier::ITALIC)),
+                    code: cx.look("md.code", style.fg(cx.th.pos)),
+                }),
             };
-            if field.line && inner.height > 1 {
-                // An input is one row, in the middle of what it's given.
-                let row = Rect::new(inner.x, inner.y + (inner.height - 1) / 2, inner.width, 1);
-                return editor(f.buffer_mut(), row, doc, view, &looks, field.placeholder, focused);
-            }
-            editor(f.buffer_mut(), inner, doc, view, &looks, field.placeholder, focused);
+            // An input is one row, in the middle of what it's given.
+            let area = if field.line && inner.height > 1 { Rect::new(inner.x, inner.y + (inner.height - 1) / 2, inner.width, 1) } else { inner };
+            cx.hits.push(Hit { rect: area, id: id.clone(), row: None, tab: None, text: true });
+            editor(f.buffer_mut(), area, doc, view, &looks, field.placeholder, focused);
         }
         Kind::Rule { glyph } => {
             let g = glyph.clone().unwrap_or_else(|| if inner.height > inner.width { "│".into() } else { "─".into() });
@@ -750,7 +815,7 @@ fn node(cx: &mut Cx, n: &Node, f: &mut Frame, area: Rect) {
                 };
                 f.buffer_mut().set_string(r.x, r.y, &label, ts);
                 if !id.is_empty() {
-                    cx.hits.push(Hit { rect: r, id: id.clone(), row: Some(1000 + k), tab: Some(k) });
+                    cx.hits.push(Hit { rect: r, id: id.clone(), row: Some(1000 + k), tab: Some(k), text: false });
                 }
                 x += w + 1;
             }
@@ -1468,6 +1533,25 @@ mod tests {
         assert_eq!(row(0), "╔ T ═══════╗", "the variant's double edge");
         assert_eq!(row(1), "║  hi      ║", "two cells of pad");
         assert_eq!(buf[(2, 0)].fg, Color::Rgb(0xff, 0xbd, 0x4f), "the theme's title part");
+    }
+
+    #[test]
+    fn markdown_styles_headings_markers_quotes_and_code() {
+        let md = Markdown {
+            heading: Style::default().fg(Color::Cyan),
+            bullet: Style::default().fg(Color::Blue),
+            quote: Style::default().fg(Color::Gray),
+            code: Style::default().fg(Color::Green),
+        };
+        let base = Style::default();
+        assert_eq!(md_style(&md, "## Done", 4, base), md.heading);
+        assert_eq!(md_style(&md, "  - item", 2, base), md.bullet, "the marker");
+        assert_eq!(md_style(&md, "  - item", 4, base), base, "not the item");
+        assert_eq!(md_style(&md, "12. step", 2, base), md.bullet);
+        assert_eq!(md_style(&md, "> said", 3, base), md.quote);
+        assert_eq!(md_style(&md, "run `cargo test` now", 6, base), md.code);
+        assert_eq!(md_style(&md, "run `cargo test` now", 4, base), md.code, "the opening tick");
+        assert_eq!(md_style(&md, "run `cargo test` now", 17, base), base);
     }
 
     #[test]

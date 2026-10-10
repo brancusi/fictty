@@ -45,7 +45,8 @@ reference, the dark version isn't there yet.
 - [x] `input` and `editor` on caretline (single-line for inputs), their text in the store;
       `doc` templates make an editor follow a list's selection
 - [ ] Collections keyed by id, writes by JSON Pointer path, a revision per record
-- [ ] Markdown styling in editors (headings, lists, code), and clicking to place the caret
+- [x] Markdown styling in editors (headings, lists, quotes, code), and clicking to place the caret
+- [ ] Dragging to select in an editor; the system clipboard
 - [ ] Project components: JSON with named parameters, loaded from the project, `{"use": "kpi", …}`
 - [ ] Review the drawing-only components (`gauge`, `big`, `bars`, `sparkline`, `chart`, `map`):
       keep what's compact and degrades well, move the rest to recipes

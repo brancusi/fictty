@@ -127,6 +127,9 @@ pub enum Msg {
     Hover { hover: Option<Hover> },
     /// The wheel over a node: rows to move (negative is up).
     Scroll { id: String, by: isize },
+    /// A click inside an editor's or input's text, at a cell relative to it: focus it and put the
+    /// caret there.
+    Point { id: String, col: u16, row: u16 },
     /// Animation time.
     Tick { now_ms: u64 },
     /// Move a node's view state from outside: a list's or table's `selected` row, a tabs
@@ -265,6 +268,17 @@ fn apply(st: &mut State, msg: Msg) -> Vec<Effect> {
         }
         Msg::Hover { hover } => {
             st.hover = hover;
+            vec![]
+        }
+        Msg::Point { id, col, row } => {
+            if st.ui.root.find(&id).is_some_and(|n| n.field().is_some()) {
+                st.focus = Some(id.clone());
+                on_doc(st, &id, caretline::Msg::Click { col, row, extend: false }, "person");
+            }
+            vec![]
+        }
+        Msg::Scroll { id, by } if st.ui.root.find(&id).is_some_and(|n| n.field().is_some()) => {
+            on_doc(st, &id, caretline::Msg::Scroll { rows: by as i32 * 3 }, "person");
             vec![]
         }
         Msg::Scroll { id, by } => {
@@ -1128,7 +1142,7 @@ mod tests {
         // The editor back, with a different seed: the note wins over the seed.
         let mut again = note();
         if let Some(c) = again.root.children_mut() {
-            c[0].kind = Kind::Editor { text: "a new seed".into(), doc: None, placeholder: None };
+            c[0].kind = Kind::Editor { text: "a new seed".into(), doc: None, placeholder: None, syntax: None };
         }
         update(&mut st, Msg::Push { ui: again });
         assert_eq!(text_of(&st, "note"), "hi!");
@@ -1298,6 +1312,20 @@ mod tests {
         let r = write(&mut st, "rows", json!({"write": "put", "value": [{"a": 1}]}), None);
         assert_eq!(r["ok"], json!(true));
         assert_eq!(st.problems.len(), 3);
+    }
+
+    #[test]
+    fn a_click_in_an_editor_focuses_it_and_places_the_caret() {
+        let mut st = State::default();
+        update(&mut st, Msg::Push { ui: ui(json!({"root": {"type": "row", "children": [
+            {"type": "list", "id": "l", "items": [1]},
+            {"type": "editor", "id": "e", "text": "first line\nsecond"}
+        ]}})) });
+        assert_eq!(st.focus.as_deref(), Some("l"));
+        update(&mut st, Msg::Size { id: "e".into(), width: 20, height: 4 });
+        update(&mut st, Msg::Point { id: "e".into(), col: 3, row: 1 });
+        assert_eq!(st.focus.as_deref(), Some("e"));
+        assert_eq!(caret(&st, "e"), 14, "line two, column three");
     }
 
     #[test]
