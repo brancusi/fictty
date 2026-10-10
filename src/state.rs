@@ -1,6 +1,6 @@
 //! The screen's whole state, the messages that change it and a pure `update`. The runtime owns
 //! the terminal, the socket and child processes; it feeds messages in and carries effects out.
-//! `State` serializes, so `thc-scene get --state` shows exactly what is drawn.
+//! `State` serializes, so `fictty get --state` shows exactly what is drawn.
 
 use crate::model::{Action, Kind, LayerSpec, Node, Ui, lookup};
 use serde::{Deserialize, Serialize};
@@ -36,7 +36,7 @@ pub struct State {
     /// What the terminal can draw (pictures, the cell size in pixels, larger text).
     #[serde(default)]
     pub caps: crate::gfx::Caps,
-    /// Whether larger text (OSC 66) is on: the terminal's to say, or `THC_SCENE_TEXT_SIZE=1`.
+    /// Whether larger text (OSC 66) is on: the terminal's to say, or `FICTTY_TEXT_SIZE=1`.
     #[serde(default)]
     pub text_sizing: bool,
 }

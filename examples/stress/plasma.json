@@ -27,7 +27,7 @@
    "stream": [
     "python3",
     "-u",
-    "crates/scene/examples/stress/feed.py",
+    "examples/stress/feed.py",
     "plasma",
     "120"
    ]

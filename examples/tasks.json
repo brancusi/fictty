@@ -22,5 +22,5 @@
     "tasks": {"cmd": ["thc", "q", "status:open sort:due", "--json"], "path": "items", "every": 3},
     "pages": {"cmd": ["thc", "q", "is:page sort:title", "--json"], "path": "items", "every": 10}
   },
-  "keys": {"w": {"load": "crates/scene/examples/writer.json"}}
+  "keys": {"w": {"load": "examples/writer.json"}}
 }

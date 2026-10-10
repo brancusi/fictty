@@ -1,4 +1,4 @@
-//! thc-scene: a terminal UI that is one serializable value.
+//! fictty: a terminal UI that is one serializable value.
 //!
 //! - `model`: the UI as data (a node tree, data sources, keys).
 //! - `state`: the screen's state, messages and a pure `update`.

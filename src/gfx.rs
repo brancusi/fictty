@@ -315,13 +315,13 @@ pub struct Caps {
 }
 
 impl Caps {
-    /// Kitty graphics by terminal (Ghostty, kitty, WezTerm), `THC_SCENE_GRAPHICS=0|1` to force,
+    /// Kitty graphics by terminal (Ghostty, kitty, WezTerm), `FICTTY_GRAPHICS=0|1` to force,
     /// and the cell size from the window's pixel size.
     pub fn detect() -> Caps {
         let env = |k: &str| std::env::var(k).unwrap_or_default();
         let term = format!("{} {}", env("TERM_PROGRAM"), env("TERM")).to_lowercase();
         let mut graphics = term.contains("ghostty") || term.contains("kitty") || term.contains("wezterm");
-        match env("THC_SCENE_GRAPHICS").as_str() {
+        match env("FICTTY_GRAPHICS").as_str() {
             "0" => graphics = false,
             "1" => graphics = true,
             _ => {}
@@ -467,10 +467,10 @@ fn send(out: &mut Vec<u8>, id: u32, pic: &Pic, px: (u32, u32), caps: Caps) {
     };
     let data = miniz_oxide::deflate::compress_to_vec_zlib(&canvas.rgba(), 4);
     // Big pictures go through a temporary file the terminal reads and deletes (its name must say
-    // `tty-graphics-protocol`), not base64 through the terminal's input; THC_SCENE_PIXELS=direct
+    // `tty-graphics-protocol`), not base64 through the terminal's input; FICTTY_PIXELS=direct
     // sends them in-band (over SSH, say).
-    if std::env::var("THC_SCENE_PIXELS").as_deref() != Ok("direct") {
-        let path = std::env::temp_dir().join(format!("tty-graphics-protocol-thc-scene-{}-{id}", std::process::id()));
+    if std::env::var("FICTTY_PIXELS").as_deref() != Ok("direct") {
+        let path = std::env::temp_dir().join(format!("tty-graphics-protocol-fictty-{}-{id}", std::process::id()));
         if std::fs::write(&path, &data).is_ok() {
             let _ = write!(out, "\x1b_Ga=t,t=t,f=32,o=z,s={w},v={h},i={id},q=2;{}\x1b\\", b64.encode(path.display().to_string()));
             return;

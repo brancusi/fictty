@@ -8,7 +8,7 @@ import importlib.util, json, os, socket, subprocess, sys, tempfile, time
 STEP = float(sys.argv[1]) if len(sys.argv) > 1 else 5
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", ".."))
 os.chdir(ROOT)
-spec = importlib.util.spec_from_file_location("pixgen", "crates/scene/examples/pixels/gen.py")
+spec = importlib.util.spec_from_file_location("pixgen", "examples/pixels/gen.py")
 gen = importlib.util.module_from_spec(spec); spec.loader.exec_module(gen)
 
 # The sample vault and the marks.
@@ -20,10 +20,10 @@ if not os.path.exists(os.path.join(vault, "thc-vault.toml")):
     for k in ("THC_TEST", "THC_TEST_ALLOW"): env.pop(k, None)
     subprocess.run(["scripts/seed-sample.sh", vault], env=env, check=True, capture_output=True)
 for name, rgb in (("mark.png", None), ("mark-agent.png", "136,177,236")):
-    if not os.path.exists(f"crates/scene/examples/pixels/{name}"):
-        subprocess.run(["python3", "crates/scene/examples/pixels/mark.py", f"crates/scene/examples/pixels/{name}"] + ([rgb] if rgb else []), check=True)
+    if not os.path.exists(f"examples/pixels/{name}"):
+        subprocess.run(["python3", "examples/pixels/mark.py", f"examples/pixels/{name}"] + ([rgb] if rgb else []), check=True)
 
-path = os.environ.get("THC_SCENE_SOCKET") or os.path.join(tempfile.gettempdir(), "thc-scene.sock")
+path = os.environ.get("FICTTY_SOCKET") or os.path.join(tempfile.gettempdir(), "fictty.sock")
 s = socket.socket(socket.AF_UNIX); s.connect(path); f = s.makefile("rw")
 def send(req):
     f.write(json.dumps(req) + "\n"); f.flush(); return json.loads(f.readline())

@@ -2,13 +2,13 @@ use anyhow::Result;
 use clap::{Parser, Subcommand};
 use serde_json::json;
 use std::path::PathBuf;
-use thc_scene::runtime;
+use fictty::runtime;
 
 /// A terminal UI that is one serializable value: run a screen, then push whole UIs into it.
 #[derive(Parser)]
-#[command(name = "thc-scene")]
+#[command(name = "fictty")]
 struct Cli {
-    /// The control socket (default: $THC_SCENE_SOCKET, else thc-scene.sock in the temp dir).
+    /// The control socket (default: $FICTTY_SOCKET, else fictty.sock in the temp dir).
     #[arg(long, global = true)]
     socket: Option<PathBuf>,
     #[command(subcommand)]

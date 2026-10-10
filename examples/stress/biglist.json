@@ -26,7 +26,7 @@
    "stream": [
     "python3",
     "-u",
-    "crates/scene/examples/stress/feed.py",
+    "examples/stress/feed.py",
     "biglist",
     "20"
    ]

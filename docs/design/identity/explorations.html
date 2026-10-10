@@ -1,0 +1,512 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>fictty identity</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Spline+Sans:wght@400;500;600;700&family=Spline+Sans+Mono:wght@400;500;600&display=swap">
+<style>
+/* Layout: two directions, one after the other, each a full specimen: a live hero you can re-throw,
+   six throws to pick from, its colours, small sizes and a screen drawn in it. */
+:root {
+  --bg: #f3f4f5;
+  --raised: #fbfbfc;
+  --fg: #15181d;
+  --muted: #5e6570;
+  --line: #dcdfe3;
+  --focus: #5b4fd6;
+
+  /* thrown (clay) */
+  --clay-wet: #4a413a;
+  --clay-leather: #6d6258;
+  --clay-dry: #a3998c;
+  --clay-fired: #c2b39f;
+  --celadon: #8fbfa0;
+  --tenmoku: #1c1714;
+
+  /* glass (gas) */
+  --cyan: #39c2cf;
+  --violet: #7f72e6;
+  --amber: #f0b23a;
+  --smoke: #7d8796;
+  --night: #0e1116;
+  --gallery: #f4f5f6;
+
+  --sans: "Spline Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "Spline Sans Mono", ui-monospace, "SF Mono", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f1115; --raised: #161a20; --fg: #e8eaee; --muted: #8e96a3; --line: #262b33; --focus: #a79ef5;
+    --clay-fired: #ddd3c4; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f1115; --raised: #161a20; --fg: #e8eaee; --muted: #8e96a3; --line: #262b33; --focus: #a79ef5;
+  --clay-fired: #ddd3c4; color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--fg); font: 400 16px/1.6 var(--sans); padding-inline: clamp(16px, 5vw, 56px); padding-block: 0 72px; }
+.wrap { max-width: 1120px; margin: 0 auto; display: grid; gap: 96px; }
+a { color: var(--focus); }
+p { margin: 0; max-width: 64ch; }
+h1, h2, h3 { margin: 0; text-wrap: balance; }
+.eyebrow { font: 500 12px/1.4 var(--mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
+.muted { color: var(--muted); }
+code { font: 14px var(--mono); }
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+
+.intro { padding-top: clamp(40px, 7vw, 88px); display: grid; gap: 18px; }
+.intro h1 { font: 600 clamp(30px, 4.4vw, 46px)/1.1 var(--sans); letter-spacing: -0.01em; max-width: 22ch; }
+.jump { display: flex; gap: 12px; flex-wrap: wrap; }
+.jump a { font: 500 14px var(--mono); text-decoration: none; border: 1px solid var(--line); border-radius: 999px; padding: 6px 14px; color: var(--fg); background: var(--raised); }
+.jump a:hover { border-color: var(--focus); }
+
+.dir { display: grid; gap: 28px; scroll-margin-top: 24px; }
+.dir-head { display: grid; gap: 8px; }
+.dir-head h2 { font: 600 clamp(26px, 3.4vw, 36px)/1.15 var(--sans); }
+.stage { border-radius: 10px; overflow: hidden; border: 1px solid var(--line); }
+.stage canvas { display: block; width: 100%; height: auto; aspect-ratio: var(--ar); max-width: 100%; }
+.stage.clay { background: var(--bg); }
+.stage.glass { background: var(--gallery); }
+.controls { display: flex; gap: 18px 28px; flex-wrap: wrap; align-items: center; }
+.controls label { display: grid; gap: 6px; font: 13px var(--mono); color: var(--muted); }
+.controls input[type=range] { width: min(360px, 82vw); accent-color: var(--focus); }
+.ticks { display: flex; justify-content: space-between; font: 11.5px var(--mono); color: var(--muted); width: min(360px, 82vw); }
+.ticks b { color: var(--fg); font-weight: 600; }
+button.throw { font: 600 14px var(--sans); color: var(--bg); background: var(--fg); border: 0; border-radius: 999px; padding: 10px 18px; cursor: pointer; }
+button.throw:hover { opacity: 0.88; }
+
+.throws { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.throws button { padding: 0; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; cursor: pointer; background: var(--bg); display: grid; }
+.throws button[aria-pressed="true"] { border-color: var(--focus); box-shadow: 0 0 0 1px var(--focus); }
+.throws canvas { width: 100%; height: auto; display: block; aspect-ratio: var(--ar); }
+.throws button span { font: 11.5px var(--mono); color: var(--muted); text-align: left; padding: 6px 10px; border-top: 1px solid var(--line); }
+
+.row2 { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 28px; }
+.swatches { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.sw { border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: var(--raised); min-width: 0; }
+.sw i { display: block; height: 64px; }
+.sw div { padding: 8px 10px; display: grid; gap: 1px; font-size: 13.5px; }
+.sw b { font-weight: 600; }
+.sw span { font: 11.5px var(--mono); color: var(--muted); font-variant-numeric: tabular-nums; }
+
+.small { border: 1px solid var(--line); border-radius: 8px; background: var(--raised); padding: 18px; display: grid; gap: 16px; align-content: start; }
+.small .sizes { display: flex; gap: 20px; align-items: end; flex-wrap: wrap; }
+.small .flatword { width: 100%; max-width: 360px; height: auto; }
+.small figcaption { font: 12px var(--mono); color: var(--muted); }
+
+.term { border-radius: 10px; padding: 18px 20px; overflow-x: auto; }
+.term pre { margin: 0; font: 13.5px/1.5 var(--mono); white-space: pre; }
+.term.clay { background: #1c1714; color: #d9d5cd; }
+.term.clay .a { color: #8fbfa0; } .term.clay .b { color: #8ea7e6; } .term.clay .h { color: #e0a15e; } .term.clay .d { color: #7d766d; } .term.clay .s { background: #2f4b3c; color: #f0ede6; } .term.clay .n { color: #d0705f; } .term.clay .w { color: #f0ede6; font-weight: 600; }
+.term.glass { background: #0e1116; color: #c9ced6; }
+.term.glass .a { color: #39c2cf; } .term.glass .b { color: #a79ef5; } .term.glass .h { color: #f0b23a; } .term.glass .d { color: #5b6370; } .term.glass .s { background: #2a2560; color: #f2f3f5; } .term.glass .n { color: #f07a8a; } .term.glass .w { color: #f2f3f5; font-weight: 600; }
+
+.notes { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0 28px; }
+.notes div { border-top: 1px solid var(--line); padding-top: 12px; display: grid; gap: 4px; }
+.notes b { font-weight: 600; }
+.notes span { color: var(--muted); font-size: 14.5px; }
+
+.shared { border-top: 1px solid var(--line); padding-top: 28px; display: grid; gap: 10px; }
+
+@media (max-width: 760px) {
+  .row2, .notes { grid-template-columns: minmax(0, 1fr); gap: 18px; }
+  .throws { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .swatches { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+</style>
+
+<div class="wrap">
+
+  <header class="intro">
+    <span class="eyebrow">fictty · identity · two directions</span>
+    <h1>Every letter sits on a terminal grid. What fills the cells is the brand.</h1>
+    <p class="muted">Both wordmarks are generated, not typeset. Each one is drawn from the same nine-row cell font and thrown fresh from a seed: no two throws are alike, and any throw can be kept. <b>Thrown</b> fills the cells with clay. <b>Glass</b> fills them with tinted panes that move like a gas.</p>
+    <nav class="jump" aria-label="Directions"><a href="#thrown">A · Thrown</a><a href="#glass">B · Glass</a></nav>
+  </header>
+
+  <!-- ===================== A · THROWN ===================== -->
+  <section class="dir" id="thrown">
+    <div class="dir-head">
+      <span class="eyebrow">Direction A</span>
+      <h2>Thrown: wet clay that fires into cells</h2>
+      <p class="muted">Each cell is a lump of clay, slumped into its neighbours, with gloss where it's wet and the odd thumbprint. Fire it and it dries through the potter's stages until it sets as crisp terminal cells. The mark is the agent's cursor, pressed from celadon-glazed clay.</p>
+    </div>
+    <div class="stage clay" style="--ar: 37 / 11"><canvas id="clayHero" style="--ar: 37 / 11" aria-label="fictty wordmark in procedurally generated clay"></canvas></div>
+    <div class="controls">
+      <label for="fire">Firing
+        <input id="fire" type="range" min="0" max="100" value="6">
+        <span class="ticks"><span data-stage="0">wet</span><span data-stage="1">leather-hard</span><span data-stage="2">bone-dry</span><span data-stage="3">bisque</span></span>
+      </label>
+      <button class="throw" id="clayThrow" type="button">Throw again</button>
+    </div>
+    <div>
+      <p class="eyebrow" style="margin-bottom:10px">Six throws · pick one</p>
+      <div class="throws" id="clayThrows" style="--ar: 37 / 11"></div>
+    </div>
+    <div class="row2">
+      <div>
+        <p class="eyebrow" style="margin-bottom:10px">Clay and glaze</p>
+        <div class="swatches">
+          <div class="sw"><i style="background:#4a413a"></i><div><b>Wet clay</b><span>#4A413A</span></div></div>
+          <div class="sw"><i style="background:#a3998c"></i><div><b>Bone-dry</b><span>#A3998C</span></div></div>
+          <div class="sw"><i style="background:#ddd3c4"></i><div><b>Bisque</b><span>#DDD3C4</span></div></div>
+          <div class="sw"><i style="background:#8fbfa0"></i><div><b>Celadon</b><span>#8FBFA0 · the agent</span></div></div>
+          <div class="sw"><i style="background:#1c1714"></i><div><b>Tenmoku</b><span>#1C1714 · ground</span></div></div>
+          <div class="sw"><i style="background:#e0a15e"></i><div><b>Shino</b><span>#E0A15E · live</span></div></div>
+        </div>
+      </div>
+      <figure class="small" style="margin:0">
+        <p class="eyebrow">Small sizes · fired</p>
+        <svg class="flatword" id="clayFlat" aria-label="fired wordmark, flat"></svg>
+        <div class="sizes" id="claySizes"></div>
+        <figcaption>Below 64px the clay is always shown fired: flat cells, the cursor in celadon.</figcaption>
+      </figure>
+    </div>
+    <div class="term clay" role="img" aria-label="A screen drawn in the Thrown palette"><pre id="termClay"></pre></div>
+    <div class="notes">
+      <div><b>What it says</b><span>Made by hand, quickly, and kept only if it's good. Warm, tactile, human.</span></div>
+      <div><b>Where it's strong</b><span>The firing story maps exactly onto the product: throw, shape, fire.</span></div>
+      <div><b>Where it's weak</b><span>Clay reads heavy and slow, and earthy palettes drift toward the outdoorsy, craft-shop look.</span></div>
+    </div>
+  </section>
+
+  <!-- ===================== B · GLASS ===================== -->
+  <section class="dir" id="glass">
+    <div class="dir-head">
+      <span class="eyebrow">Direction B</span>
+      <h2>Glass: clay if it were a gas</h2>
+      <p class="muted">Every stroke is a pane of tinted glass, the way a terminal UI is panes stacked over panes. Where panes overlap, their tints mix into new colours. Throw it and the panes rush in from vapour and condense into letters in under half a second. After Larry Bell's coated-glass cubes and Josef Albers' overlapping squares: light, fast, and almost not there.</p>
+    </div>
+    <div class="stage glass" style="--ar: 39 / 11"><canvas id="glassHero" style="--ar: 39 / 11" aria-label="fictty wordmark in procedurally generated overlapping glass panes"></canvas></div>
+    <div class="controls">
+      <label for="cond">Condense
+        <input id="cond" type="range" min="0" max="100" value="90">
+        <span class="ticks"><span>vapour</span><span>drift</span><span><b>condensed</b></span></span>
+      </label>
+      <button class="throw" id="glassThrow" type="button">Throw again</button>
+    </div>
+    <div>
+      <p class="eyebrow" style="margin-bottom:10px">Six throws · pick one</p>
+      <div class="throws" id="glassThrows" style="--ar: 39 / 11"></div>
+    </div>
+    <div class="row2">
+      <div>
+        <p class="eyebrow" style="margin-bottom:10px">Tints and grounds</p>
+        <div class="swatches">
+          <div class="sw"><i style="background:#39c2cf"></i><div><b>Cyan glass</b><span>#39C2CF · the agent</span></div></div>
+          <div class="sw"><i style="background:#7f72e6"></i><div><b>Violet glass</b><span>#7F72E6 · selection</span></div></div>
+          <div class="sw"><i style="background:#f0b23a"></i><div><b>Amber glass</b><span>#F0B23A · live</span></div></div>
+          <div class="sw"><i style="background:#7d8796"></i><div><b>Smoke</b><span>#7D8796 · neutral</span></div></div>
+          <div class="sw"><i style="background:#f4f5f6;box-shadow:inset 0 -1px 0 #dcdfe3"></i><div><b>Gallery</b><span>#F4F5F6 · ground</span></div></div>
+          <div class="sw"><i style="background:#0e1116"></i><div><b>Night</b><span>#0E1116 · ground</span></div></div>
+        </div>
+      </div>
+      <figure class="small" style="margin:0">
+        <p class="eyebrow">Small sizes · condensed</p>
+        <svg class="flatword" id="glassFlat" aria-label="condensed glass wordmark, flat"></svg>
+        <div class="sizes" id="glassSizes"></div>
+        <figcaption>Small sizes keep the overlap: two panes and the cursor, multiplied.</figcaption>
+      </figure>
+    </div>
+    <div class="term glass" role="img" aria-label="A screen drawn in the Glass palette"><pre id="termGlass"></pre></div>
+    <div class="notes">
+      <div><b>What it says</b><span>Fast, light, layered, temporary. A UI is a stack of panes you can see through and rearrange.</span></div>
+      <div><b>Where it's strong</b><span>Overlap is native to terminals (panes, layers, callouts) and to the product's idea of patching one layer at a time.</span></div>
+      <div><b>Where it's weak</b><span>It needs colour and transparency to read; in a plain 16-colour terminal it flattens to blocks.</span></div>
+    </div>
+  </section>
+
+  <section class="shared">
+    <span class="eyebrow">Both directions</span>
+    <p>The interface type is Spline Sans and Spline Sans Mono, free under the SIL Open Font License; the wordmark is never typed in a font. Seeds are part of the identity: a release can ship one chosen throw, or every screen can throw its own.</p>
+  </section>
+</div>
+
+<script>
+(() => {
+'use strict';
+// ---------- the cell font: nine rows (ascender 0–1, x-height 2–6, descender 7–8) ----------
+const G = {
+  f: ['..##', '.#..', '###.', '.#..', '.#..', '.#..', '.#..', '....', '....'],
+  i: ['.#.', '...', '##.', '.#.', '.#.', '.#.', '###', '...', '...'],
+  c: ['....', '....', '.###', '#...', '#...', '#...', '.###', '....', '....'],
+  t: ['.#..', '.#..', '####', '.#..', '.#..', '.#..', '..##', '....', '....'],
+  y: ['....', '....', '#..#', '#..#', '#..#', '#..#', '.###', '...#', '###.'],
+};
+function wordCells(x0, y0) {
+  const out = []; let x = x0;
+  for (const ch of 'fictty') {
+    const g = G[ch], w = g[0].length;
+    g.forEach((row, ry) => { for (let rx = 0; rx < w; rx++) if (row[rx] === '#') out.push({ x: x + rx, y: y0 + ry, l: ch }); });
+    x += w + 1;
+  }
+  return out;
+}
+
+// ---------- seeded randomness and value noise ----------
+function rng(seed) { let a = seed >>> 0; return () => { a = (a + 0x6D2B79F5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
+function h2(x, y, s) { let n = (Math.imul(x, 374761393) + Math.imul(y, 668265263) + Math.imul(s, 1442695041)) | 0; n = Math.imul(n ^ (n >>> 13), 1274126177); n ^= n >>> 16; return (n >>> 0) / 4294967296; }
+function vnoise(x, y, s) {
+  const xi = Math.floor(x), yi = Math.floor(y), xf = x - xi, yf = y - yi;
+  const u = xf * xf * (3 - 2 * xf), v = yf * yf * (3 - 2 * yf);
+  const a = h2(xi, yi, s), b = h2(xi + 1, yi, s), c = h2(xi, yi + 1, s), d = h2(xi + 1, yi + 1, s);
+  return a + (b - a) * u + (c - a) * v + (a - b - c + d) * u * v;
+}
+const hex = (h) => { const n = parseInt(h.trim().slice(1), 16); return [(n >> 16) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255]; };
+const css = (name) => getComputedStyle(document.documentElement).getPropertyValue(name);
+const isDark = () => { const t = document.documentElement.dataset.theme; return t ? t === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches; };
+const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const DPR = Math.min(2, window.devicePixelRatio || 1);
+function sizeCanvas(cv, cols, rows, q = 1) {
+  const w = Math.max(200, cv.clientWidth || cv.parentElement.clientWidth);
+  cv.width = Math.round(w * DPR * q); cv.height = Math.round(cv.width * rows / cols);
+  return cv.width / cols; // pixels per cell
+}
+
+// =================== A · THROWN (clay, signed distance fields) ===================
+const A = { cols: 37, rows: 11, markX: 1, wordX: 7, y0: 1 };
+function boxd(px, py, hx, hy, r) { const qx = Math.abs(px) - hx + r, qy = Math.abs(py) - hy + r; return Math.hypot(Math.max(qx, 0), Math.max(qy, 0)) + Math.min(Math.max(qx, qy), 0) - r; }
+function smin(a, b, k) { if (k <= 1e-4) return Math.min(a, b); const h = Math.max(k - Math.abs(a - b), 0) / k; return Math.min(a, b) - h * h * k * 0.25; }
+
+function buildClay(seed) {
+  const R = rng(seed), cells = wordCells(A.wordX, A.y0), on = new Set(cells.map((c) => c.x + ',' + c.y));
+  const has = (x, y) => on.has(x + ',' + y), prims = [];
+  for (const c of cells) {
+    const cx = c.x + 0.5, cy = c.y + 0.5;
+    prims.push({ cx, cy, wx: cx + (R() - 0.5) * 0.24, wy: cy + (R() - 0.5) * 0.24, r: 0.57 + R() * 0.12, fired: true });
+    for (const dy of [-1, 1]) if (has(c.x + 1, c.y + dy) && !has(c.x + 1, c.y) && !has(c.x, c.y + dy))
+      prims.push({ wx: c.x + 1, wy: c.y + 0.5 + dy * 0.5, r: 0.34, fired: false });
+    if (R() < 0.16) { const a = R() * Math.PI * 2; prims.push({ wx: cx + Math.cos(a) * 0.52, wy: cy + Math.sin(a) * 0.52, r: 0.17 + R() * 0.13, fired: false }); }
+  }
+  const dimples = []; for (let k = 0; k < 4; k++) { const c = cells[Math.floor(R() * cells.length)]; dimples.push({ x: c.x + 0.5 + (R() - 0.5) * 0.3, y: c.y + 0.5 + (R() - 0.5) * 0.3, r: 0.42 }); }
+  const buckets = new Map();
+  prims.forEach((p, i) => {
+    for (let y = Math.floor(p.wy - p.r - 1.3); y <= Math.floor(p.wy + p.r + 1.3); y++)
+      for (let x = Math.floor(p.wx - p.r - 1.3); x <= Math.floor(p.wx + p.r + 1.3); x++) {
+        const k = y * 1000 + x; let b = buckets.get(k); if (!b) buckets.set(k, (b = [])); b.push(i);
+      }
+  });
+  const mark = { cx: A.markX + 1.75, cy: A.y0 + 4.3, hx: 1.2, hy: 3.05, tx: A.markX + 1.5, ty: A.y0 + 5.1 };
+  return { prims, buckets, dimples, mark, seed };
+}
+
+function renderClay(cv, scene, t, q = 1) {
+  const s = sizeCanvas(cv, A.cols, A.rows, q), W = cv.width, H = cv.height, ctx = cv.getContext('2d');
+  const img = ctx.createImageData(W, H), px = img.data, seed = scene.seed;
+  const stops = ['--clay-wet', '--clay-leather', '--clay-dry', '--clay-fired'].map((n) => hex(css(n)));
+  const seg = Math.min(2.999, t * 3), si = Math.floor(seg), sf = seg - si;
+  const base = [0, 1, 2].map((j) => stops[si][j] + (stops[si + 1][j] - stops[si][j]) * sf);
+  const glaze = hex(css('--celadon'));
+  const k = 0.42 * (1 - t) + 0.015 * t, bev = 0.42 * (1 - t) + 0.13 * t, noiseAmp = 0.17 * (1 - t);
+  const specClay = 0.6 * Math.pow(1 - t, 1.6) + 0.03;
+  const L = [-0.45, -0.62, 0.64]; const LH = (() => { const v = [L[0], L[1], L[2] + 1]; const m = Math.hypot(...v); return v.map((x) => x / m); })();
+  const { prims, buckets, dimples, mark } = scene;
+  function dClay(u, v) {
+    const b = buckets.get(Math.floor(v) * 1000 + Math.floor(u)); if (!b) return 9;
+    let d = 9;
+    for (const i of b) {
+      const p = prims[i];
+      const dw = Math.hypot(u - p.wx, v - p.wy) - p.r;
+      const df = p.fired ? boxd(u - p.cx, v - p.cy, 0.44, 0.44, 0.1) : dw + 1.1;
+      d = smin(d, dw + (df - dw) * t, k);
+    }
+    return d + (vnoise(u * 2.3, v * 2.3, seed) - 0.5) * noiseAmp;
+  }
+  function dMark(u, v) {
+    const r = 1.0 * (1 - t) + 0.14 * t;
+    return boxd(u - mark.cx, v - mark.cy, mark.hx, mark.hy, r) + (vnoise(u * 1.6 + 30, v * 1.6, seed) - 0.5) * 0.22 * (1 - t);
+  }
+  const prof = (d, b) => { if (d >= 0) return 0; const x = Math.min(1, -d / b); return Math.sqrt(1 - (1 - x) * (1 - x)) * b * 0.8; };
+  function dimp(u, v, wet) {
+    let h = 0;
+    for (const m of dimples) { const r = Math.hypot(u - m.x, v - m.y); if (r < m.r) { const f = 1 - (r / m.r) ** 2; h -= wet * 0.15 * f * f * (0.86 + 0.14 * Math.sin(r * 58)); } }
+    return h;
+  }
+  function thumb(u, v) { const r = Math.hypot(u - mark.tx, v - mark.ty); if (r > 0.85) return 0; const f = 1 - (r / 0.85) ** 2; return -0.2 * f * f * (0.8 + 0.2 * Math.sin(r * 46)) * (1 - 0.5 * t); }
+  const e = 1.4 / s;
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      const u = (x + 0.5) / s, v = (y + 0.5) / s, o = (y * W + x) * 4;
+      const dc = dClay(u, v), dm = dMark(u, v);
+      let col = null, cov = 0;
+      if (dm < 0.08) {
+        const h0 = prof(dm, 0.35) + thumb(u, v), hx = prof(dMark(u + e, v), 0.35) + thumb(u + e, v), hy = prof(dMark(u, v + e), 0.35) + thumb(u, v + e);
+        let nx = -(hx - h0) / e, ny = -(hy - h0) / e, nz = 1; const m = Math.hypot(nx, ny, nz); nx /= m; ny /= m; nz /= m;
+        const diff = Math.max(0, nx * L[0] + ny * L[1] + nz * L[2]), sp = Math.pow(Math.max(0, nx * LH[0] + ny * LH[1] + nz * LH[2]), 70);
+        col = glaze.map((c) => c * (0.5 + 0.62 * diff) + 0.75 * sp); cov = Math.min(1, Math.max(0, 0.5 - dm * s));
+      } else if (dc < 0.08) {
+        const wet = 1 - t;
+        const h0 = prof(dc, bev) + dimp(u, v, wet), hx = prof(dClay(u + e, v), bev) + dimp(u + e, v, wet), hy = prof(dClay(u, v + e), bev) + dimp(u, v + e, wet);
+        let nx = -(hx - h0) / e, ny = -(hy - h0) / e, nz = 1; const m = Math.hypot(nx, ny, nz); nx /= m; ny /= m; nz /= m;
+        const diff = Math.max(0, nx * L[0] + ny * L[1] + nz * L[2]), sp = Math.pow(Math.max(0, nx * LH[0] + ny * LH[1] + nz * LH[2]), 46);
+        let mott = 0.93 + 0.14 * vnoise(u * 1.8 + 9, v * 1.8, seed);
+        if (t > 0.55 && vnoise(u * 16, v * 16, seed + 7) > 0.83) mott *= 1 - (t - 0.55) * 0.9;
+        col = base.map((c) => c * mott * (0.4 + 0.72 * diff) + specClay * sp); cov = Math.min(1, Math.max(0, 0.5 - dc * s));
+      }
+      let sa = 0;
+      if (cov < 1) { const ds = Math.min(dClay(u - 0.12, v - 0.2), dMark(u - 0.12, v - 0.2)); sa = (1 - Math.min(1, Math.max(0, (ds + 0.05) / 0.65))) * 0.3; }
+      const a = cov + (1 - cov) * sa;
+      if (a <= 0) { px[o + 3] = 0; continue; }
+      const c = col || [0, 0, 0];
+      px[o] = Math.min(255, (c[0] * cov) / a * 255); px[o + 1] = Math.min(255, (c[1] * cov) / a * 255); px[o + 2] = Math.min(255, (c[2] * cov) / a * 255); px[o + 3] = a * 255;
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+}
+
+// =================== B · GLASS (panes, mixed by multiply or screen) ===================
+const B = { cols: 39, rows: 11, markX: 1, wordX: 9, y0: 1 };
+function runsOf(cells) {
+  const on = new Set(cells.map((c) => c.x + ',' + c.y)), has = (x, y) => on.has(x + ',' + y), used = new Set(), panes = [];
+  for (const c of cells) {
+    if (!has(c.x - 1, c.y)) { let e = c.x; while (has(e + 1, c.y)) e++; if (e > c.x) { panes.push([c.x, c.y, e + 1, c.y + 1]); for (let x = c.x; x <= e; x++) used.add(x + ',' + c.y); } }
+    if (!has(c.x, c.y - 1)) { let e = c.y; while (has(c.x, e + 1)) e++; if (e > c.y) { panes.push([c.x, c.y, c.x + 1, e + 1]); for (let y = c.y; y <= e; y++) used.add(c.x + ',' + y); } }
+  }
+  for (const c of cells) if (!used.has(c.x + ',' + c.y)) panes.push([c.x, c.y, c.x + 1, c.y + 1]);
+  return panes;
+}
+const TINTS = ['--cyan', '--violet', '--amber', '--smoke'];
+function buildGlass(seed) {
+  const R = rng(seed), panes = [];
+  for (const [x0, y0, x1, y1] of runsOf(wordCells(B.wordX, B.y0))) {
+    const r = R(), tint = r < 0.4 ? 0 : r < 0.72 ? 1 : r < 0.86 ? 2 : 3;
+    panes.push({ x0: x0 + 0.05, y0: y0 + 0.05, x1: x1 - 0.05, y1: y1 - 0.05, tint, alpha: 0.5 + R() * 0.25, ox: R() * 2 - 1, oy: R() * 2 - 1, fx: (R() * 2 - 1) * 4, fy: (R() * 2 - 1) * 3, delay: R() * 0.35 });
+  }
+  const m = B.markX;
+  panes.push({ x0: m, y0: 0.9, x1: m + 4.6, y1: 7.1, tint: 3, alpha: 0.42, ox: -0.4, oy: -0.3, fx: -3, fy: -2, delay: 0, mark: true });
+  panes.push({ x0: m + 1.9, y0: 2.6, x1: m + 6.4, y1: 9.1, tint: 0, alpha: 0.58, ox: 0.4, oy: 0.3, fx: 3, fy: 2, delay: 0.06, mark: true });
+  panes.push({ x0: m + 3.5, y0: 4.7, x1: m + 4.7, y1: 7.1, tint: 1, alpha: 0.92, ox: 0, oy: 0, fx: 0, fy: -4, delay: 0.12, mark: true });
+  return { panes, seed };
+}
+function renderGlass(cv, scene, cond, prog = 1, q = 1) {
+  const s = sizeCanvas(cv, B.cols, B.rows, q), ctx = cv.getContext('2d'), dark = false; // the stage is always gallery white
+  ctx.clearRect(0, 0, cv.width, cv.height);
+  const tints = TINTS.map((n) => hex(css(n)).map((c) => Math.round(c * 255)));
+  const scatter = (1 - cond) * 1.3;
+  const ease = (x) => (x >= 1 ? 1 : 1 - Math.pow(2, -10 * x));
+  for (const p of scene.panes) {
+    const local = Math.min(1, Math.max(0, (prog - p.delay) / 0.65)), e = ease(local);
+    const dx = p.ox * scatter * (p.mark ? 0.3 : 1) + p.fx * (1 - e), dy = p.oy * scatter * (p.mark ? 0.3 : 1) + p.fy * (1 - e);
+    const x = (p.x0 + dx) * s, y = (p.y0 + dy) * s, w = (p.x1 - p.x0) * s, h = (p.y1 - p.y0) * s;
+    const [r, g, b] = tints[p.tint];
+    ctx.globalCompositeOperation = dark ? 'screen' : 'multiply';
+    ctx.fillStyle = `rgba(${r},${g},${b},${p.alpha * e})`;
+    ctx.fillRect(x, y, w, h);
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.fillStyle = `rgba(255,255,255,${0.55 * e})`; ctx.fillRect(x, y, w, Math.max(1, s * 0.03)); ctx.fillRect(x, y, Math.max(1, s * 0.03), h);
+    ctx.fillStyle = `rgba(${Math.round(r * 0.5)},${Math.round(g * 0.5)},${Math.round(b * 0.5)},${0.35 * e})`; ctx.fillRect(x, y + h - Math.max(1, s * 0.025), w, Math.max(1, s * 0.025));
+  }
+  ctx.globalCompositeOperation = 'source-over';
+}
+
+// ---------- flat, small-size versions (SVG from the same cells) ----------
+const NS = 'http://www.w3.org/2000/svg';
+function svgEl(tag, attrs) { const e = document.createElementNS(NS, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); return e; }
+function clayFlat(svg) {
+  svg.setAttribute('viewBox', `0 0 ${A.cols} ${A.rows}`);
+  svg.append(svgEl('rect', { x: A.markX + 0.55, y: A.y0 + 1.25, width: 2.4, height: 6.1, rx: 0.2, fill: css('--celadon') }));
+  for (const c of wordCells(A.wordX, A.y0)) svg.append(svgEl('rect', { x: c.x + 0.06, y: c.y + 0.06, width: 0.88, height: 0.88, rx: 0.12, fill: 'currentColor' }));
+  svg.style.color = 'var(--fg)';
+}
+function clayIcon(size) {
+  const svg = svgEl('svg', { width: size, height: size, viewBox: '0 0 16 16', 'aria-label': size + 'px' });
+  svg.append(svgEl('rect', { x: 4.5, y: 1, width: 7, height: 14, rx: 1.4, fill: css('--celadon') }));
+  svg.append(svgEl('circle', { cx: 7.3, cy: 10.3, r: 2.1, fill: 'rgba(0,0,0,0.16)' }));
+  return svg;
+}
+function glassFlat(svg) {
+  svg.setAttribute('viewBox', `0 0 ${B.cols} ${B.rows}`);
+  const g = svgEl('g', { style: 'mix-blend-mode:multiply;isolation:isolate' });
+  svg.append(svgEl('rect', { x: 0, y: 0, width: B.cols, height: B.rows, rx: 0.5, fill: css('--gallery') }));
+  const scene = buildGlass(7);
+  for (const p of scene.panes) {
+    const fill = css(TINTS[p.tint]).trim();
+    g.append(svgEl('rect', { x: p.x0, y: p.y0, width: p.x1 - p.x0, height: p.y1 - p.y0, fill, 'fill-opacity': p.alpha, style: 'mix-blend-mode:multiply' }));
+  }
+  svg.append(g);
+}
+function glassIcon(size) {
+  const svg = svgEl('svg', { width: size, height: size, viewBox: '0 0 16 16', 'aria-label': size + 'px' });
+  svg.append(svgEl('rect', { x: 0, y: 0, width: 16, height: 16, rx: 3, fill: css('--gallery') }));
+  svg.append(svgEl('rect', { x: 1.5, y: 1.5, width: 9, height: 10, fill: css('--smoke'), 'fill-opacity': 0.5, style: 'mix-blend-mode:multiply' }));
+  svg.append(svgEl('rect', { x: 5, y: 4.5, width: 9.5, height: 10, fill: css('--cyan'), 'fill-opacity': 0.65, style: 'mix-blend-mode:multiply' }));
+  svg.append(svgEl('rect', { x: 8.6, y: 8, width: 2.6, height: 4.6, fill: css('--violet'), 'fill-opacity': 0.95 }));
+  return svg;
+}
+
+// ---------- the screens, drawn in cells ----------
+const TERM = `<span class="a">▌</span><span class="w">fictty</span> <span class="d">·</span> ownpurse walkthrough <span class="d">·</span> step 3 of 8                        <span class="h">● live</span>  <span class="d">112 fps</span>
+<span class="d">╭─ Books ─────────────────────────────────╮ ╭─ Log ──────────────────────────╮</span>
+<span class="d">│</span> <span class="d">date        account            amount</span> <span class="d">│ │</span> <span class="d">09:41:02</span> <span class="a">throw</span>  walkthrough    <span class="d">│</span>
+<span class="d">│</span> 2026-03-12  Meals             <span class="n">-186.40</span> <span class="d">│ │</span> <span class="d">09:41:07</span> <span class="b">shape</span>  step-3         <span class="d">│</span>
+<span class="d">│</span><span class="s"> 2026-03-13  Bank fees          -12.00 </span><span class="d">│ │</span> <span class="d">09:41:07</span> <span class="b">shape</span>  callout        <span class="d">│</span>
+<span class="d">│</span> 2026-03-14  Sales            <span class="a">+2,450.00</span> <span class="d">│ │</span> <span class="d">09:41:12</span> <span class="h">data</span>   books ×40      <span class="d">│</span>
+<span class="d">│</span> 2026-03-15  Software          <span class="n">-49.00</span>  <span class="d">│ │</span> <span class="d">09:41:20</span> <span class="a">fire</span>   kpi-card       <span class="d">│</span>
+<span class="d">╰─────────────────────────────────────────╯ ╰────────────────────────────────╯</span>
+     <span class="a">╰─▶ ◆ claude</span>  This fee has no match in the bank feed yet.
+<span class="d">j/k move · enter open · ? ask · \` back</span>`;
+document.getElementById('termClay').innerHTML = TERM;
+document.getElementById('termGlass').innerHTML = TERM;
+
+// ---------- wiring ----------
+const newSeed = () => Math.floor(Math.random() * 1e9);
+const state = { claySeed: 20261009, glassSeed: 1009, clayScene: null, glassScene: null };
+const clayHero = document.getElementById('clayHero'), glassHero = document.getElementById('glassHero');
+const fire = document.getElementById('fire'), cond = document.getElementById('cond');
+const stageNames = document.querySelectorAll('[data-stage]');
+function markStage() { const t = fire.value / 100, i = Math.min(3, Math.round(t * 3)); stageNames.forEach((el, j) => { el.innerHTML = j === i ? `<b>${el.textContent}</b>` : el.textContent; }); }
+
+let clayPending = 0;
+function drawClay(q) { cancelAnimationFrame(clayPending); clayPending = requestAnimationFrame(() => renderClay(clayHero, state.clayScene, fire.value / 100, q)); }
+function setClaySeed(seed) { state.claySeed = seed; state.clayScene = buildClay(seed); drawClay(1); syncPressed('clayThrows', seed); }
+fire.addEventListener('input', () => { markStage(); drawClay(0.45); });
+fire.addEventListener('change', () => drawClay(1));
+document.getElementById('clayThrow').addEventListener('click', () => setClaySeed(newSeed()));
+
+let glassAnim = 0;
+function throwGlass(seed, animate) {
+  state.glassSeed = seed; state.glassScene = buildGlass(seed); syncPressed('glassThrows', seed);
+  cancelAnimationFrame(glassAnim);
+  if (!animate || reduced) { renderGlass(glassHero, state.glassScene, cond.value / 100, 1); return; }
+  const t0 = performance.now();
+  const step = (now) => { const p = (now - t0) / 1000; renderGlass(glassHero, state.glassScene, cond.value / 100, p); if (p < 1.1) glassAnim = requestAnimationFrame(step); };
+  glassAnim = requestAnimationFrame(step);
+}
+cond.addEventListener('input', () => renderGlass(glassHero, state.glassScene, cond.value / 100, 1));
+document.getElementById('glassThrow').addEventListener('click', () => throwGlass(newSeed(), true));
+
+function syncPressed(id, seed) { document.querySelectorAll(`#${id} button`).forEach((b) => b.setAttribute('aria-pressed', String(+b.dataset.seed === seed))); }
+function throwsGrid(id, seeds, draw, pick) {
+  const host = document.getElementById(id);
+  seeds.forEach((seed, i) => {
+    const b = document.createElement('button'); b.type = 'button'; b.dataset.seed = seed; b.setAttribute('aria-label', `Throw ${i + 1}, seed ${seed}`);
+    const cv = document.createElement('canvas'); const label = document.createElement('span'); label.textContent = `seed ${seed}`;
+    b.append(cv, label); host.append(b);
+    b.addEventListener('click', () => pick(seed));
+    requestAnimationFrame(() => draw(cv, seed));
+  });
+}
+
+function boot() {
+  markStage();
+  state.clayScene = buildClay(state.claySeed);
+  const claySeeds = [20261009, 77, 4242, 90210, 31337, 8086];
+  const glassSeeds = [1009, 5, 2718, 1618, 4096, 606];
+  throwsGrid('clayThrows', claySeeds, (cv, seed) => renderClay(cv, buildClay(seed), 0.04, 0.8), (seed) => { setClaySeed(seed); });
+  throwsGrid('glassThrows', glassSeeds, (cv, seed) => renderGlass(cv, buildGlass(seed), 0.55, 1), (seed) => throwGlass(seed, true));
+  drawClay(1); syncPressed('clayThrows', state.claySeed);
+  throwGlass(state.glassSeed, true);
+  clayFlat(document.getElementById('clayFlat'));
+  glassFlat(document.getElementById('glassFlat'));
+  for (const n of [48, 32, 16]) { document.getElementById('claySizes').append(clayIcon(n)); document.getElementById('glassSizes').append(glassIcon(n)); }
+}
+let resizeT = 0;
+addEventListener('resize', () => { clearTimeout(resizeT); resizeT = setTimeout(() => { drawClay(1); renderGlass(glassHero, state.glassScene, cond.value / 100, 1); }, 200); });
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => drawClay(1));
+boot();
+})();
+</script>

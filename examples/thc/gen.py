@@ -1,7 +1,7 @@
 # Writes today.json: thc's Today screen as a scene UI, styled with the ember-dark tokens.
 import json, os
 D = os.path.dirname(os.path.abspath(__file__))
-REL = "crates/scene/examples/thc"
+REL = "examples/thc"
 EMBER_DARK = {"text": "#ece5d8", "muted": "#a0968a", "accent": "#e8834f", "line": "#3a352f", "selection": "#352e28",
               "today": "#e2b54a", "overdue": "#f2766e", "done": "#8fc487", "doing": "#6cc5ce", "agent": "#88b1ec",
               "tag": "#cca884", "conflict": "#d49aD0", "surface": "#24211d", "raised": "#2c2824", "overdue-tint": "#3a2220",

@@ -2,7 +2,7 @@
 # card style, the mark, the feed's vault); run alone it writes pixels.json for your own vault.
 import copy, importlib.util, json, os
 D = os.path.dirname(os.path.abspath(__file__))
-REL = "crates/scene/examples/pixels"
+REL = "examples/pixels"
 spec = importlib.util.spec_from_file_location("thcgen", os.path.join(D, "..", "thc", "gen.py"))
 thc = importlib.util.module_from_spec(spec); spec.loader.exec_module(thc)
 
@@ -82,7 +82,7 @@ def build(vault=None, now=None, theme="dark", radius=0.55, shadow=1.1, glow=None
         "status_bar": False,
         "root": col(*body),
         "data": {
-            "feed": {"cmd": env + ["python3", "crates/scene/examples/thc/thcfeed.py"], "every": 3},
+            "feed": {"cmd": env + ["python3", "examples/thc/thcfeed.py"], "every": 3},
             "live": {"stream": ["python3", "-u", f"{REL}/wave.py", "15"]},
             "kpis": {"shell": prefix + kq, "every": 5},
         },

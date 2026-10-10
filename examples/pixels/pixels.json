@@ -31,7 +31,7 @@
     "children": [
      {
       "type": "image",
-      "src": "crates/scene/examples/pixels/mark.png",
+      "src": "examples/pixels/mark.png",
       "size": 14,
       "id": "mark"
      },
@@ -381,7 +381,7 @@
   "feed": {
    "cmd": [
     "python3",
-    "crates/scene/examples/thc/thcfeed.py"
+    "examples/thc/thcfeed.py"
    ],
    "every": 3
   },
@@ -389,7 +389,7 @@
    "stream": [
     "python3",
     "-u",
-    "crates/scene/examples/pixels/wave.py",
+    "examples/pixels/wave.py",
     "15"
    ]
   },

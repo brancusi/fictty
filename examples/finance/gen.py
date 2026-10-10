@@ -1,7 +1,7 @@
 # Writes dashboard.json: a live finance dashboard on one stream (`fin`).
 import json, os
 D = os.path.dirname(os.path.abspath(__file__))
-REL = "crates/scene/examples/finance"
+REL = "examples/finance"
 
 def box(title, child, size=None, edge=None, **kw):
     n = {**child, "title": title}

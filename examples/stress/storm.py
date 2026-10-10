@@ -1,7 +1,7 @@
 # Drives a running screen over its socket: `storm.py patch 1000` or `storm.py push 60` (per second, for N seconds).
 import json, os, random, socket, sys, tempfile, time
 mode, rate, secs = sys.argv[1], float(sys.argv[2]), float(sys.argv[3]) if len(sys.argv) > 3 else 10
-path = os.environ.get("THC_SCENE_SOCKET") or os.path.join(tempfile.gettempdir(), "thc-scene.sock")
+path = os.environ.get("FICTTY_SOCKET") or os.path.join(tempfile.gettempdir(), "fictty.sock")
 s = socket.socket(socket.AF_UNIX); s.connect(path); f = s.makefile("rw")
 def send(req):
     f.write(json.dumps(req) + "\n"); f.flush(); return json.loads(f.readline())

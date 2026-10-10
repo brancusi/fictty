@@ -1,156 +1,100 @@
-# thc-scene (proof of concept)
+# fictty
 
-A terminal UI that is one serializable value. The whole screen (a tree of components, the data
-sources they bind to and the keys) is plain JSON. A running screen holds no other state, so you can
-read the UI out, push a whole new one in, or replace one node, and it re-renders.
+**A terminal UI that is one value.** An agent writes it as JSON, rewrites it live a piece at a
+time, and reads back exactly what it drew. Data streams from your commands straight to the screen,
+never through the model.
 
-```
-world (thc, a market feed, any command that prints JSON)
-   │  sources: {"cmd": [...], "path": "items", "every": 3}
-   ▼
-State { ui, data, focus, local (selection by node id), status }   ← serializable, `get --state`
-   │  update(state, msg) -> effects        (pure)
-   │  view(state) -> frame                 (pure)
-   ▼
-terminal
-```
+![The fictty wordmark: letters built from overlapping panes of tinted glass](docs/design/identity/glass-wordmark.jpg)
+
+> **Status: prototype.** It works and it's fast, but the format will change. The plan is in
+> [docs/PLAN.md](docs/PLAN.md). The story so far is on the Thought Control dev blog:
+> [the experiment](https://thoughtcontrol.app/blog/a-ui-is-one-value/),
+> [the landscape](https://thoughtcontrol.app/blog/mapping-the-landscape/) and
+> [why it's its own project](https://thoughtcontrol.app/blog/fictty/).
+
+## What it's for
+
+Agents are good at deciding what a screen should show and bad at being the screen. When an agent
+has to answer every keystroke itself, the UI is as slow as the model. fictty splits the work:
+
+- **The agent writes the screen once,** as a small JSON value: components, the data they bind to,
+  keys and theme.
+- **The runtime does everything else** at frame rate: drawing, scrolling, selection, focus,
+  mouse, live data.
+- **The agent stays in the loop where it matters.** It can patch one node, place a callout, send
+  keys or clicks, and read the screen back as text or state at any time.
+
+It sits between [caretline](https://caretline.app), the text-editing engine, and apps like
+[Thought Control](https://thoughtcontrol.app): apps describe screens, fictty runs them.
 
 ## Try it
 
 ```sh
-cargo build -p thc-scene
-thc-scene run crates/scene/examples/tasks.json          # in one terminal
-thc-scene push crates/scene/examples/trading.json       # in another: the whole UI swaps
-thc-scene patch header node.json                        # replace one node by id
-thc-scene key j x                                       # type keys
-thc-scene get --state                                   # everything on screen, as JSON
-thc-scene run --watch my.json                           # hot reload while you edit
-thc-scene render crates/scene/examples/tasks.json --size 100x30 --keys j   # no terminal
+cargo build --release
+export PATH="$PWD/target/release:$PATH"
+
+fictty run examples/stress/ticker.json      # one terminal: a ticker streaming 500 updates a second
+
+fictty push examples/stress/plasma.json     # another terminal: the whole UI swaps in one frame
+fictty patch header node.json               # replace one node by id
+fictty key j j                              # type, like a person
+fictty screen                               # read back the frame as text
+fictty get --state                          # read back everything, as JSON
+fictty render examples/tasks.json --size 100x30   # no terminal at all
 ```
+
+The demos in [examples/](examples/) cover stress tests, a live finance dashboard driven by a
+scripted "analyst", and a pixel tour. [docs/guide.md](docs/guide.md) walks through each one.
 
 ## The model
 
-- **Components** (a closed set): `col`, `row`, `text`, `list`, `table`, `sparkline`. Every node can
-  have `id`, `size` (`12`, `"30%"`, `"*"`, `"2*"`), `title`, `border`, `style`, `bind` and `keys`.
-- **Sources** in `data`: `cmd` (argv), `shell`, or a literal `value`; `path` narrows the JSON, `every`
-  re-fetches. Text and columns are templates over the bound value: `"{text} · {due}"`.
-- **Actions** on keys: `quit`, `up`, `down`, `top`, `bottom`, `focus_next`, `focus_prev`, `refresh`,
-  `{"run": [argv with {field} of the selected row]}`, `{"load": "other-ui.json"}`,
-  `{"focus": "id"}`. A focused node's keys win over the UI's, which win over the defaults.
-- **Identity**: view state (selection) and focus are keyed by node id, so they survive a push for
-  any id that's still there (React's `key`).
+A UI is one JSON value:
 
-## Not yet
-
-An `editor` component on caretline, a `thc` subcommand instead of a separate binary, policy on what
-a pushed UI may `run` (today: anything you could run yourself, over a socket only you can open),
-the existing TUI's screens rebuilt as UIs.
-
-## Stress demos
-
-`crates/scene/examples/stress/`: a 500 updates/s ticker, a 160×50 text plasma at 120 Hz and a
-50,000-row list replaced 20×/s (all `stream` sources fed by `feed.py`), plus `storm.py`, which
-drives the screen over its socket with 1,000 patches/s or whole random UIs as fast as it can.
-`play.sh` runs them all on the running screen and prints the counters. The status bar always
-shows fps, the mean and worst draw time and messages/s; UIs can bind them as `$stats`.
-
-Release build, a 170×52 terminal, measured on one machine:
-
-| demo | fps | draw | msgs/s |
-|---|---|---|---|
-| idle | 2 | 0.4 ms | 0 |
-| ticker (500 updates/s) | 114 | 0.23 ms | 500 |
-| plasma (120 frames/s of 8,000 cells) | 110 | 0.24 ms | 122 |
-| 50k-row list replaced 20×/s | 20 | 0.18 ms | 20 |
-| patch storm, 1,000 patches/s | 116 | 0.22 ms | 1,000 |
-| push storm, whole UIs as fast as a client can send | 108 | 0.84 ms | ~6,200 |
-
-## Finance dashboard, mouse and layers
-
-`crates/scene/examples/finance/`: `fin.py` streams a made-up book (KPIs, a P&L statement, 16
-positions, sector returns, regions, cash bridge) at 10 Hz; `gen.py` writes `dashboard.json`, four
-tabs on that one stream; `tour.py` is an "analyst" agent that walks through it over the socket.
-
-```sh
-cargo run --release -p thc-scene -- run crates/scene/examples/finance/dashboard.json
-python3 crates/scene/examples/finance/tour.py        # from another terminal
+```json
+{
+  "root": {"type": "row", "children": [
+    {"type": "table", "id": "tasks", "title": "Open tasks", "bind": "tasks",
+     "columns": [{"title": "task", "value": "{text}"}, {"title": "due", "value": "{due}", "size": 11}],
+     "keys": {"x": {"run": ["thc", "done", "{id}"]}}},
+    {"type": "text", "bind": "@tasks", "text": "{text}\n\ndue {due}"}
+  ]},
+  "data": {
+    "tasks": {"cmd": ["thc", "q", "status:open", "--json"], "path": "items", "every": 3}
+  }
+}
 ```
 
-- **Components** added: `chart` (lines on shared axes), `bars` (negatives hang below zero),
-  `gauge`, `big` (block-digit KPIs), `tabs`, `map` (a world map with points). Table columns take
-  `align` and `heat` (a cell's background from its value); `{±x}` in any template colours a value
-  by its sign. `theme` names the colours; `edge` picks the border.
-- **Mouse**: click focuses, selects a row or switches a tab; the wheel scrolls; hover highlights
-  the row under the pointer. A node's `tip` is a callout that follows the hovered row, filled
-  from it. `click` on a node runs an action. The view returns each frame's hit regions; the
-  runtime turns pointer events into `Click`, `Scroll` and `Hover` messages.
-- **Layers** (caretline-layers 0.2): `layers` in the UI, or `thc-scene layers file.json` /
-  `{"op":"layers"}`, places callouts, arrows, rings (`pulse` animates them) and spotlights on any
-  node (`on`) or row (`row`), each with its own `look` (colours and `edge`), signed by `by`. `bind`
-  fills a callout from live data.
-- **Master-detail**: `bind: "@positions"` is the selected row of node `positions`.
-- **Agents drive it** like a person: `click`, `mouse` (move, click, wheel at a cell) and `screen`
-  (the current frame as text, to see what's there).
+- **Components** come from a small set with behaviour built in: layout, text, list, table, tabs,
+  charts, layers (callouts, spotlights, arrows) and pixels (cards, plots, SVG, images).
+- **Data sources** are commands, JSON-line streams or literal values. `@tasks` binds the row
+  selected in `tasks`.
+- **View state is kept by node id,** like React's keys, so a push keeps your selection and focus.
+- **It's the Elm architecture:** a serializable state, a pure `update` that returns effects, a
+  pure `view`. That's what makes reading back, replay and (soon) history possible.
 
-## thc's Today, as a scene UI
+## How fast
 
-`crates/scene/examples/thc/`: `today.json` (from `gen.py`) is thc's Today screen built from
-scene components with the ember-dark tokens; `thcfeed.py` turns `thc today`, `thc q`,
-`thc show` and `thc history` JSON into a view model (rows, meta, details). `compare.sh` renders
-thc's own TUI and the scene UI after the same keys and compares them cell by cell (character,
-colours, attributes): all 13 states, 78,000 cells, are identical.
-
-The template language that took: `<accent+b>…</>` styles (theme tokens, `on-<colour>`, `b d i u
-r s`), `{status|todo=[ ];done=<done>[x]</>}` maps, `{x|?then $}` and `{x|!else}`, `{x|markup}` for
-values that carry their own styles (layered on the surrounding style; `<=spec>` replaces it), a
-tab to right-align the rest of a line, `{*─}` to fill it, and lines whose placeholders all come
-out empty are left out. Lists take `variant`/`variants` (a template per row kind), `skip` (rows
-the cursor passes over), `mark`, `lead` and `selected`; `rule` draws a line; `status_bar: false`
-gives the UI every row.
+Release build, a 170×52 terminal, one machine: about 6,000 whole-UI pushes a second from one
+client while drawing about 108 fps; 1,000 patches a second with every frame under 1 ms; a
+50,000-row list replaced 20 times a second draws in 0.18 ms. The full table is in the
+[guide](docs/guide.md#stress-demos).
 
 ## Pixels
 
-`crates/scene/examples/pixels/`: thc's Today on pixel cards. Where the terminal speaks the kitty
-graphics protocol (Ghostty, kitty, WezTerm), a node's `backdrop` is a rounded, shadowed, gradient
-panel drawn under the text, `plot` draws anti-aliased lines with gradient fills, `image` places a
-PNG and `dot` a lit, glowing sphere; elsewhere they fall back to borders, braille and text. The
-view stays pure (it asks for pictures in cells, colours and proportions); the runtime rasterises
-them at the real cell size, sends each once (cached by content) and re-places only what moved.
-`scale` asks for larger text (OSC 66) where a startup probe finds the terminal draws it.
+On terminals that speak the kitty graphics protocol (Ghostty, kitty, WezTerm), fictty draws
+cards under the text, anti-aliased plots, SVG filled from data and images, and falls back to
+cells everywhere else. Guidance for agents: components first, SVG for anything custom, PNG only
+for real bitmaps, and animate the data, not the pictures.
 
-Run the binary itself, not `cargo run`: the repo's `.cargo/config.toml` gives everything cargo
-runs a test sandbox (`THC_TEST`), so thc sources would see an empty vault.
+## Docs
 
-```sh
-cargo build --release -p thc-scene
-python3 crates/scene/examples/pixels/mark.py crates/scene/examples/pixels/mark.png   # once
-target/release/thc-scene run crates/scene/examples/pixels/pixels.json
-target/release/thc-scene upgrade     # after a rebuild: same screen, same state, new binary
-```
+- [docs/guide.md](docs/guide.md): every feature, demo and measurement
+- [docs/PLAN.md](docs/PLAN.md): the roadmap
+- [docs/design/architecture.md](docs/design/architecture.md): the layers and the rules behind them
+- [docs/design/time-travel.md](docs/design/time-travel.md): history an agent can use (proposal)
+- [docs/design/identity/](docs/design/identity/): the brand explorations
+- [AGENTS.md](AGENTS.md): for agents (and people) working on this repo
 
-### Graphics: what to reach for (guidance for agents)
+## License
 
-1. **Components first.** `backdrop` (cards), `plot`, `dot`, `big`/`scale`, tables, lists: the
-   engine draws them at the terminal's real pixel size, caches them, keeps them in the theme and
-   falls back to cells on terminals without graphics.
-2. **SVG for anything custom** (icons, diagrams, a progress ring): an `svg` node with inline
-   markup, `{field}` placeholders filled from its `bind`, so data drives the drawing. The engine
-   renders it (resvg, system fonts) fitted to the node; `alt` is the text fallback. Compute
-   geometry in the data source (an arc's length, say): templates fill values, they don't do maths.
-3. **PNG only for real bitmaps** (photos, screenshots), as `image` with a path; the terminal reads
-   the file itself.
-4. **Animate data, not pictures.** Change a source or `patch` one node; the engine re-renders only
-   what changed. A patch replaces the whole node, so send it with its `backdrop`.
-
-How pixels travel: the kitty graphics protocol (Ghostty, kitty, WezTerm) takes RGB, RGBA or PNG,
-never SVG, so vector art is rasterised here. Generated pictures go through a temporary file the
-terminal reads and deletes (`THC_SCENE_PIXELS=direct` sends them in-band, for SSH); cards sit
-under every cell background so selections paint over them; a spotlight is a translucent sheet
-over everything.
-
-Measured (210x60, release): about 0.9 ms a frame without pictures; with a 15 Hz plot, about 7 ms,
-nearly all of it rasterising and compressing on the main thread. Next: rasterise on a worker
-thread and present pictures when they're ready.
-
-`examples/pixels/tour.py` drives all of it over the socket on a seeded sample vault with its own
-config (thc's Today spans every registered vault; the demo shouldn't see yours).
+MIT. See [LICENSE](LICENSE).

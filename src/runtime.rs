@@ -61,7 +61,7 @@ enum Event {
 }
 
 pub fn default_socket() -> PathBuf {
-    std::env::var_os("THC_SCENE_SOCKET").map(PathBuf::from).unwrap_or_else(|| std::env::temp_dir().join("thc-scene.sock"))
+    std::env::var_os("FICTTY_SOCKET").map(PathBuf::from).unwrap_or_else(|| std::env::temp_dir().join("fictty.sock"))
 }
 
 pub fn load(path: &Path) -> Result<Ui> {
@@ -308,7 +308,7 @@ pub fn run(file: Option<PathBuf>, watch: bool, socket: PathBuf, restore: Option<
         (Some(_), _) => st.ui.clone(),
         (None, Some(p)) => load(p)?,
         (None, None) => serde_json::from_value(json!({"root": {"type": "text",
-            "text": "Waiting for a UI.\n\nPush one:  thc-scene push ui.json"}}))?,
+            "text": "Waiting for a UI.\n\nPush one:  fictty push ui.json"}}))?,
     };
     let (tx, rx) = mpsc::channel();
     serve(&socket, tx.clone())?;
@@ -319,8 +319,8 @@ pub fn run(file: Option<PathBuf>, watch: bool, socket: PathBuf, restore: Option<
     let mut seen = file.as_deref().and_then(mtime);
 
     let mut term = ratatui::init();
-    // Larger text: the terminal's to say (a probe), unless THC_SCENE_TEXT_SIZE forces it.
-    let sizing = match std::env::var("THC_SCENE_TEXT_SIZE").as_deref() {
+    // Larger text: the terminal's to say (a probe), unless FICTTY_TEXT_SIZE forces it.
+    let sizing = match std::env::var("FICTTY_TEXT_SIZE").as_deref() {
         Ok("1") => true,
         Ok("0") => false,
         _ => crate::gfx::probe_text_sizing(),
@@ -407,7 +407,7 @@ pub fn run(file: Option<PathBuf>, watch: bool, socket: PathBuf, restore: Option<
                 scaled_last.clear();
             }
             if let Some(bin) = d.upgrade.take() {
-                let path = std::env::temp_dir().join(format!("thc-scene-state-{}.json", std::process::id()));
+                let path = std::env::temp_dir().join(format!("fictty-state-{}.json", std::process::id()));
                 std::fs::write(&path, serde_json::to_vec(&st)?)?;
                 let mut out = std::io::stdout().lock();
                 out.write_all(&kitty.clear())?;
@@ -587,7 +587,7 @@ fn mtime(p: &Path) -> Option<SystemTime> {
 /// Listen for request lines; each gets one reply line.
 fn serve(path: &Path, tx: Sender<Event>) -> Result<()> {
     if UnixStream::connect(path).is_ok() {
-        bail!("a screen is already running on {} (set THC_SCENE_SOCKET for another)", path.display());
+        bail!("a screen is already running on {} (set FICTTY_SOCKET for another)", path.display());
     }
     let _ = std::fs::remove_file(path);
     let listener = UnixListener::bind(path).with_context(|| format!("binding {}", path.display()))?;
@@ -623,7 +623,7 @@ fn serve(path: &Path, tx: Sender<Event>) -> Result<()> {
 /// Send one request to a running screen.
 pub fn send(socket: &Path, req: Value) -> Result<Value> {
     let mut s = UnixStream::connect(socket)
-        .with_context(|| format!("no screen running on {} (start one: thc-scene run)", socket.display()))?;
+        .with_context(|| format!("no screen running on {} (start one: fictty run)", socket.display()))?;
     writeln!(s, "{req}")?;
     let mut line = String::new();
     BufReader::new(s).read_line(&mut line)?;

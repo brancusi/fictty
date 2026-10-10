@@ -3,7 +3,7 @@
 #   tour.py [seconds per step]
 import json, os, socket, sys, tempfile, time
 STEP = float(sys.argv[1]) if len(sys.argv) > 1 else 5
-path = os.environ.get("THC_SCENE_SOCKET") or os.path.join(tempfile.gettempdir(), "thc-scene.sock")
+path = os.environ.get("FICTTY_SOCKET") or os.path.join(tempfile.gettempdir(), "fictty.sock")
 s = socket.socket(socket.AF_UNIX); s.connect(path); f = s.makefile("rw")
 def send(req):
     f.write(json.dumps(req) + "\n"); f.flush(); return json.loads(f.readline())

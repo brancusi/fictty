@@ -109,7 +109,7 @@
   "feed": {
    "cmd": [
     "python3",
-    "crates/scene/examples/thc/thcfeed.py"
+    "examples/thc/thcfeed.py"
    ],
    "every": 3
   }
