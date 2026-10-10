@@ -3,6 +3,7 @@
 //! `State` serializes, so `fictty get --state` shows exactly what is drawn.
 
 use crate::model::{Action, Kind, LayerSpec, Node, Ui, lookup};
+use crate::store::{Body, Entry, Write};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::BTreeMap;
@@ -18,6 +19,12 @@ pub struct State {
     /// The last value fetched for each source.
     #[serde(default)]
     pub data: BTreeMap<String, Slot>,
+    /// The app's data: written by the person and by agents, never by a push (see `store`).
+    #[serde(default)]
+    pub store: BTreeMap<String, Entry>,
+    /// Writes to the store so far, so the runtime knows when to save it.
+    #[serde(default)]
+    pub store_writes: u64,
     /// One line at the bottom: the last error or message.
     #[serde(default)]
     pub status: Option<String>,
@@ -74,6 +81,9 @@ pub struct Local {
     /// The shown child of a tabs node.
     #[serde(default)]
     pub tab: usize,
+    /// An editor node's view of its text: carets, scroll, size. The text is in the store.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub editor: Option<caretline::View>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -107,6 +117,30 @@ pub enum Msg {
     Scroll { id: String, by: isize },
     /// Animation time.
     Tick { now_ms: u64 },
+    /// Move a node's view state from outside: a list's or table's `selected` row, a tabs
+    /// node's `tab`.
+    Set {
+        id: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        selected: Option<usize>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        tab: Option<usize>,
+    },
+    /// Write one store entry. With `if_rev`, refused unless the entry is still at that
+    /// revision (someone else wrote in between). The answer comes back as `Effect::Reply`.
+    Write {
+        key: String,
+        #[serde(flatten)]
+        write: Write,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        if_rev: Option<u64>,
+        by: String,
+    },
+    /// Something an agent did over the socket, for the `$log` source (newest first).
+    Activity { op: String, what: String },
+    /// The cells an editor node got in the last frame (the view reports them; the runtime sends
+    /// this when they differ from what the editor has).
+    Size { id: String, width: u16, height: u16 },
     /// Replace the layers only.
     Layers { layers: Vec<LayerSpec> },
     /// What the terminal can draw.
@@ -120,6 +154,8 @@ pub enum Effect {
     Run(Vec<String>),
     Load(String),
     Quit,
+    /// The answer to the request that sent the message (a write: its new revision, or why not).
+    Reply(Value),
 }
 
 pub fn update(st: &mut State, msg: Msg) -> Vec<Effect> {
@@ -128,6 +164,13 @@ pub fn update(st: &mut State, msg: Msg) -> Vec<Effect> {
             st.ui = ui;
             st.version += 1;
             st.status = None;
+            // Seeds start entries that don't exist yet; the store is never cleared by a push.
+            for (k, v) in &st.ui.store {
+                if !st.store.contains_key(k) {
+                    st.store.insert(k.clone(), Entry::value(v.clone(), "seed"));
+                    st.store_writes += 1;
+                }
+            }
             settle(st);
             // Sources can change with the UI; fetch them all again.
             st.data.retain(|k, _| builtin(k) || st.ui.data.contains_key(k));
@@ -201,6 +244,43 @@ pub fn update(st: &mut State, msg: Msg) -> Vec<Effect> {
             st.now_ms = now_ms;
             vec![]
         }
+        Msg::Set { id, selected, tab } => {
+            if st.ui.root.find(&id).is_none() {
+                st.status = Some(format!("set: no node with id {id:?}"));
+                return vec![];
+            }
+            let local = st.local.entry(id).or_default();
+            if let Some(r) = selected {
+                local.selected = r;
+            }
+            if let Some(t) = tab {
+                local.tab = t;
+            }
+            settle(st);
+            vec![]
+        }
+        Msg::Write { key, write, if_rev, by } => {
+            let reply = match write_entry(st, &key, write, if_rev, &by) {
+                Ok(()) => serde_json::json!({"ok": true, "key": key, "rev": st.store[&key].rev}),
+                Err(status) => {
+                    let mut r = serde_json::json!({"ok": false, "status": status});
+                    if let Some(e) = st.store.get(&key) {
+                        r["current"] = e.read();
+                    }
+                    r
+                }
+            };
+            settle(st);
+            vec![Effect::Reply(reply)]
+        }
+        Msg::Activity { op, what } => {
+            log(st, op, what);
+            vec![]
+        }
+        Msg::Size { id, width, height } => {
+            on_doc(st, &id, caretline::Msg::resize(width.max(1), height.max(1)), "person");
+            vec![]
+        }
         Msg::Layers { layers } => {
             st.ui.layers = layers;
             vec![]
@@ -216,11 +296,235 @@ pub fn update(st: &mut State, msg: Msg) -> Vec<Effect> {
             st.data.insert("$caps".into(), Slot::Ready { value });
             vec![]
         }
-        Msg::Key { key } => match resolve(st, &key) {
-            Some(a) => act(st, a),
-            None => vec![],
-        },
+        Msg::Key { key } => {
+            if let Some(id) = editing(st, &key) {
+                type_into(st, &id, &key);
+                return vec![];
+            }
+            match resolve(st, &key) {
+                Some(a) => act(st, a),
+                None => vec![],
+            }
+        }
     }
+}
+
+/// How many entries `$log` keeps.
+const LOG_LEN: usize = 40;
+
+/// Adds to `$log`: `{at, op, what}`, newest first, `at` as minutes and seconds on the clock.
+/// Keys in a row join one entry, so an agent typing a sentence reads as the sentence.
+fn log(st: &mut State, op: String, what: String) {
+    let at = format!("{}:{:02}", st.now_ms / 60_000, st.now_ms / 1000 % 60);
+    let mut entries = match st.data.remove("$log") {
+        Some(Slot::Ready { value: Value::Array(a) }) => a,
+        _ => Vec::new(),
+    };
+    let typed = |k: &str| match k {
+        "space" => " ".to_string(),
+        "enter" => "⏎".to_string(),
+        k if k.chars().count() == 1 => k.to_string(),
+        k => format!("‹{k}›"),
+    };
+    match entries.first_mut() {
+        Some(last) if op == "key" && last["op"] == "key" => {
+            let joined = format!("{}{}", last["what"].as_str().unwrap_or(""), typed(&what));
+            let n = joined.chars().count();
+            last["what"] = joined.chars().skip(n.saturating_sub(48)).collect::<String>().into();
+            last["at"] = at.into();
+        }
+        _ => {
+            let what = if op == "key" { typed(&what) } else { what };
+            entries.insert(0, serde_json::json!({"at": at, "op": op, "what": what}));
+            entries.truncate(LOG_LEN);
+        }
+    }
+    st.data.insert("$log".into(), Slot::Ready { value: Value::Array(entries) });
+}
+
+/// The focused editor that takes this key, if any: everything but focus moves (Tab, Shift-Tab)
+/// and the node's own `keys`. Ctrl-C copies there; quitting is from outside the editor.
+fn editing(st: &State, key: &str) -> Option<String> {
+    let id = st.focus.as_ref()?;
+    let n = st.ui.root.find(id)?;
+    let taken = matches!(n.kind, Kind::Editor { .. }) && !n.keys.contains_key(key) && !matches!(key, "tab" | "s-tab");
+    taken.then(|| id.clone())
+}
+
+/// A key into an editor: the clock first (typing groups into undo steps by time), then the key
+/// through caretline's keymap. Its effects (save, quit, the system clipboard) are the host's
+/// and fictty has none to give, so they're dropped; copy and paste work inside the editor.
+fn type_into(st: &mut State, id: &str, key: &str) {
+    let Some(msg) = editor_key(key).and_then(|k| caretline::keymap(&k)) else { return };
+    let now_ms = st.now_ms;
+    on_doc(st, id, caretline::Msg::Tick { now_ms }, "person");
+    on_doc(st, id, msg, "person");
+}
+
+/// The store key an editor shows: its `bind`, else its id.
+pub fn doc_key(n: &Node) -> Option<String> {
+    n.bind.clone().or_else(|| n.id.clone())
+}
+
+/// Every editor showing `key`, with its view taken out of the state (put back by `put_views`).
+fn take_views(st: &mut State, key: &str) -> Vec<(String, caretline::View)> {
+    let mut all = Vec::new();
+    st.ui.root.walk(&mut all);
+    let ids: Vec<String> = all
+        .iter()
+        .filter(|n| matches!(n.kind, Kind::Editor { .. }) && doc_key(n).as_deref() == Some(key))
+        .filter_map(|n| n.id.clone())
+        .collect();
+    ids.into_iter().filter_map(|id| Some((id.clone(), st.local.get_mut(&id)?.editor.take()?))).collect()
+}
+
+fn put_views(st: &mut State, views: Vec<(String, caretline::View)>) {
+    for (id, v) in views {
+        st.local.entry(id).or_default().editor = Some(v);
+    }
+}
+
+/// A caretline message through editor `id`'s view of its document. Every other editor on the
+/// same document follows the change. A change of text is a store write, by `by`.
+fn on_doc(st: &mut State, id: &str, msg: caretline::Msg, by: &str) {
+    let Some(key) = st.ui.root.find(id).and_then(doc_key) else { return };
+    let mut views = take_views(st, &key);
+    let acting = views.iter().position(|(v, _)| v == id);
+    if let (Some(acting), Some(Entry { body: Body::Text { doc }, .. })) = (acting, st.store.get_mut(&key)) {
+        let before = doc.rev;
+        let mut vs: Vec<caretline::View> = views.iter().map(|(_, v)| v.clone()).collect();
+        caretline::views::update_doc(doc, &mut vs, acting, msg);
+        for ((_, v), new) in views.iter_mut().zip(vs) {
+            *v = new;
+        }
+        if doc.rev != before {
+            wrote(st, &key, by);
+        }
+    }
+    put_views(st, views);
+}
+
+/// Count a write to `key`: its revision goes up, and it records who.
+fn wrote(st: &mut State, key: &str, by: &str) {
+    if let Some(e) = st.store.get_mut(key) {
+        e.rev += 1;
+        e.by = by.into();
+    }
+    st.store_writes += 1;
+}
+
+/// A write from outside (an agent, over the socket). Text is edited, never swapped out: the
+/// person's carets and undo history carry on through it, and one undo takes it back.
+fn write_entry(st: &mut State, key: &str, write: Write, if_rev: Option<u64>, by: &str) -> Result<(), String> {
+    if let (Some(want), Some(e)) = (if_rev, st.store.get(key))
+        && e.rev != want
+    {
+        return Err(format!("stale: {key} is at rev {}, not {want}; read it and try again", e.rev));
+    }
+    if if_rev.is_some_and(|r| r > 0) && !st.store.contains_key(key) {
+        return Err(format!("stale: {key} doesn't exist"));
+    }
+    let is_text = matches!(st.store.get(key), Some(Entry { body: Body::Text { .. }, .. }));
+    match write {
+        Write::Put { value } if !is_text => {
+            match st.store.get_mut(key) {
+                Some(e) => e.body = Body::Value { value },
+                None => {
+                    st.store.insert(key.into(), Entry { rev: 0, by: by.into(), body: Body::Value { value } });
+                }
+            }
+            wrote(st, key, by);
+        }
+        Write::Merge { value } if !is_text => {
+            let e = st.store.entry(key.into()).or_insert_with(|| Entry { rev: 0, by: by.into(), body: Body::Value { value: Value::Null } });
+            if let Body::Value { value: v } = &mut e.body {
+                crate::store::merge(v, &value);
+            }
+            wrote(st, key, by);
+        }
+        Write::Put { value: Value::String(text) } => {
+            let len = match &st.store[key].body {
+                Body::Text { doc } => doc.text.len_chars(),
+                Body::Value { .. } => 0,
+            };
+            text_edit(st, key, vec![(0, len, text)], by)?;
+        }
+        Write::Edit { changes } if is_text => text_edit(st, key, changes, by)?,
+        Write::Put { .. } => return Err(format!("{key} is text: put a string, or send an edit")),
+        Write::Merge { .. } => return Err(format!("{key} is text: merge is for values")),
+        Write::Edit { .. } => return Err(format!("{key} isn't text: put or merge a value")),
+    }
+    Ok(())
+}
+
+/// An agent's edit of a text entry: one undo step, made through a view of its own so every
+/// editor's carets map through it and none of them jumps.
+fn text_edit(st: &mut State, key: &str, changes: Vec<(usize, usize, String)>, by: &str) -> Result<(), String> {
+    let Some(Entry { body: Body::Text { doc }, .. }) = st.store.get(key) else { return Err(format!("{key} isn't text")) };
+    let len = doc.text.len_chars();
+    let mut at = 0;
+    for (from, to, _) in &changes {
+        if from < &at || from > to || *to > len {
+            return Err(format!("edit: ranges must be in order, apart and within the text (0..{len})"));
+        }
+        at = *to;
+    }
+    let now_ms = st.now_ms;
+    let mut views = take_views(st, key);
+    if let Some(Entry { body: Body::Text { doc }, .. }) = st.store.get_mut(key) {
+        let mut vs: Vec<caretline::View> = views.iter().map(|(_, v)| v.clone()).collect();
+        vs.push(caretline::View::new(caretline::Viewport { width: 80, height: 24 }));
+        let agent = vs.len() - 1;
+        caretline::views::update_doc(doc, &mut vs, agent, caretline::Msg::Tick { now_ms });
+        caretline::views::update_doc(doc, &mut vs, agent, caretline::Msg::Edit { changes, join: false });
+        vs.pop();
+        for ((_, v), new) in views.iter_mut().zip(vs) {
+            *v = new;
+        }
+    }
+    put_views(st, views);
+    wrote(st, key, by);
+    Ok(())
+}
+
+/// fictty's key names as caretline keys: `a`, `space`, `enter`, `bs`, `del`, arrows, `home`,
+/// `end`, `pgup`, `pgdn`, `esc`, with `c-` (Ctrl), `a-` (Alt) and `s-` (Shift) in front.
+fn editor_key(name: &str) -> Option<caretline::Key> {
+    use caretline::KeyCode as C;
+    let mut mods = caretline::Mods::default();
+    let mut rest = name;
+    while let Some((m, r)) = rest.split_once('-').filter(|(m, r)| m.len() == 1 && !r.is_empty()) {
+        match m {
+            "c" => mods.ctrl = true,
+            "a" => mods.alt = true,
+            "s" => mods.shift = true,
+            _ => return None,
+        }
+        rest = r;
+    }
+    let code = match rest {
+        "space" => C::Char(' '),
+        "enter" => C::Enter,
+        "bs" => C::Backspace,
+        "del" => C::Delete,
+        "left" => C::Left,
+        "right" => C::Right,
+        "up" => C::Up,
+        "down" => C::Down,
+        "home" => C::Home,
+        "end" => C::End,
+        "pgup" => C::PageUp,
+        "pgdn" => C::PageDown,
+        "esc" => C::Esc,
+        _ => {
+            let mut cs = rest.chars();
+            match (cs.next(), cs.next()) {
+                (Some(c), None) => C::Char(c),
+                _ => return None,
+            }
+        }
+    };
+    Some(caretline::Key { code, mods })
 }
 
 /// The action for a key: the focused node's own, then the UI's, then the defaults.
@@ -337,6 +641,36 @@ fn settle(st: &mut State) {
     st.ui.root.walk(&mut all);
     let ids: Vec<String> = all.iter().filter_map(|n| n.id.clone()).collect();
     st.local.retain(|k, _| ids.contains(k));
+    // Every editor shows a text entry in the store: its seed `text` when the entry is new, or a
+    // string an agent put there before the editor existed. Its view is its own, by id.
+    for n in &all {
+        let (Some(id), Kind::Editor { text }) = (&n.id, &n.kind) else { continue };
+        let Some(key) = doc_key(n) else { continue };
+        match st.store.get(&key).map(|e| &e.body) {
+            None => {
+                st.store.insert(key.clone(), Entry::text(text, "seed"));
+                st.store_writes += 1;
+            }
+            Some(Body::Value { value: Value::String(s) }) => {
+                let text = s.clone();
+                let e = st.store.get_mut(&key).expect("present");
+                *e = Entry { rev: e.rev, by: e.by.clone(), ..Entry::text(&text, "") };
+            }
+            Some(Body::Value { .. }) => {
+                st.status = Some(format!("editor {id}: {key} isn't text"));
+                continue;
+            }
+            Some(Body::Text { .. }) => {}
+        }
+        let Some(Entry { body: Body::Text { doc }, .. }) = st.store.get(&key) else { continue };
+        let local = st.local.entry(id.clone()).or_default();
+        let view = local.editor.get_or_insert_with(|| {
+            let mut v = caretline::View::new(caretline::Viewport { width: 1, height: 1 });
+            v.config.status_bar = false;
+            v
+        });
+        view.fit(doc);
+    }
     if !st.focus.as_ref().is_some_and(|f| order.contains(f)) {
         st.focus = order.first().cloned();
     }
@@ -390,6 +724,12 @@ pub fn value_of<'a>(st: &'a State, bind: &str) -> Option<&'a Value> {
     if let Some(id) = source.strip_prefix('@') {
         let n = st.ui.root.find(id)?;
         return lookup(items(st, n).get(selected(st, id))?, path);
+    }
+    if let Some(e) = st.store.get(source) {
+        return match &e.body {
+            Body::Value { value } => lookup(value, path),
+            Body::Text { .. } => None,
+        };
     }
     match st.data.get(source)? {
         Slot::Ready { value } => lookup(value, path),
@@ -457,6 +797,168 @@ mod tests {
             ]},
             "data": {"tasks": {"value": [{"id": "t1", "text": "Buy milk"}, {"id": "t2", "text": "Essay"}]}}
         }))
+    }
+
+    fn note() -> Ui {
+        ui(json!({
+            "root": {"type": "row", "children": [
+                {"type": "editor", "id": "note", "text": "hi"},
+                {"type": "list", "id": "side", "items": ["a", "b"]}
+            ]}
+        }))
+    }
+
+    fn text_of(st: &State, key: &str) -> String {
+        match &st.store[key].body {
+            Body::Text { doc } => doc.text.to_string(),
+            Body::Value { value } => panic!("{key} is a value: {value}"),
+        }
+    }
+
+    fn caret(st: &State, id: &str) -> usize {
+        st.local[id].editor.as_ref().unwrap().caret()
+    }
+
+    fn keys(st: &mut State, ks: &[&str]) -> Vec<Effect> {
+        ks.iter().flat_map(|k| update(st, Msg::Key { key: (*k).into() })).collect()
+    }
+
+    fn write(st: &mut State, key: &str, w: Value, if_rev: Option<u64>) -> Value {
+        let write: Write = serde_json::from_value(w).unwrap();
+        match update(st, Msg::Write { key: key.into(), write, if_rev, by: "agent".into() }).pop() {
+            Some(Effect::Reply(r)) => r,
+            other => panic!("no reply: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn an_editor_takes_the_keys_while_focused() {
+        let mut st = State::default();
+        update(&mut st, Msg::Push { ui: note() });
+        assert_eq!(st.focus.as_deref(), Some("note"), "the first focusable node");
+        update(&mut st, Msg::Size { id: "note".into(), width: 20, height: 5 });
+        let fx = keys(&mut st, &["end", "space", "q", "enter", "j", "c-c"]);
+        assert!(fx.is_empty(), "q and Ctrl-C don't quit while editing");
+        assert_eq!(text_of(&st, "note"), "hi q\nj");
+        assert_eq!(st.store["note"].by, "person");
+        // Tab leaves the editor; then the keys are the screen's again.
+        keys(&mut st, &["tab", "j"]);
+        assert_eq!(st.focus.as_deref(), Some("side"));
+        assert_eq!(selected(&st, "side"), 1);
+        assert_eq!(text_of(&st, "note"), "hi q\nj");
+        assert_eq!(keys(&mut st, &["q"]), vec![Effect::Quit]);
+    }
+
+    #[test]
+    fn typing_groups_into_undo_steps_by_time() {
+        let mut st = State::default();
+        update(&mut st, Msg::Push { ui: note() });
+        keys(&mut st, &["end", "space", "a", "b"]);
+        update(&mut st, Msg::Tick { now_ms: 60_000 });
+        keys(&mut st, &["c"]);
+        keys(&mut st, &["c-z"]);
+        assert_eq!(text_of(&st, "note"), "hi ab", "the later burst undoes alone");
+        keys(&mut st, &["c-y"]);
+        assert_eq!(text_of(&st, "note"), "hi abc");
+    }
+
+    #[test]
+    fn a_push_never_loses_what_was_written() {
+        let mut st = State::default();
+        update(&mut st, Msg::Push { ui: note() });
+        keys(&mut st, &["end", "!"]);
+        // A UI without the editor: the note is still in the store.
+        update(&mut st, Msg::Push { ui: ui(json!({"root": {"type": "list", "id": "side", "items": ["a"]}})) });
+        assert_eq!(text_of(&st, "note"), "hi!");
+        assert!(!st.local.contains_key("note"), "its view went with it");
+        // The editor back, with a different seed: the note wins over the seed.
+        let mut again = note();
+        if let Some(c) = again.root.children_mut() {
+            c[0].kind = Kind::Editor { text: "a new seed".into() };
+        }
+        update(&mut st, Msg::Push { ui: again });
+        assert_eq!(text_of(&st, "note"), "hi!");
+        // Seeds for values likewise only start entries.
+        let seeded = |v: Value| ui(json!({"root": {"type": "list", "id": "l", "bind": "rows"}, "store": {"rows": v}}));
+        update(&mut st, Msg::Push { ui: seeded(json!(["seed"])) });
+        write(&mut st, "rows", json!({"write": "put", "value": ["agent's"]}), None);
+        update(&mut st, Msg::Push { ui: seeded(json!(["another seed"])) });
+        assert_eq!(st.store["rows"].read()["value"], json!(["agent's"]));
+        let back: State = serde_json::from_value(serde_json::to_value(&st).unwrap()).unwrap();
+        assert_eq!(back.store, st.store, "texts with their history, values, revisions");
+    }
+
+    #[test]
+    fn a_stale_write_is_refused_and_says_what_is_there() {
+        let mut st = State::default();
+        update(&mut st, Msg::Push { ui: ui(json!({"root": {"type": "text", "text": "x"}, "store": {"todo": {"done": 1}}})) });
+        let r = write(&mut st, "todo", json!({"write": "merge", "value": {"open": 3}}), Some(1));
+        assert_eq!((r["ok"].clone(), r["rev"].clone()), (json!(true), json!(2)));
+        let r = write(&mut st, "todo", json!({"write": "put", "value": {}}), Some(1));
+        assert_eq!(r["ok"], json!(false), "another agent wrote rev 2");
+        assert_eq!(r["current"]["value"], json!({"done": 1, "open": 3}));
+        assert_eq!(st.store["todo"].rev, 2);
+    }
+
+    #[test]
+    fn an_agent_edit_lands_around_the_persons_typing() {
+        let mut st = State::default();
+        update(&mut st, Msg::Push { ui: note() });
+        let rev = st.store["note"].rev;
+        // The agent read "hi" at `rev`, then the person typed.
+        keys(&mut st, &["end", " ", "t", "h", "e", "r", "e"]);
+        let r = write(&mut st, "note", json!({"write": "edit", "changes": [[0, 0, "> "]]}), Some(rev));
+        assert_eq!(r["ok"], json!(false), "the agent's view of the text is out of date");
+        // Read again, edit again: it lands, and the person's caret moves with the text.
+        let rev = st.store["note"].rev;
+        assert_eq!(caret(&st, "note"), 8);
+        let r = write(&mut st, "note", json!({"write": "edit", "changes": [[0, 0, "> "]]}), Some(rev));
+        assert_eq!(r["ok"], json!(true));
+        assert_eq!(text_of(&st, "note"), "> hi there");
+        assert_eq!(caret(&st, "note"), 10, "still after what they typed");
+        keys(&mut st, &["c-z"]);
+        assert_eq!(text_of(&st, "note"), "hi there", "one undo takes the agent's edit back");
+        // A whole new text is a put of a string; a value write to text is refused.
+        write(&mut st, "note", json!({"write": "put", "value": "rewritten"}), None);
+        assert_eq!(text_of(&st, "note"), "rewritten");
+        assert_eq!(write(&mut st, "note", json!({"write": "merge", "value": {}}), None)["ok"], json!(false));
+    }
+
+    #[test]
+    fn two_editors_on_one_text_share_it() {
+        let mut st = State::default();
+        update(&mut st, Msg::Push {
+            ui: ui(json!({"root": {"type": "row", "children": [
+                {"type": "editor", "id": "a", "bind": "doc", "text": "shared"},
+                {"type": "editor", "id": "b", "bind": "doc"}
+            ]}})),
+        });
+        // b's caret at the end, then type at the start in a.
+        keys(&mut st, &["tab", "end", "s-tab", "x"]);
+        assert_eq!(text_of(&st, "doc"), "xshared");
+        assert_eq!((caret(&st, "a"), caret(&st, "b")), (1, 7), "b's caret moved with its text");
+    }
+
+    #[test]
+    fn set_moves_view_state() {
+        let mut st = State::default();
+        update(&mut st, Msg::Push { ui: note() });
+        update(&mut st, Msg::Set { id: "side".into(), selected: Some(1), tab: None });
+        assert_eq!(selected(&st, "side"), 1);
+        update(&mut st, Msg::Set { id: "nope".into(), selected: Some(1), tab: None });
+        assert_eq!(st.status.as_deref(), Some("set: no node with id \"nope\""));
+    }
+
+    #[test]
+    fn the_log_joins_typed_keys_and_keeps_the_newest_first() {
+        let mut st = State::default();
+        let act = |op: &str, what: &str| Msg::Activity { op: op.into(), what: what.into() };
+        for m in [act("push", "a new UI"), act("key", "h"), act("key", "i"), act("key", "space"), act("key", "enter"), act("set", "note")] {
+            update(&mut st, m);
+        }
+        let Some(Slot::Ready { value }) = st.data.get("$log") else { panic!("no log") };
+        let ops: Vec<(&str, &str)> = value.as_array().unwrap().iter().map(|e| (e["op"].as_str().unwrap(), e["what"].as_str().unwrap())).collect();
+        assert_eq!(ops, vec![("set", "note"), ("key", "hi ⏎"), ("push", "a new UI")]);
     }
 
     #[test]

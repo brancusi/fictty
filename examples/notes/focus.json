@@ -1,0 +1,8 @@
+{
+  "root": {"type": "col", "children": [
+    {"type": "text", "id": "title", "size": 1, "style": {"bold": true, "fg": "yellow"},
+     "text": "fictty · a different UI, with no editor in it"},
+    {"type": "list", "id": "activity", "title": "Agent activity", "bind": "$log",
+     "item": "<d>{at}</> <b>{op}</> {what}", "empty": "Waiting for the agent…"}
+  ]}
+}

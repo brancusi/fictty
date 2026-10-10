@@ -46,6 +46,7 @@ struct Cx<'a> {
     anchors: cl::AnchorMap,
     pics: Vec<Placed>,
     scaled: Vec<Scaled>,
+    sizes: Vec<(String, u16, u16)>,
 }
 
 /// Text the terminal draws larger (OSC 66): its cell, the text, the scale and the style.
@@ -64,6 +65,9 @@ pub struct Out {
     pub hits: Vec<Hit>,
     pub pics: Vec<Placed>,
     pub scaled: Vec<Scaled>,
+    /// The cells each editor got: (id, width, height). The runtime tells an editor when its
+    /// own size differs, so its scroll keeps the caret in view.
+    pub sizes: Vec<(String, u16, u16)>,
 }
 
 impl Cx<'_> {
@@ -237,7 +241,7 @@ fn theme(st: &State) -> Theme {
 
 /// Draw the whole screen; returns what's under each cell and the pictures to place.
 pub fn draw(st: &State, f: &mut Frame) -> Out {
-    let mut cx = Cx { st, th: theme(st), hits: Vec::new(), anchors: cl::AnchorMap::new(), pics: Vec::new(), scaled: Vec::new() };
+    let mut cx = Cx { st, th: theme(st), hits: Vec::new(), anchors: cl::AnchorMap::new(), pics: Vec::new(), scaled: Vec::new(), sizes: Vec::new() };
     let mut base = Style::default();
     if let Some(bg) = cx.th.bg {
         base = base.bg(bg);
@@ -253,7 +257,7 @@ pub fn draw(st: &State, f: &mut Frame) -> Out {
     let shade = layers(&cx, f.buffer_mut(), body);
     cx.pics.extend(shade);
     if !bar {
-        return Out { hits: cx.hits, pics: cx.pics, scaled: cx.scaled };
+        return Out { hits: cx.hits, pics: cx.pics, scaled: cx.scaled, sizes: cx.sizes };
     }
     let line = match &st.status {
         Some(s) => Line::styled(s.clone(), Style::default().fg(cx.th.neg)),
@@ -267,7 +271,47 @@ pub fn draw(st: &State, f: &mut Frame) -> Out {
     let [left, right] = Layout::horizontal([Constraint::Fill(1), Constraint::Length(meter.chars().count() as u16)]).areas(status);
     f.render_widget(Paragraph::new(line), left);
     f.render_widget(Paragraph::new(Line::styled(meter, Style::default().fg(Color::Yellow))), right);
-    Out { hits: cx.hits, pics: cx.pics, scaled: cx.scaled }
+    Out { hits: cx.hits, pics: cx.pics, scaled: cx.scaled, sizes: cx.sizes }
+}
+
+/// An editor's cells, from caretline's own view of it. Until the runtime has told it its size
+/// (the first frame, or just after a resize), a copy sized to the area is drawn instead.
+fn editor(buf: &mut Buffer, area: Rect, doc: &caretline::Document, view: &caretline::View, style: Style, focused: bool) {
+    use caretline::view::Role;
+    if area.width == 0 || area.height == 0 {
+        return;
+    }
+    let vp = view.viewport;
+    let frame = if (vp.width, vp.height) == (area.width, area.height) {
+        caretline::view::render(doc, view)
+    } else {
+        let (mut d, mut vs) = (doc.clone(), [view.clone()]);
+        caretline::views::update_doc(&mut d, &mut vs, 0, caretline::Msg::resize(area.width, area.height));
+        caretline::view::render(&d, &vs[0])
+    };
+    let mark = style.add_modifier(Modifier::REVERSED);
+    for y in 0..frame.height.min(area.height) {
+        for x in 0..frame.width.min(area.width) {
+            let cell = frame.cell(x, y);
+            if cell.symbol.is_empty() {
+                continue; // the second half of a wide grapheme
+            }
+            let s = match cell.role {
+                Role::Selection | Role::Caret => mark,
+                Role::Status | Role::StatusAccent | Role::Hang => style.add_modifier(Modifier::DIM),
+                _ => style,
+            };
+            buf.set_string(area.x + x, area.y + y, &cell.symbol, s);
+        }
+    }
+    // The primary caret: a block, drawn only while the editor has focus.
+    if let Some((x, y)) = frame.cursor.filter(|&(x, y)| focused && x < area.width && y < area.height) {
+        let c = &mut buf[(area.x + x, area.y + y)];
+        c.set_style(mark);
+        if c.symbol().trim().is_empty() {
+            c.set_symbol(" ");
+        }
+    }
 }
 
 fn border_type(edge: Option<&str>) -> BorderType {
@@ -404,6 +448,16 @@ fn node(cx: &mut Cx, n: &Node, f: &mut Frame, area: Rect) {
                 let lines: Vec<Line> = shown.iter().map(|l| Line::from(cx.spans(l, v, style))).collect();
                 f.render_widget(Paragraph::new(lines).style(style).alignment(align).wrap(Wrap { trim: false }), inner);
             }
+        }
+        Kind::Editor { .. } => {
+            cx.sizes.push((id.clone(), inner.width, inner.height));
+            let view = st.local.get(&id).and_then(|l| l.editor.as_ref());
+            let doc = crate::state::doc_key(n).and_then(|k| st.store.get(&k)).and_then(|e| match &e.body {
+                crate::store::Body::Text { doc } => Some(&**doc),
+                _ => None,
+            });
+            let (Some(doc), Some(view)) = (doc, view) else { return };
+            editor(f.buffer_mut(), inner, doc, view, style, focused);
         }
         Kind::Rule { glyph } => {
             let g = glyph.clone().unwrap_or_else(|| if inner.height > inner.width { "│".into() } else { "─".into() });
@@ -1188,5 +1242,27 @@ mod tests {
     fn big_digits_are_three_rows() {
         let [a, b, c] = big("1.5");
         assert_eq!((a.as_str(), b.as_str(), c.as_str()), ("▄█    █▀▀", " █    ▀▀█", "▀▀▀ ▀ ▀▀▀"));
+    }
+
+    #[test]
+    fn an_editor_draws_its_text_and_reports_its_size() {
+        use crate::state::{Msg, update};
+        let ui = serde_json::from_value(serde_json::json!({
+            "root": {"type": "editor", "id": "note", "title": "Note", "text": "line one\nline two"},
+            "status_bar": false
+        }))
+        .unwrap();
+        let mut st = State::default();
+        update(&mut st, Msg::Push { ui });
+        let mut term = ratatui::Terminal::new(ratatui::backend::TestBackend::new(24, 5)).unwrap();
+        let mut sizes = Vec::new();
+        term.draw(|f| sizes = draw(&st, f).sizes).unwrap();
+        assert_eq!(sizes, vec![("note".to_string(), 22, 3)], "inside the border");
+        let buf = term.backend().buffer();
+        let row = |y: u16| (0..24).map(|x| buf[(x, y)].symbol()).collect::<String>();
+        assert_eq!(row(1), "│line one              │");
+        assert_eq!(row(2), "│line two              │");
+        // The caret (focused, at the start) is a reversed cell.
+        assert!(buf[(1, 1)].modifier.contains(Modifier::REVERSED));
     }
 }

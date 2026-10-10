@@ -1,0 +1,13 @@
+{
+  "root": {"type": "col", "children": [
+    {"type": "text", "id": "title", "size": 1, "style": {"bold": true, "fg": "cyan"}, "text": "fictty · notes"},
+    {"type": "row", "children": [
+      {"type": "editor", "id": "note", "bind": "standup", "title": "Standup, 10 October", "size": "60%", "text": "# Standup, 10 October\n\n- Search index rebuilt; p95 back to 205 ms\n- Billing invoices ran clean overnight\n\nTodo\n- \n"},
+      {"type": "col", "children": [
+        {"type": "list", "id": "activity", "title": "Agent activity", "bind": "$log", "item": "<d>{at}</> {op|push=<cyan+b>push </>;patch=<magenta+b>patch</>;put=<green+b>put  </>;edit=<yellow+b>edit </>;merge=<yellow+b>merge</>;set=<blue+b>set  </>;key=<b>key  </>;*=$} {what}", "empty": "Waiting for the agent…"},
+        {"type": "text", "id": "help", "title": "Keys", "text": "Type to write.\n\n←→↑↓        move\nShift+←→↑↓  select\nCtrl-Z / Y  undo, redo\nCtrl-C X V  copy, cut, paste\nTab         leave the editor\nq           quit (outside it)", "size": 12}
+      ]}
+    ]}
+  ]},
+  "status_bar": true
+}

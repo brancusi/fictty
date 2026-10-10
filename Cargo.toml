@@ -17,6 +17,7 @@ path = "src/main.rs"
 [dependencies]
 anyhow = "1"
 base64 = "0.22"
+caretline = "0.5"
 caretline-layers = { version = "0.2.0", default-features = false }
 clap = { version = "4", features = ["derive", "env"] }
 miniz_oxide = "0.8"

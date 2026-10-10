@@ -17,6 +17,10 @@ pub struct Ui {
     /// Named data sources, fetched by the runtime and bound to by nodes.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub data: BTreeMap<String, Source>,
+    /// Starting values for store entries (`seed`s): each is written only when its entry doesn't
+    /// exist yet, so a push never overwrites what the person or another agent wrote.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub store: BTreeMap<String, Value>,
     /// Keys that work everywhere (a focused node's own `keys` win).
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub keys: BTreeMap<String, Action>,
@@ -232,6 +236,15 @@ pub enum Kind {
     },
     /// Large digits (a KPI): the filled template, in a 3-row block font.
     Big { text: String },
+    /// A multi-line text editor (caretline) on a text entry in the store: `bind` names the
+    /// entry (default: the editor's id), and `text` seeds it when it doesn't exist yet. The text
+    /// and its undo history are the store's, so a push that drops the editor loses nothing;
+    /// the carets and scroll are the editor's. While it has focus it takes every key except
+    /// Tab and Shift-Tab (focus), so Ctrl-C copies there.
+    Editor {
+        #[serde(default, skip_serializing_if = "String::is_empty")]
+        text: String,
+    },
     /// One child at a time, picked by a row of tab titles (click one, or ←/→ when focused).
     Tabs { tabs: Vec<String>, children: Vec<Node> },
     /// Lines drawn in pixels (anti-aliased, a gradient under each) where the terminal draws
@@ -410,9 +423,9 @@ impl Node {
         }
     }
 
-    /// Lists, tables and tabs with an id take focus.
+    /// Lists, tables, tabs and editors with an id take focus.
     pub fn focusable(&self) -> bool {
-        self.id.is_some() && matches!(self.kind, Kind::List { .. } | Kind::Table { .. } | Kind::Tabs { .. })
+        self.id.is_some() && matches!(self.kind, Kind::List { .. } | Kind::Table { .. } | Kind::Tabs { .. } | Kind::Editor { .. })
     }
 
     /// Like `walk`, but only into the shown child of each tabs node (`tab` gives its index).

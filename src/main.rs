@@ -26,6 +26,10 @@ enum Cmd {
         /// Start from a saved state (what `upgrade` hands the new binary).
         #[arg(long)]
         restore: Option<PathBuf>,
+        /// Keep the store (the app's data) in this JSON file: read at the start, written after
+        /// every change.
+        #[arg(long)]
+        store: Option<PathBuf>,
     },
     /// Replace the running screen's binary with this one (or --binary), keeping its whole state.
     Upgrade {
@@ -36,6 +40,41 @@ enum Cmd {
     Push { file: PathBuf },
     /// Replace one node, by id, with a node from a file (`-` reads stdin).
     Patch { id: String, file: PathBuf },
+    /// Write a store entry: a JSON value from a file (`-` reads stdin). A string replaces an
+    /// editor's text as one edit. With --if-rev, refused if someone wrote since that revision.
+    Put {
+        key: String,
+        file: PathBuf,
+        #[arg(long)]
+        if_rev: Option<u64>,
+        /// Who's writing, for the store's `by` (default `agent`).
+        #[arg(long)]
+        by: Option<String>,
+    },
+    /// Merge a JSON object into a store entry's value (RFC 7396: `null` removes a key).
+    Merge {
+        key: String,
+        file: PathBuf,
+        #[arg(long)]
+        if_rev: Option<u64>,
+        #[arg(long)]
+        by: Option<String>,
+    },
+    /// Edit a text entry: a JSON array of `[from, to, "text"]` ranges in chars of its current
+    /// text, in order. The person's carets move with it, and one undo takes it back.
+    Edit {
+        key: String,
+        file: PathBuf,
+        #[arg(long)]
+        if_rev: Option<u64>,
+        #[arg(long)]
+        by: Option<String>,
+    },
+    /// Read a store entry: its revision, who wrote it last, and its text or value.
+    Read { key: String },
+    /// Move one node's view state, from a JSON object in a file (`-` reads stdin):
+    /// `{"selected": 2}` for a list or table, `{"tab": 1}` for tabs.
+    Set { id: String, file: PathBuf },
     /// Send keys to the running screen, as if typed.
     Key { keys: Vec<String> },
     /// Print the running screen's UI (or, with --state, everything: focus, selections, data).
@@ -70,7 +109,7 @@ fn main() -> Result<()> {
     let cli = Cli::parse();
     let socket = cli.socket.unwrap_or_else(runtime::default_socket);
     let reply = match cli.cmd {
-        Cmd::Run { file, watch, restore } => return runtime::run(file, watch, socket, restore),
+        Cmd::Run { file, watch, restore, store } => return runtime::run(file, watch, socket, restore, store),
         Cmd::Upgrade { binary } => {
             let bin = binary.or_else(|| std::env::current_exe().ok()).map(|p| p.display().to_string());
             runtime::send(&socket, json!({"op": "upgrade", "binary": bin}))?
@@ -89,6 +128,17 @@ fn main() -> Result<()> {
             };
             let node: serde_json::Value = serde_json::from_str(&raw)?;
             runtime::send(&socket, json!({"op": "patch", "id": id, "node": node}))?
+        }
+        Cmd::Put { key, file, if_rev, by } => write(&socket, "put", key, "value", &file, if_rev, by)?,
+        Cmd::Merge { key, file, if_rev, by } => write(&socket, "merge", key, "value", &file, if_rev, by)?,
+        Cmd::Edit { key, file, if_rev, by } => write(&socket, "edit", key, "changes", &file, if_rev, by)?,
+        Cmd::Read { key } => runtime::send(&socket, json!({"op": "read", "key": key}))?,
+        Cmd::Set { id, file } => {
+            let raw = if file.as_os_str() == "-" { std::io::read_to_string(std::io::stdin())? } else { std::fs::read_to_string(&file)? };
+            let mut req: serde_json::Value = serde_json::from_str(&raw)?;
+            req["op"] = "set".into();
+            req["id"] = id.into();
+            runtime::send(&socket, req)?
         }
         Cmd::Key { keys } => {
             let mut last = json!(null);
@@ -118,4 +168,15 @@ fn main() -> Result<()> {
         std::process::exit(1);
     }
     Ok(())
+}
+
+/// A store write: the JSON in `file` (`-` reads stdin) as the request's `field`.
+fn write(socket: &std::path::Path, kind: &str, key: String, field: &str, file: &PathBuf, if_rev: Option<u64>, by: Option<String>) -> Result<serde_json::Value> {
+    let raw = if file.as_os_str() == "-" { std::io::read_to_string(std::io::stdin())? } else { std::fs::read_to_string(file)? };
+    let body: serde_json::Value = serde_json::from_str(&raw)?;
+    let mut req = json!({"op": "write", "write": kind, "key": key, field: body, "if_rev": if_rev});
+    if let Some(by) = by {
+        req["by"] = by.into();
+    }
+    runtime::send(socket, req)
 }
