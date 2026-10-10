@@ -1,0 +1,32 @@
+---
+// A design document rendered from the repo's Markdown (scope, adopt-or-build, the plan), laid out
+// around its own structure: lede, a verdict lifted from the text, sections, option cards with
+// labelled fields, styled tables. The .md stays the source of truth; see src/lib/rehype-links.mjs.
+import { getEntry, render } from 'astro:content';
+import Base from './Base.astro';
+import '../styles/prose.css';
+import '../styles/doc.css';
+interface Props { id: string; eyebrow: string; description: string; kind?: string }
+const { id, eyebrow, description, kind = '' } = Astro.props;
+const entry = (await getEntry('pages', id))!;
+const { Content, headings } = await render(entry);
+const title = headings.find((h) => h.depth === 1)?.text ?? id;
+const toc = headings.filter((h) => h.depth === 2);
+const src = { plan: 'docs/PLAN.md', scope: 'docs/design/scope.md', 'adopt-or-build': 'docs/design/adopt-or-build.md' }[id];
+---
+<Base title={title} description={description}>
+  <article class={`page doc doc-${id} ${kind}`}>
+    <header class="page-head">
+      <span class="eyebrow">{eyebrow}</span>
+      <h1>{title}</h1>
+    </header>
+    <div class="doc-grid">
+      <nav class="toc" aria-label="Sections">
+        <span class="eyebrow">Sections</span>
+        <ol>{toc.map((h) => <li><a href={`#${h.slug}`}>{h.text}</a></li>)}</ol>
+        <p class="src">From <a href={`https://github.com/brancusi/fictty/blob/main/${src}`} rel="noopener" data-source>{src}</a></p>
+      </nav>
+      <div class="prose docbody"><Content /></div>
+    </div>
+  </article>
+</Base>

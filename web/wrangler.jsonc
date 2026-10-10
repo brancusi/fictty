@@ -1,0 +1,12 @@
+{
+  // fictty's public site on Cloudflare (static assets), at fictty.com.
+  // Deploy from web/: npm run build && npm run scan && npx wrangler deploy --config ./wrangler.jsonc
+  "name": "fictty-site",
+  "compatibility_date": "2026-10-01",
+  "workers_dev": true,
+  "routes": [
+    { "pattern": "fictty.com", "custom_domain": true },
+    { "pattern": "www.fictty.com", "custom_domain": true }
+  ],
+  "assets": { "directory": "./dist", "not_found_handling": "404-page" }
+}

@@ -1,0 +1,50 @@
+---
+import { getCollection, render } from 'astro:content';
+import Base from '../../layouts/Base.astro';
+import Install from '../../components/Install.astro';
+import '../../styles/prose.css';
+
+// The guide is docs/guide.md from the repo, rendered as-is so the site can't drift from it.
+const [guide] = await getCollection('docs');
+const { Content, headings } = await render(guide);
+const toc = headings.filter((h) => h.depth === 2 || h.depth === 3);
+---
+<Base title="Docs" description="The fictty guide: the model, every component, the demos and the measurements." nav="docs">
+  <div class="page docs">
+    <header class="page-head">
+      <span class="eyebrow">Docs</span>
+      <h1>The guide</h1>
+      <p class="lede">The model, every component, the demos and the measurements: the repo's <a href="https://github.com/brancusi/fictty/blob/main/docs/guide.md" rel="noopener" data-source>docs/guide.md</a>, rendered as it stands. fictty is a prototype; it works and it's fast, but the format will change.</p>
+      <div class="get">
+        <Install />
+      </div>
+    </header>
+    <div class="layout">
+      <nav class="toc" aria-label="On this page">
+        <span class="eyebrow">On this page</span>
+        <ol>{toc.map((h) => <li class={`d${h.depth}`}><a href={`#${h.slug}`}>{h.text}</a></li>)}</ol>
+      </nav>
+      <div class="prose"><Content /></div>
+    </div>
+  </div>
+</Base>
+<style>
+  .prose :global(> h1:first-child) { display: none; }
+  .prose :global(> h1:first-child + p) { margin-top: 0; }
+  .get { justify-self: start; max-width: 100%; }
+  .get :global(.install-block) { justify-items: start; }
+  .layout { display: grid; grid-template-columns: minmax(0, 1fr); gap: calc(var(--m) * 2); }
+  .toc { display: grid; gap: 12px; align-content: start; border: 1px solid var(--line); border-radius: 4px; padding: 14px 16px; }
+  .toc ol { list-style: none; padding: 0; margin: 0; display: grid; gap: 6px; }
+  .toc a { color: var(--ink-2); text-decoration: none; font-size: 14px; line-height: 1.4; }
+  .toc a:hover { color: var(--ink); }
+  .toc .d3 { padding-left: 14px; }
+  @media (min-width: 1000px) {
+    .layout { grid-template-columns: 220px minmax(0, 1fr); }
+    .toc { position: sticky; top: 84px; max-height: calc(100vh - 110px); overflow: auto; border: 0; padding: 0; }
+    .toc ol { border-left: 1px solid var(--line); gap: 8px; }
+    .toc a { display: block; padding-left: 12px; margin-left: -1px; border-left: 1px solid transparent; color: var(--ink-3); font-size: 13.5px; }
+    .toc .d3 a { padding-left: 24px; }
+    .toc a:hover { border-left-color: var(--glass-violet); }
+  }
+</style>

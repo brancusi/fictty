@@ -1,0 +1,196 @@
+---
+// The landscape: 82 projects, products, protocols and ideas in seven clusters, as a radar (how close
+// each sits to fictty), a map (any two scores) and a board (the clusters and their debates).
+import Base from '../../layouts/Base.astro';
+import Texture from '../../components/Texture.astro';
+import Card from '../../components/research/Card.astro';
+import Bars from '../../components/research/Bars.astro';
+import { CLUSTERS, ENTRIES } from '../../lib/landscape';
+import { AXES, byBoardOrder, clusterUrl, EVID, FICTTY, LAYERS, RELS, SHORT, SURF } from '../../lib/landscape-meta';
+import '../../styles/prose.css';
+import '../../styles/research.css';
+const relCount = (r: string) => ENTRIES.filter((e) => e.relation === r).length;
+const GROUPS: [string, string[]][] = [['surface', SURF.map((s) => s[0])], ['layer', LAYERS], ['relation', RELS.map((r) => r[0])], ['evidence', EVID]];
+---
+<Base title="Research" description="The landscape of agent interfaces: 82 projects, products, protocols and ideas in seven clusters, each with a dossier and what fictty should take from it." nav="research">
+  <div class="rsite">
+    <Texture />
+    <div class="page research">
+      <header class="page-head">
+        <span class="eyebrow">Research · 10 October 2026</span>
+        <h1>The landscape, one value at a time.</h1>
+        <p class="lede">{ENTRIES.length} projects, products, protocols and ideas in seven clusters. Each has a dossier: what it is, the problem underneath, its bet, and what fictty should take from it. The radar shows how close each one sits to fictty, the map compares any two scores, and the board reads the clusters and their debates.</p>
+      </header>
+      <div class="legend">
+        <section class="glass" style="--tint: var(--glass-violet)">
+          <h2>Relation to fictty (rings, inside out)</h2>
+          <dl>{RELS.map(([r, d], i) => <><dt><span class="ringno">{i + 1}</span>{r}</dt><dd>{d} <span class="n">({relCount(r)})</span></dd></>)}</dl>
+        </section>
+        <section class="glass" style="--tint: var(--glass-cyan)">
+          <h2>Scores</h2>
+          <dl>{AXES.map((a) => <><dt>{a[1]}</dt><dd>{a[3]}</dd></>)}</dl>
+        </section>
+        <section class="glass fcard" style="--tint: var(--glass-amber)">
+          <h2>fictty, scored the same way</h2>
+          <Bars e={FICTTY} mark={false} />
+          <p>Scored from <a href="/scope/">the scope</a>, as built today. Learning is low because nothing in fictty teaches yet; that's a direction, not a feature. Threat and fit don't apply to fictty itself.</p>
+        </section>
+      </div>
+
+      <div class="rbar">
+        <div class="rtabs" role="tablist" aria-label="View">
+          <button type="button" role="tab" id="tab-radar" data-view="radar" aria-selected="true" aria-controls="view-radar">Radar</button>
+          <button type="button" role="tab" id="tab-map" data-view="map" aria-selected="false" aria-controls="view-map">Map</button>
+          <button type="button" role="tab" id="tab-board" data-view="board" aria-selected="false" aria-controls="view-board">Board</button>
+        </div>
+        <label class="search"><span class="sr-only">Search</span>
+          <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><circle cx="6" cy="6" r="4.5" stroke-width="1.5"></circle><path d="M9.5 9.5 13 13" stroke-width="1.5"></path></svg>
+          <input id="q" type="search" placeholder="Search names, takeaways and full dossiers" autocomplete="off" />
+        </label>
+        <span class="count" id="count" aria-live="polite">{ENTRIES.length} entries</span>
+        <label class="lbl-toggle"><input type="checkbox" id="all-labels" /> all labels</label>
+        <details class="filters" id="filters">
+          <summary>Filters</summary>
+          <div class="fgroups">
+            {GROUPS.map(([g, vals]) => (
+              <div class="fgroup" role="group" aria-label={g}><span>{g}</span>
+                {vals.map((v) => <button type="button" class="chip" data-g={g} data-v={v} aria-pressed="false">{g === 'surface' && <span class="sw" style={`background:var(${SURF.find((s) => s[0] === v)![1]})`}></span>}{v}</button>)}
+              </div>
+            ))}
+            <button type="button" class="clear" id="clear">Clear all</button>
+          </div>
+        </details>
+      </div>
+
+      <section class="view" id="view-radar" role="tabpanel" aria-labelledby="tab-radar">
+        <div class="stage">
+          <div class="chart glass" style="--tint: var(--glass-violet)"><svg id="radar" viewBox="-170 -60 1340 1150" role="img" aria-label="Radar of the landscape: rings by relation to fictty, sectors by cluster. Each dot links to its dossier."></svg></div>
+          <aside class="side">
+            <div><h3>Reading it</h3><p>fictty sits at the centre. The nearer the ring, the more of it fictty uses directly. Sectors are the seven clusters. Bigger dots are bigger threats; colour is where it runs.</p></div>
+            <div><h3>Surface</h3><ul class="surf-legend"></ul></div>
+            <div><h3>Tip</h3><p>Hover a dot for its one-liner; click it, or tab to it and press Enter, to read the dossier. Filters and search dim what doesn't match.</p></div>
+          </aside>
+        </div>
+      </section>
+      <section class="view" id="view-map" role="tabpanel" aria-labelledby="tab-map" hidden>
+        <div class="stage">
+          <div class="chart glass" style="--tint: var(--glass-cyan)"><svg id="map" viewBox="0 0 1000 680" role="img" aria-label="Scatter of the landscape on two chosen scores. Each dot links to its dossier."></svg></div>
+          <aside class="side">
+            <div class="axis-pick">
+              <h3>Axes</h3>
+              <label for="ax-x">across<select id="ax-x">{AXES.map((a) => <option value={a[0]}>{a[1]}</option>)}</select></label>
+              <label for="ax-y">up<select id="ax-y">{AXES.map((a) => <option value={a[0]}>{a[1]}</option>)}</select></label>
+              <button type="button" class="swap" id="swap">Swap axes</button>
+            </div>
+            <div><h3>Surface</h3><ul class="surf-legend"></ul></div>
+            <div><h3>Reading it</h3><p id="map-note">Points are nudged slightly apart so equal scores stay visible. The diamond is fictty.</p></div>
+          </aside>
+        </div>
+      </section>
+      <section class="view" id="view-board" role="tabpanel" aria-labelledby="tab-board" hidden>
+        {CLUSTERS.map((c) => {
+          const items = ENTRIES.filter((e) => e.cluster === c.key).sort(byBoardOrder);
+          return (
+            <section class="rcluster" data-cluster={c.key}>
+              <div class="rcluster-head">
+                <h2><a href={clusterUrl(c.key)}>{c.title}</a> <small data-n={items.length}>{items.length}</small></h2>
+                <p>{c.summary.split('\n\n')[0]}</p>
+                <a class="more" href={clusterUrl(c.key)}>The debate, the verdict and the overview →</a>
+              </div>
+              <div class="rcards">{items.map((e) => <Card e={e} />)}</div>
+              <p class="empty" hidden>Nothing in this cluster matches.</p>
+            </section>
+          );
+        })}
+      </section>
+      <noscript><style>{'#view-board[hidden]{display:block!important} #view-radar,.rtabs,.search,.lbl-toggle,.filters{display:none!important}'}</style></noscript>
+    </div>
+  </div>
+  <div class="rtip" id="tip" hidden></div>
+</Base>
+
+<style>
+  .rsite { position: relative; overflow: clip; isolation: isolate; }
+  .research { position: relative; z-index: 1; }
+  .research .page-head h1 { max-width: 18ch; }
+  .legend { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr) minmax(0, .9fr); gap: 14px; margin-bottom: calc(var(--m) * 1.5); }
+  .legend section { padding: 16px 18px; min-width: 0; }
+  .legend h2, .side h3 { font: 500 11px/1.2 var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--ink-3); margin-bottom: 12px; }
+  .legend dl { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 6px 12px; font-size: 13px; line-height: 1.45; }
+  .legend dt { font: 500 12px/1.45 var(--mono); color: var(--ink); white-space: nowrap; }
+  .legend dd { margin: 0; color: var(--ink-2); }
+  .legend .n { color: var(--ink-3); }
+  .ringno { display: inline-grid; place-items: center; width: 16px; height: 16px; border-radius: 50%; border: 1px solid var(--line-strong); font-size: 10px; margin-right: 6px; color: var(--ink-2); }
+  .fcard p { margin-top: 12px; font-size: 12.5px; color: var(--ink-2); line-height: 1.5; }
+  @media (max-width: 1000px) { .legend { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } .legend .fcard { grid-column: 1 / -1; } }
+  @media (max-width: 640px) { .legend { grid-template-columns: minmax(0, 1fr); } }
+
+  .rbar { position: sticky; top: 51px; z-index: 20; display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: center; padding: 10px 0; margin-bottom: 20px; background: color-mix(in srgb, var(--ground) 84%, transparent); backdrop-filter: blur(12px) saturate(1.3); -webkit-backdrop-filter: blur(12px) saturate(1.3); border-bottom: 1px solid var(--line); }
+  @media (max-width: 640px) { .rbar { position: static; } }
+  .rtabs { display: inline-flex; gap: 2px; background: var(--sunken); border-radius: 8px; padding: 3px; }
+  .rtabs button { border: 0; background: none; padding: 6px 14px; border-radius: 6px; cursor: pointer; font-weight: 500; font-size: 14px; color: var(--ink-2); }
+  .rtabs button[aria-selected="true"] { background: var(--raised); color: var(--ink); box-shadow: 0 1px 2px rgba(0, 0, 0, .14); }
+  .search { flex: 1 1 220px; min-width: 0; position: relative; }
+  .search input { width: 100%; border: 1px solid var(--line); background: var(--raised); color: var(--ink); border-radius: 8px; padding: 8px 10px 8px 30px; font: inherit; font-size: 14px; }
+  .search svg { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); fill: none; stroke: var(--ink-3); }
+  .count { font: 500 12px var(--mono); color: var(--ink-2); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .lbl-toggle { display: inline-flex; align-items: center; gap: 6px; font: 500 12px var(--mono); color: var(--ink-2); cursor: pointer; }
+  .filters { flex-basis: 100%; }
+  .filters summary { cursor: pointer; font: 500 12px var(--mono); color: var(--ink-2); letter-spacing: .04em; list-style: none; display: inline-flex; gap: 6px; }
+  .filters summary::-webkit-details-marker { display: none; }
+  .filters summary::before { content: "+"; width: 12px; }
+  .filters[open] summary::before { content: "\2212"; }
+  .fgroups { display: flex; flex-wrap: wrap; gap: 8px 22px; margin-top: 10px; }
+  .fgroup { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+  .fgroup > span { font: 500 11px var(--mono); color: var(--ink-3); text-transform: uppercase; letter-spacing: .06em; margin-right: 4px; }
+  .chip { border: 1px solid var(--line); background: var(--raised); border-radius: 999px; padding: 3px 10px; font-size: 12.5px; cursor: pointer; color: var(--ink-2); display: inline-flex; align-items: center; gap: 6px; }
+  .chip[aria-pressed="true"] { border-color: var(--ink); color: var(--ink); background: var(--sunken); }
+  .clear { border: 0; background: none; color: var(--focus); cursor: pointer; font-size: 12.5px; text-decoration: underline; }
+
+  .stage { display: grid; grid-template-columns: minmax(0, 1fr) 250px; gap: 20px; align-items: start; }
+  @media (max-width: 1000px) { .stage { grid-template-columns: minmax(0, 1fr); } .side { grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); } }
+  .chart { padding: 8px; min-width: 0; }
+  .chart svg { display: block; width: 100%; height: auto; }
+  .side { display: grid; gap: 18px; font-size: 13px; color: var(--ink-2); min-width: 0; line-height: 1.5; }
+  .side :global(ul) { list-style: none; padding: 0; margin: 0; display: grid; gap: 4px; }
+  .side :global(li) { display: flex; gap: 8px; align-items: center; }
+  .side :global(li .n) { color: var(--ink-3); }
+  .axis-pick { display: grid; gap: 8px; }
+  .axis-pick label { display: grid; gap: 3px; font: 500 11px var(--mono); text-transform: uppercase; letter-spacing: .06em; color: var(--ink-3); }
+  .axis-pick select { font: 14px var(--sans); background: var(--raised); color: var(--ink); border: 1px solid var(--line); border-radius: 6px; padding: 6px; }
+  .swap { justify-self: start; border: 1px solid var(--line); background: var(--raised); border-radius: 6px; padding: 4px 10px; cursor: pointer; font-size: 12.5px; }
+
+  .rcluster { margin-bottom: calc(var(--m) * 2.5); }
+  .rcluster-head { display: grid; gap: 8px; margin-bottom: 16px; border-top: 1px solid var(--line); padding-top: 20px; max-width: 900px; }
+  .rcluster-head h2 { font-size: clamp(20px, 2.4vw, 26px); letter-spacing: -0.015em; line-height: 1.2; }
+  .rcluster-head h2 a { color: inherit; text-decoration: none; }
+  .rcluster-head h2 a:hover { color: var(--focus); }
+  .rcluster-head small { font: 500 12px var(--mono); color: var(--ink-3); }
+  .rcluster-head p { color: var(--ink-2); font-size: 14.5px; line-height: 1.6; max-width: 82ch; }
+  .rcluster-head .more { font: 500 12.5px var(--mono); }
+  .empty { color: var(--ink-3); font-size: 14px; }
+
+  :global(.rtip) { position: fixed; z-index: 60; max-width: 300px; padding: 10px 12px; font-size: 13px; line-height: 1.45; pointer-events: none; border-radius: 6px; background: color-mix(in srgb, var(--raised) 92%, transparent); border: 1px solid var(--line-strong); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); box-shadow: 0 10px 30px -10px rgba(0, 0, 0, .35); }
+  :global(.rtip b) { display: block; font-weight: 600; margin-bottom: 3px; }
+  :global(.rtip small) { display: block; font: 500 11px var(--mono); color: var(--ink-3); margin-top: 6px; }
+  /* svg */
+  .chart :global(svg text) { font-family: var(--sans); }
+  .chart :global(.dot) { cursor: pointer; }
+  .chart :global(.dot circle) { stroke: var(--raised); stroke-width: 1.5; transition: opacity .15s; mix-blend-mode: normal; }
+  .chart :global(.dot:hover circle), .chart :global(.dot:focus-visible circle) { stroke: var(--ink); stroke-width: 2.5; }
+  .chart :global(.dot:focus) { outline: none; }
+  .chart :global(.dot.off) { opacity: .1; pointer-events: none; }
+  .chart :global(.dot text) { font-size: 12px; fill: var(--ink); paint-order: stroke; stroke: var(--raised); stroke-width: 3.5px; stroke-linejoin: round; pointer-events: none; }
+  .chart :global(.ringlbl) { font: 500 13px var(--mono); fill: var(--ink-3); letter-spacing: .06em; text-transform: uppercase; paint-order: stroke; stroke: var(--raised); stroke-width: 4px; }
+  .chart :global(.seclbl) { font-size: 19px; font-weight: 600; fill: var(--ink); }
+  .chart :global(.secsub) { font: 500 13px var(--mono); fill: var(--ink-3); }
+  .chart :global(.grid line) { stroke: var(--line); }
+  .chart :global(.axislbl) { font: 500 12px var(--mono); fill: var(--ink-2); }
+  .chart :global(.tick) { font: 500 11px var(--mono); fill: var(--ink-3); }
+  .chart :global(.endlbl) { font-size: 12px; fill: var(--ink-3); font-style: italic; }
+  #radar :global(.dot text) { font-size: 15px; }
+</style>
+<script>
+  import { initResearch } from '../../lib/research';
+  initResearch();
+</script>

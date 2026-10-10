@@ -1,0 +1,15 @@
+---
+// One entry as a glass card that links to its dossier page.
+import { entryUrl, SURFC, type Entry } from '../../lib/landscape-meta';
+import Meta from './Meta.astro';
+interface Props { e: Entry; tag?: 'li' | 'div' }
+const { e } = Astro.props;
+const tick = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/`([^`]+)`/g, '<code>$1</code>');
+---
+<a class="rcard glass" href={entryUrl(e)} style={`--tint: ${SURFC[e.surface]}`} data-id={e.id} data-surface={e.surface} data-layer={e.layer} data-relation={e.relation} data-evidence={e.evidence}>
+  <span class="kicker"><span class="sw" style={`background:${SURFC[e.surface]}`}></span>{e.surface} · {e.layer} · {e.kind}</span>
+  <h3>{e.name}</h3>
+  <p class="one">{e.oneLiner}</p>
+  <p class="take"><b>For fictty</b> <Fragment set:html={tick(e.takeaway)} /></p>
+  <Meta relation={e.relation} threat={e.threat} evidence={e.evidence} />
+</a>

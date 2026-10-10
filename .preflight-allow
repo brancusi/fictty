@@ -1,0 +1,2 @@
+# The site's social card and PNG icons, rendered from web/src/lib/glass.ts by web/scripts/icons.mjs.
+^web/public/(og|apple-touch-icon|favicon-32)\.png$

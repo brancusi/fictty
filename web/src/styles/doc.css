@@ -1,0 +1,79 @@
+/* Design documents: the prose column, with the document's own structure made visible. */
+.doc .page-head h1 { font-size: clamp(36px, 5.4vw, 64px); }
+.doc-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: calc(var(--m) * 2); }
+@media (min-width: 1040px) { .doc-grid { grid-template-columns: 210px minmax(0, 1fr); } .doc .toc { position: sticky; top: 84px; } }
+.doc .toc { display: grid; gap: 12px; align-content: start; }
+.doc .toc ol { list-style: none; padding: 0; margin: 0; display: grid; gap: 8px; border-left: 1px solid var(--line); }
+.doc .toc a { display: block; padding-left: 12px; margin-left: -1px; border-left: 1px solid transparent; color: var(--ink-3); text-decoration: none; font-size: 13.5px; line-height: 1.4; }
+.doc .toc a:hover { color: var(--ink); border-left-color: var(--glass-violet); }
+.doc .toc .src { font: 500 11px/1.5 var(--mono); color: var(--ink-3); }
+@media (max-width: 1039px) { .doc .toc { display: none; } }
+.docbody { max-width: 78ch; }
+.docbody > h1:first-child { display: none; }
+.docbody > p.lede { font-size: clamp(18px, 1.8vw, 21px); line-height: 1.6; color: var(--ink-2); margin-top: 0; }
+
+/* the verdict, up front */
+.docbody > .verdict { --tint: var(--glass-violet); position: relative; isolation: isolate; margin: 1.6em 0 2.4em; padding: 22px 24px 24px; border-radius: 3px; border: 1px solid color-mix(in srgb, var(--glass-violet) 45%, transparent);
+  background: linear-gradient(135deg, color-mix(in srgb, var(--glass-violet) calc(14% + 6% * var(--glow)), transparent), color-mix(in srgb, var(--glass-cyan) calc(8% + 4% * var(--glow)), transparent));
+  box-shadow: 0 0 calc(60px * var(--glow)) calc(-20px * var(--glow)) var(--glass-violet); }
+.docbody > .verdict::after { content: ""; position: absolute; top: -1px; bottom: -1px; right: -1px; width: 3px; background: linear-gradient(var(--glass-cyan), var(--glass-violet), var(--glass-amber)); }
+.docbody > .verdict .vlabel { display: block; font: 500 11px/1 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--focus); margin-bottom: 12px; }
+.docbody > .verdict p { font-size: clamp(18px, 1.9vw, 22px); line-height: 1.5; color: var(--ink); }
+.docbody > .verdict strong { font-weight: 600; }
+
+/* sections and option cards */
+.docbody .dsec { margin-top: 2.6em; }
+.docbody .dsec > h2 { margin-top: 0; }
+.docbody .dsec > * + * { margin-top: 1em; }
+.docbody .dcard { position: relative; isolation: isolate; margin-top: 1.1em; padding: 20px 22px; border-radius: 3px; border: 1px solid color-mix(in srgb, var(--line-strong) 55%, transparent);
+  background: color-mix(in srgb, var(--raised) calc(58% - 12% * var(--glow)), transparent); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
+.docbody .dcard::after { content: ""; position: absolute; top: -1px; bottom: -1px; right: -1px; width: 2px; background: linear-gradient(var(--glass-cyan), var(--glass-violet), var(--glass-amber)); opacity: calc(.45 + .35 * var(--glow)); }
+.docbody .dcard > h3 { margin: 0 0 .7em; font-size: 21px; letter-spacing: -0.01em; }
+.docbody .dcard > * + * { margin-top: .75em; }
+.docbody .field { display: grid; grid-template-columns: 132px minmax(0, 1fr); gap: 4px 16px; padding-top: .7em; border-top: 1px solid color-mix(in srgb, var(--line) 80%, transparent); font-size: 16px; line-height: 1.6; }
+.docbody .field .flabel { font: 500 11px/1.9 var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--ink-3); display: inline-flex; align-items: flex-start; gap: 8px; }
+.docbody .field .flabel::before { content: ""; width: 7px; height: 14px; margin-top: 3px; border-radius: 1px; background: var(--ftint, var(--glass-smoke)); mix-blend-mode: var(--blend); flex: none; }
+.docbody .field-gain { --ftint: var(--glass-cyan); }
+.docbody .field-lose { --ftint: var(--glass-rose); }
+.docbody .field-deciding-question { --ftint: var(--glass-amber); }
+.docbody .field-verdict { --ftint: var(--glass-violet); background: linear-gradient(90deg, color-mix(in srgb, var(--glass-violet) calc(8% + 4% * var(--glow)), transparent), transparent 80%); margin-inline: -22px; padding-inline: 22px; padding-bottom: .7em; margin-bottom: -.4em; }
+.docbody .field-verdict { color: var(--ink); }
+.docbody .field-build, .docbody .field-adopt, .docbody .field-interoperate-with, .docbody .field-dont-build, .docbody .field-keep-ratatui { grid-template-columns: 1fr; }
+.docbody .field-build { --ftint: var(--glass-violet); } .docbody .field-adopt { --ftint: var(--glass-cyan); } .docbody .field-interoperate-with { --ftint: var(--glass-amber); } .docbody .field-dont-build { --ftint: var(--glass-rose); }
+@media (max-width: 600px) { .docbody .field { grid-template-columns: 1fr; } .docbody .dcard { padding: 16px; } .docbody .field-verdict { margin-inline: -16px; padding-inline: 16px; } }
+
+/* tables: the summary and "what would change the verdict" */
+.docbody .table-wrap { background: color-mix(in srgb, var(--raised) calc(60% - 14% * var(--glow)), transparent); }
+.docbody td strong { color: var(--focus); }
+.docbody ol > li::marker { font: 500 .85em var(--mono); color: var(--focus); }
+
+/* the plan, as a roadmap */
+.roadmap .docbody .dsec { position: relative; padding: 20px 22px; border-radius: 3px; border: 1px solid color-mix(in srgb, var(--line-strong) 50%, transparent); background: color-mix(in srgb, var(--raised) calc(55% - 12% * var(--glow)), transparent); }
+.roadmap .docbody .dsec > h2 { border-top: 0; padding-top: 0; font-size: clamp(20px, 2.2vw, 25px); }
+.roadmap .docbody .dsec > h2::before { display: none; }
+.roadmap .docbody .dsec.is-done { border-color: color-mix(in srgb, var(--ok) 45%, transparent); }
+.roadmap .docbody .dsec.is-next { border-color: color-mix(in srgb, var(--glass-violet) 60%, transparent); box-shadow: 0 0 calc(50px * var(--glow)) calc(-22px * var(--glow)) var(--glass-violet); }
+.roadmap .docbody .dsec.is-next::after { content: "next"; position: absolute; top: 18px; right: 18px; font: 500 10.5px/1 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: #fff; background: var(--glass-violet); padding: 5px 8px; border-radius: 999px; }
+.docbody .progress { display: flex; align-items: center; gap: 12px; font: 500 11.5px/1 var(--mono); color: var(--ink-3); }
+.docbody .pbar { flex: 0 1 220px; height: 6px; border-radius: 1px; background: color-mix(in srgb, var(--sunken) 80%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--line) 70%, transparent); overflow: hidden; }
+.docbody .pfill { display: block; height: 100%; background: linear-gradient(90deg, var(--glass-cyan), var(--glass-violet)); }
+.docbody ul.contains-task-list { list-style: none; padding-left: 0; }
+.docbody .task-list-item { position: relative; padding-left: 26px; }
+.docbody .task-list-item input { appearance: none; -webkit-appearance: none; position: absolute; left: 2px; top: .45em; width: 13px; height: 13px; margin: 0; border: 1.5px solid var(--line-strong); border-radius: 2px; }
+.docbody .task-list-item input:checked { background: var(--ok); border-color: var(--ok); box-shadow: inset 0 0 0 2px var(--ground); }
+
+/* the recommendation, set apart */
+.docbody .dsec[data-title="recommendation"] { position: relative; isolation: isolate; padding: 4px 24px 24px; border-radius: 3px; border: 1px solid color-mix(in srgb, var(--glass-violet) 40%, transparent); background: linear-gradient(160deg, color-mix(in srgb, var(--glass-violet) calc(8% + 4% * var(--glow)), transparent), transparent 60%), color-mix(in srgb, var(--raised) calc(50% - 12% * var(--glow)), transparent); }
+.docbody .dsec[data-title="recommendation"] > h2 { border-top: 0; }
+.docbody .dsec[data-title="recommendation"] > h2::before { top: 0; }
+@media (max-width: 600px) { .docbody .dsec[data-title="recommendation"] { padding: 4px 16px 18px; } }
+
+/* the pitch, as the page's verdict */
+.docbody .dsec.is-pitch { position: relative; isolation: isolate; padding: 6px 24px 24px; border-radius: 3px; border: 1px solid color-mix(in srgb, var(--glass-violet) 45%, transparent);
+  background: linear-gradient(135deg, color-mix(in srgb, var(--glass-violet) calc(14% + 6% * var(--glow)), transparent), color-mix(in srgb, var(--glass-cyan) calc(8% + 4% * var(--glow)), transparent));
+  box-shadow: 0 0 calc(60px * var(--glow)) calc(-20px * var(--glow)) var(--glass-violet); }
+.docbody .dsec.is-pitch::after { content: ""; position: absolute; top: -1px; bottom: -1px; right: -1px; width: 3px; background: linear-gradient(var(--glass-cyan), var(--glass-violet), var(--glass-amber)); }
+.docbody .dsec.is-pitch > h2 { border-top: 0; font: 500 11px/1 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--focus); padding-top: 14px; }
+.docbody .dsec.is-pitch > h2::before { display: none; }
+.docbody .dsec.is-pitch p { font-size: clamp(18px, 1.9vw, 22px); line-height: 1.5; color: var(--ink); }
+@media (max-width: 600px) { .docbody .dsec.is-pitch { padding: 4px 16px 18px; } }

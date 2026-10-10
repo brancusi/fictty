@@ -1,0 +1,251 @@
+---
+import Base from '../layouts/Base.astro';
+import Wordmark from '../components/Wordmark.astro';
+import Install from '../components/Install.astro';
+import Texture from '../components/Texture.astro';
+import Divider from '../components/Divider.astro';
+import LivePanes from '../components/LivePanes.astro';
+import { STEPS, frameHtml } from '../lib/demo';
+
+const GH = 'https://github.com/brancusi/fictty';
+const CODE_STATE = `<span class="d">$</span> fictty get --state
+{<span class="c">"focus"</span>: <span class="y">"svc"</span>,
+ <span class="c">"selected"</span>: {<span class="c">"svc"</span>: <span class="b">1</span>},
+ <span class="c">"row"</span>: {<span class="c">"name"</span>: <span class="y">"api-2"</span>,
+         <span class="c">"p95"</span>: <span class="b">948</span>}}`;
+const CODE_SCREEN = `<span class="d">╭─</span> <span class="b">Services</span> <span class="d">────────────────╮</span>
+<span class="d">│</span> api-1   112ms  <span class="g">● healthy</span>  <span class="d">│</span>
+<span class="d">│</span><span class="sel"> api-2   948ms  <span class="y">▲ slow</span>     </span><span class="d">│</span>
+<span class="d">│</span> web      64ms  <span class="g">● healthy</span>  <span class="d">│</span>
+<span class="d">╰───────────────────────────╯</span>`;
+const CODE_PUSH = `<span class="d">$</span> fictty push deploy.json
+{<span class="c">"root"</span>: {<span class="c">"type"</span>: <span class="y">"table"</span>,
+  <span class="c">"id"</span>: <span class="y">"svc"</span>, <span class="c">"bind"</span>: <span class="y">"services"</span>},
+ <span class="c">"data"</span>: {<span class="c">"services"</span>: {
+  <span class="c">"cmd"</span>: [<span class="y">"kubectl"</span>, <span class="d">…</span>],
+  <span class="c">"every"</span>: <span class="b">2</span>}}}`;
+const esc = (t: string) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;');
+// the alphabet: real component types from src/model.rs, grouped
+const BLOCKS: [string, string, string, string, boolean?][] = [
+  ['list', '▸ one\n  two\n  three', 'Scrolls and selects; draws only the rows you can see. 50,000 rows in 0.18 ms.', 'cyan'],
+  ['table', 'svc   p95  st\n───── ──── ──\napi-1 112  ●', 'Columns from templates, heat from values, signs in colour.', 'violet'],
+  ['tabs', '[one] two\n─────────', 'Switch views without a push.', 'violet'],
+  ['charts', '▁▃▅▇▅▃▂▅\n█▆ ▃█ ▅▇', 'sparkline, chart, bars, gauge, big digits and a world map.', 'cyan'],
+  ['row · col', '┌──┬────┐\n│  │    │\n└──┴────┘', 'Layout, sized in cells, percentages or shares. Flexbox, soon.', 'cyan'],
+  ['layers', '   ╭─────╮\n╰─▶│ hi  │\n   ╰─────╯', 'Callouts, rings, arrows and spotlights over any node or row.', 'violet'],
+  ['pixels', '▗▄▖ ▗▄\n▐█▌▄▐█▌', 'Cards, plots, SVG and images where the terminal speaks kitty graphics.', 'violet'],
+  ['input', '> roll back_', 'Text fields on caretline.', 'cyan', true],
+];
+---
+<Base nav="home">
+  <div class="site" id="site">
+    <Texture />
+    <div class="axis" aria-hidden="true"></div>
+    <div class="ghost" data-g="0" style="left:-6%;top:min(78vh,760px);width:28%;height:300px;--gt:var(--glass-cyan)" aria-hidden="true"></div>
+    <div class="ghost" data-g="1" style="right:-6%;top:min(78vh,760px);width:28%;height:300px;--gt:var(--glass-violet)" aria-hidden="true"></div>
+    <div class="ghost" data-g="2" style="left:4%;top:46%;width:15%;height:520px;--gt:var(--glass-violet)" aria-hidden="true"></div>
+    <div class="ghost" data-g="3" style="right:4%;top:46%;width:15%;height:520px;--gt:var(--glass-cyan)" aria-hidden="true"></div>
+
+    <div class="site-in">
+      <section class="hero" aria-labelledby="hero-h">
+        <div class="hero-art">
+          <canvas id="heroCanvas" role="img" aria-label="Twenty panes of tinted glass that assemble into the fictty wordmark, then come apart into a row of tubes and regroup as a terminal screen. Click to step through."></canvas>
+          <noscript><Wordmark class="hero-static" id="hero-ns" /></noscript>
+        </div>
+        <div class="states" role="group" aria-label="Arrange the panes">
+          <button type="button" data-state="word" aria-pressed="true">assembled</button>
+          <button type="button" data-state="row" aria-pressed="false">in a row</button>
+          <button type="button" data-state="screen" aria-pressed="false">as a screen</button>
+        </div>
+        <h1 id="hero-h">Terminal screens agents write, patch and read&nbsp;back.</h1>
+        <p class="sub">fictty is a terminal screen an agent writes as one JSON value, edits live by id, and reads back exactly, while its data streams straight from your commands, never through the model.</p>
+        <div class="cta">
+          <Install />
+          <div class="cta-links">
+            <a class="btn primary" href="/docs/">Read the guide</a>
+            <a class="btn" href={GH} rel="noopener">GitHub</a>
+          </div>
+        </div>
+      </section>
+
+
+      <Divider letter={0} />
+
+      <section class="live" aria-labelledby="live-h">
+        <div class="s-title"><h2 id="live-h">Every pane is a screen.</h2><p>Hover one, tap it or tab to it. Each opens into a live fictty component, then settles back into glass.</p></div>
+        <LivePanes />
+      </section>
+
+      <Divider letter={1} />
+
+      <section class="how" aria-labelledby="how-h">
+        <div class="s-title"><h2 id="how-h">Push a value. It's a screen. Read it back.</h2><p>Three operations over one socket. The runtime does the rest at frame rate.</p></div>
+        <div class="steps" id="steps">
+          <article class="step glass">
+            <div class="n">1 · push</div>
+            <h3>The agent writes one value</h3>
+            <p>Components, the data they bind to, keys and theme, as JSON. Small enough to write in one go.</p>
+            <pre set:html={CODE_PUSH}></pre>
+          </article>
+          <article class="step glass">
+            <div class="n">2 · screen</div>
+            <h3>The runtime makes it a screen</h3>
+            <p>Drawing, scrolling, selection, focus, mouse and live data, at over 100 fps. Keys run locally; nothing waits on the model.</p>
+            <pre set:html={CODE_SCREEN}></pre>
+          </article>
+          <article class="step glass">
+            <div class="n">3 · read back</div>
+            <h3>The agent sees what it drew</h3>
+            <p>The frame as text, or the whole state as JSON. Then it patches one node, or throws the screen away.</p>
+            <pre set:html={CODE_STATE}></pre>
+          </article>
+        </div>
+      </section>
+
+      <Divider letter={2} />
+
+      <section class="demo-sec" aria-labelledby="demo-h">
+        <div class="s-title"><h2 id="demo-h">One screen, from first push to thrown away.</h2><p>An agent watching a deploy. Every step on the right is one command; the frame on the left is what the person sees.</p></div>
+        <div class="demo">
+          <div class="term demo-term"><pre id="demoFrame" set:html={frameHtml(0)}></pre></div>
+          <div class="demo-side">
+            <ol class="log" id="demoLog">
+              {STEPS.map((s, i) => (
+                <li class={i === 0 ? '' : ''}>
+                  <button type="button" data-step={i} aria-current={i === 0 ? 'step' : undefined}>
+                    <code>{s.cmd}</code><small>{s.note}</small>
+                    {s.readback && <span class="readback" hidden set:html={esc(s.readback)}></span>}
+                  </button>
+                </li>
+              ))}
+            </ol>
+            <div class="demo-ctrl"><span id="demoState" aria-live="polite">auto</span><button type="button" id="demoPause">pause</button></div>
+          </div>
+        </div>
+      </section>
+
+
+      <Divider letter={3} />
+
+      <section class="alpha" aria-labelledby="alpha-h">
+        <div class="s-title"><h2 id="alpha-h">A small alphabet with behaviour built in.</h2><p>Blocks that scroll, select and focus on their own. Everything else is an arrangement of them, kept as data.</p></div>
+        <div class="blocks" id="blocks">
+          {BLOCKS.map(([name, glyph, note, tint, soon]) => (
+            <div class="blk glass" style={`--tint: var(--glass-${tint})`}>
+              <div class="glyph" aria-hidden="true">{glyph}</div>
+              <b>{name}</b><small>{note}</small>{soon && <span class="tag">soon</span>}
+            </div>
+          ))}
+        </div>
+      </section>
+
+
+      <Divider letter={4} />
+
+      <section class="why" aria-labelledby="why-h">
+        <a class="why-card glass" href="/blog/why-the-terminal/">
+          <span class="eyebrow">From the blog · research</span>
+          <h2 id="why-h">Why the terminal?</h2>
+          <p>Terminal UIs are having their biggest year in decades. We looked at why, what the terminal really costs, and who else builds screens for agents.</p>
+          <span class="more">Read the post →</span>
+        </a>
+      </section>
+
+      <section class="close" aria-labelledby="close-h">
+        <Wordmark class="close-wm" id="close-wm" />
+        <h2 id="close-h" class="sr-only">Get fictty</h2>
+        <p class="fictile"><i>fictile</i>, adj.: capable of being moulded. Plus <i>tty</i>, the terminal.</p>
+        <Install />
+      </section>
+    </div>
+  </div>
+</Base>
+
+<style>
+  .site { position: relative; overflow: clip; padding-inline: var(--gutter); padding-block: calc(var(--m) * 1) calc(var(--m) * 3); isolation: isolate; }
+  .site-in { max-width: var(--wide); margin: 0 auto; position: relative; z-index: 1; display: grid; gap: calc(var(--m) * 5); }
+  .axis { position: absolute; left: 50%; top: 0; bottom: 0; width: 1px; background: linear-gradient(var(--line), transparent 18%, transparent 82%, var(--line)); z-index: 0; }
+  .ghost { position: absolute; z-index: 0; pointer-events: none; will-change: transform; backdrop-filter: blur(2.5px); -webkit-backdrop-filter: blur(2.5px); background: linear-gradient(180deg, transparent, color-mix(in srgb, var(--gt) calc(9% + 4% * var(--glow)), transparent) 50%, transparent); }
+  .ghost::after { content: ""; position: absolute; top: 0; bottom: 0; width: 1px; background: linear-gradient(180deg, transparent, color-mix(in srgb, var(--gt) calc(35% + 30% * var(--glow)), transparent) 50%, transparent); }
+  .ghost[data-g="0"]::after, .ghost[data-g="2"]::after { right: 0; }
+  .ghost[data-g="1"]::after, .ghost[data-g="3"]::after { left: 0; }
+  @media (max-width: 760px) { .ghost { display: none; } }
+
+  .hero { display: grid; gap: calc(var(--m) * 1.1); justify-items: center; text-align: center; padding-top: calc(var(--m) * 0.5); }
+  .hero-art { width: 100%; }
+  .hero-art { position: relative; aspect-ratio: 40 / 15; }
+  .hero-art canvas { position: absolute; left: -7.5%; top: -20%; width: 115%; height: 140%; cursor: pointer; }
+  .hero-art :global(.hero-static) { width: 72%; margin: 0 auto; }
+  .hero h1 { font-size: clamp(32px, 5.4vw, 60px); line-height: 1.04; letter-spacing: -0.028em; max-width: 17ch; font-weight: 500; }
+  .sub { font-size: clamp(16px, 1.6vw, 19px); color: var(--ink-2); max-width: 58ch; }
+  .states { display: inline-flex; gap: 2px; border: 1px solid var(--line); border-radius: 999px; padding: 3px; background: color-mix(in srgb, var(--raised) 70%, transparent); margin-top: calc(var(--m) * -0.5); }
+  .states button { border: 0; background: none; border-radius: 999px; padding: 6px 12px; font: 500 12px/1 var(--mono); color: var(--ink-3); cursor: pointer; transition: color .25s, background-color .25s; }
+  .states button:hover { color: var(--ink-2); }
+  .states button[aria-pressed="true"] { color: var(--ink); background: var(--sunken); }
+  .cta { display: grid; gap: 16px; justify-items: center; width: 100%; margin-top: 4px; }
+  .cta-links { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
+
+  .s-title { display: grid; gap: 10px; justify-items: center; text-align: center; }
+  .s-title h2 { font-size: clamp(25px, 3.2vw, 38px); letter-spacing: -0.02em; line-height: 1.1; }
+  .s-title p { color: var(--ink-2); max-width: 56ch; }
+  .how, .demo-sec, .alpha, .live { display: grid; gap: calc(var(--m) * 2); }
+
+  .steps { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--m); position: relative; }
+  .step { display: grid; align-content: start; gap: 14px; padding: 22px; min-width: 0; will-change: transform; }
+  .step:nth-child(1)::before { background: linear-gradient(160deg, var(--glass-cyan), transparent 70%); }
+  .step:nth-child(2)::before { background: linear-gradient(180deg, var(--glass-violet), transparent 75%); }
+  .step:nth-child(3)::before { background: linear-gradient(200deg, var(--glass-amber), transparent 70%); }
+  .step:nth-child(2) { z-index: 2; }
+  .step .n { font: 500 12px/1 var(--mono); color: var(--ink-3); letter-spacing: 0.06em; }
+  .step h3 { font-size: 20px; letter-spacing: -0.01em; }
+  .step p { color: var(--ink-2); font-size: 15px; }
+  .step pre { margin: 0; font: 400 12px/1.55 var(--term-font); background: var(--term-bg); color: var(--term-fg); border: 1px solid var(--line); border-radius: 3px; padding: 12px; overflow-x: auto; white-space: pre; position: relative; }
+  .step pre :global(.d) { color: var(--ansi-8); } .step pre :global(.b) { color: var(--ansi-5); } .step pre :global(.c) { color: var(--ansi-6); }
+  .step pre :global(.y) { color: var(--ansi-3); } .step pre :global(.g) { color: var(--ansi-2); } .step pre :global(.sel) { background: var(--term-sel); }
+  @media (max-width: 860px) { .steps { grid-template-columns: minmax(0, 1fr); } }
+
+  .demo { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: var(--m); align-items: start; }
+  @media (max-width: 1000px) { .demo { grid-template-columns: minmax(0, 1fr); } }
+  .demo-term pre { font-size: clamp(9.5px, calc((100vw - 64px) / 47.5), 13px); min-height: calc(1.36em * 12 + 36px); }
+  .log { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+  .log button { width: 100%; text-align: left; border: 1px solid transparent; background: none; border-radius: 4px; padding: 9px 12px; cursor: pointer; display: grid; gap: 3px; color: var(--ink-3); transition: color .3s, border-color .3s, background-color .3s; }
+  .log button code { font-size: 13px; color: inherit; }
+  .log button small { font-size: 13px; line-height: 1.45; }
+  .log button[aria-current="step"] { border-color: var(--line); background: var(--raised); color: var(--ink); }
+  .log button[aria-current="step"] small { color: var(--ink-2); }
+  .log li.past button { color: var(--ink-2); }
+  .readback { font: 400 11.5px/1.5 var(--term-font); white-space: pre; overflow-x: auto; color: var(--ink-2); background: var(--sunken); border-radius: 3px; padding: 8px 10px; margin-top: 4px; display: block; }
+  .demo-ctrl { display: flex; justify-content: space-between; align-items: center; gap: 10px; font: 500 12px/1 var(--mono); color: var(--ink-3); padding: 8px 4px 0; }
+  .demo-ctrl button { border: 1px solid var(--line); background: var(--raised); border-radius: 6px; padding: 6px 10px; cursor: pointer; font: inherit; color: var(--ink-2); }
+
+  .blocks { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+  @media (max-width: 760px) { .blocks { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  .blk { padding: 18px; display: grid; gap: 10px; align-content: start; min-height: 168px; min-width: 0; }
+  .blk::before { background: linear-gradient(180deg, var(--tint), transparent 65%); }
+  .blk .glyph { font: 400 13px/1.25 var(--term-font); white-space: pre; color: var(--ink-2); overflow: hidden; }
+  .blk b { font-weight: 500; font-family: var(--mono); font-size: 14px; }
+  .blk small { color: var(--ink-2); font-size: 13px; line-height: 1.45; }
+  .blk .tag { font: 500 10px/1 var(--mono); color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.06em; }
+  @media (max-width: 420px) { .blk { padding: 14px; } .blk .glyph { font-size: 11px; } }
+
+  .why { display: grid; justify-items: center; }
+  .why-card { display: grid; gap: 10px; max-width: 640px; text-align: center; justify-items: center; padding: calc(var(--m) * 1.25) var(--m); color: inherit; text-decoration: none; width: 100%; --tint: var(--glass-violet); }
+  .why-card::before { background: linear-gradient(180deg, var(--glass-violet), transparent 55%, color-mix(in srgb, var(--glass-cyan) 60%, transparent)); }
+  .why-card h2 { font-size: clamp(24px, 3vw, 32px); letter-spacing: -0.02em; }
+  .why-card p { color: var(--ink-2); max-width: 54ch; }
+  .why-card .more { font: 500 13px/1 var(--mono); color: var(--focus); }
+  .why-card:hover h2 { color: var(--focus); }
+
+  .close { display: grid; gap: 22px; justify-items: center; text-align: center; padding-bottom: var(--m); }
+  .close :global(.close-wm) { width: min(440px, 88%); height: auto; }
+  .fictile { color: var(--ink-2); font-size: 17px; }
+</style>
+
+<script>
+  import { initHero } from '../lib/hero';
+  import { initLanding } from '../lib/landing';
+  import { initLivePanes } from '../lib/livepanes';
+  initHero(document.getElementById('heroCanvas') as HTMLCanvasElement, [...document.querySelectorAll<HTMLButtonElement>('.states button')]);
+  initLanding();
+  initLivePanes(document.getElementById('livePanes')!);
+</script>

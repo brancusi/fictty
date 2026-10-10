@@ -2,3 +2,9 @@
 .DS_Store
 *.sock
 examples/pixels/mark*.png
+
+# the site (web/): dependencies and build output
+web/node_modules
+web/dist
+web/.astro
+web/.wrangler

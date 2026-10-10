@@ -1,0 +1,52 @@
+---
+// A cluster: its summary and the debate, every entry as a glass card, then the overview dossier.
+import { getCollection, render } from 'astro:content';
+import Base from '../../../layouts/Base.astro';
+import Card from '../../../components/research/Card.astro';
+import { CLUSTERS, ENTRIES } from '../../../lib/landscape';
+import { byBoardOrder, clusterUrl, SHORT } from '../../../lib/landscape-meta';
+import '../../../styles/prose.css';
+import '../../../styles/research.css';
+
+export async function getStaticPaths() {
+  const docs = await getCollection('dossiers');
+  return CLUSTERS.map((c, i) => ({ params: { cluster: c.key }, props: { c, i, doc: docs.find((d) => d.id === `${c.key}--_overview`) } }));
+}
+const { c, i, doc } = Astro.props;
+const items = ENTRIES.filter((e) => e.cluster === c.key).sort(byBoardOrder);
+const [summary, debate] = c.summary.split('\n\n');
+const rendered = doc ? await render(doc) : null;
+const prev = CLUSTERS[i - 1], next = CLUSTERS[i + 1];
+---
+<Base title={`${SHORT[c.key]} · Research`} description={summary.slice(0, 200)} nav="research">
+  <div class="page cluster-page">
+    <nav class="crumbs" aria-label="Breadcrumb"><a href="/research/">Research</a><span aria-hidden="true">/</span><span>cluster {i + 1} of {CLUSTERS.length}</span></nav>
+    <header class="page-head">
+      <span class="eyebrow">{SHORT[c.key]} · {items.length} entries</span>
+      <h1>{c.title}</h1>
+      <p class="lede">{summary}</p>
+    </header>
+    {debate && <aside class="debate glass"><b>The debate, and the verdict for fictty</b><p>{debate}</p></aside>}
+    <section aria-labelledby="entries-h"><h2 id="entries-h" class="eyebrow sub">The entries</h2><div class="rcards">{items.map((e) => <Card e={e} />)}</div></section>
+    {rendered && (
+      <section class="overview">
+        <h2 class="eyebrow sub">The overview</h2>
+        <div class="prose"><rendered.Content /></div>
+      </section>
+    )}
+    <nav class="pn" aria-label="Other clusters">
+      {prev && <a class="prev glass" href={clusterUrl(prev.key)} style="--tint: var(--glass-cyan)"><small>← previous cluster</small>{SHORT[prev.key]}</a>}
+      {next ? <a class="next glass" href={clusterUrl(next.key)} style="--tint: var(--glass-violet)"><small>next cluster →</small>{SHORT[next.key]}</a>
+        : <a class="next glass" href="/research/" style="--tint: var(--glass-violet)"><small>the whole landscape →</small>Research</a>}
+    </nav>
+  </div>
+</Base>
+<style>
+  .page-head .lede { max-width: 72ch; font-size: clamp(16px, 1.5vw, 18px); }
+  .debate { --tint: var(--glass-amber); padding: 20px 22px; margin-bottom: calc(var(--m) * 2); max-width: 900px; }
+  .debate b { display: block; font: 500 11px/1 var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--ink-3); margin-bottom: 10px; }
+  .debate p { color: var(--ink-2); line-height: 1.65; }
+  .overview { margin-top: calc(var(--m) * 3); display: grid; gap: 14px; }
+  .overview .prose > :global(h1:first-child) { display: none; }
+  .sub { margin-bottom: 14px; font-weight: 500; }
+</style>

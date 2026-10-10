@@ -1,0 +1,98 @@
+---
+// A mirrored row of single-colour glass panes, heights in a symmetric progression (the hero's
+// "row", at rest). Hover, focus or tap a pane and it opens out into a live fictty screen; leave and
+// it settles back into plain glass. Behaviour is in src/lib/livepanes.ts; geometry is all CSS
+// (clip-path and transforms driven by four custom properties), so the motion stays on the compositor.
+const PANES = [
+  { kind: 'sparkline', tint: 'cyan', h: 0.52, label: 'a price ticking eight times a second' },
+  { kind: 'table', tint: 'violet', h: 0.76, label: 'a services table whose rows are patched, inserted and removed by id' },
+  { kind: 'big', tint: 'amber', h: 1, label: 'a big-digit number an agent patches by id, then reads back with fictty screen' },
+  { kind: 'gauge', tint: 'rose', h: 1, label: 'a rollout filling to done, with cpu and memory meters' },
+  { kind: 'list', tint: 'violet', h: 0.76, label: 'a log tail following new events' },
+  { kind: 'bars', tint: 'cyan', h: 0.52, label: 'returns as bars, negatives hanging below zero' },
+] as const;
+---
+<div class="lprow" id="livePanes">
+  {PANES.map((p, i) => (
+    <div class="lpcell">
+      <div class="lp" data-kind={p.kind} style={`--tint: var(--glass-${p.tint}); --HF: ${p.h}; --i: ${i}`}>
+        <div class="lp-glow"></div>
+        <div class="lp-glass" tabindex="0" role="img" aria-label={`Glass pane: ${p.kind}. Hover, focus or tap to open it into a live fictty ${p.kind}: ${p.label}.`}>
+          <span class="lp-cur"></span>
+        </div>
+        <canvas class="lp-ui" aria-hidden="true"></canvas>
+        <span class="lp-e lp-et"></span><span class="lp-e lp-eb"></span><span class="lp-e lp-el"></span><span class="lp-e lp-er"></span>
+      </div>
+      <span class="lp-name" aria-hidden="true">{p.kind}</span>
+    </div>
+  ))}
+</div>
+
+<style is:global>
+  .lprow {
+    --SW: 372; --SH: 236; --STW: 46; --HMAX: 236;
+    position: relative; z-index: 3; display: grid; grid-template-columns: repeat(6, minmax(0, 1fr));
+    max-width: 860px; width: 100%; margin: 0 auto; height: calc(var(--HMAX) * 1px + 40px);
+  }
+  @media (max-width: 760px) { .lprow { --SW: 330; --SH: 214; --STW: 30; --HMAX: 200; } }
+  @media (max-width: 360px) { .lprow { --SW: 296; --SH: 200; --STW: 26; --HMAX: 180; } }
+  .lpcell { position: relative; }
+  .lp {
+    --SHIFT: 0; --H: calc(var(--HMAX) * var(--HF));
+    --L: calc(var(--SW) / 2 - var(--SHIFT) - var(--STW) / 2);
+    --R: calc(var(--SW) / 2 + var(--SHIFT) - var(--STW) / 2);
+    --T: calc((var(--SH) - var(--H)) / 2); --B: calc((var(--SH) - var(--H)) / 2);
+    --ease: var(--spring, cubic-bezier(.3, 1.3, .5, 1)); --dur: .72s;
+    position: absolute; width: calc(var(--SW) * 1px); height: calc(var(--SH) * 1px);
+    left: calc(50% - var(--SW) * 0.5px + var(--SHIFT) * 1px); top: calc((var(--HMAX) - var(--SH)) * 0.5px);
+    pointer-events: none;
+  }
+  .lp.open { --L: 0; --R: 0; --T: 0; --B: 0; z-index: 10; }
+  .lp-glass, .lp-ui {
+    position: absolute; inset: 0; border-radius: 3px;
+    clip-path: inset(calc(var(--T) * 1px) calc(var(--R) * 1px) calc(var(--B) * 1px) calc(var(--L) * 1px) round 2px);
+    transition: clip-path var(--dur) var(--ease);
+  }
+  .lp-glass {
+    pointer-events: auto; cursor: pointer; outline: none;
+    background: linear-gradient(170deg, color-mix(in srgb, var(--tint) calc(46% + 8% * var(--glow)), transparent), color-mix(in srgb, var(--tint) calc(24% + 6% * var(--glow)), transparent));
+    backdrop-filter: blur(5px) saturate(1.6); -webkit-backdrop-filter: blur(5px) saturate(1.6);
+    transition: clip-path var(--dur) var(--ease), background .45s ease;
+  }
+  .lp.open .lp-glass {
+    background: linear-gradient(170deg, color-mix(in srgb, var(--tint) 16%, color-mix(in srgb, var(--term-bg) 80%, transparent)), color-mix(in srgb, var(--term-bg) 84%, transparent));
+    backdrop-filter: blur(14px) saturate(1.3); -webkit-backdrop-filter: blur(14px) saturate(1.3);
+  }
+  /* a slow glint now and then: the pane is alive */
+  .lp-glass::after {
+    content: ""; position: absolute; inset: -20% -60%; pointer-events: none;
+    background: linear-gradient(105deg, transparent 42%, rgba(255, 255, 255, calc(0.22 + 0.1 * var(--glow))) 50%, transparent 58%);
+    transform: translateX(-60%); opacity: 0;
+  }
+  .lprow.live .lp:not(.open) .lp-glass::after { animation: lp-glint 7.5s calc(var(--i) * 0.42s + 1.2s) infinite cubic-bezier(.4, 0, .2, 1); }
+  @keyframes lp-glint { 0%, 70% { transform: translateX(-60%); opacity: 0; } 72% { opacity: 1; } 92% { transform: translateX(60%); opacity: 1; } 94%, 100% { transform: translateX(60%); opacity: 0; } }
+  /* a block cursor at the foot of each pane, blinking: something here answers */
+  .lp-cur { position: absolute; width: 7px; height: 13px; left: calc(var(--SW) * 0.5px - 3.5px - var(--SHIFT) * 1px); top: calc((var(--SH) + var(--H)) * 0.5px - 22px); background: color-mix(in srgb, var(--ink) 75%, transparent); transition: opacity .2s; }
+  .lprow.live .lp:not(.open) .lp-cur { animation: lp-blink 1.1s steps(1) infinite; }
+  .lp.open .lp-cur { opacity: 0; }
+  @keyframes lp-blink { 50% { opacity: 0; } }
+  .lp-ui { pointer-events: none; width: 100%; height: 100%; opacity: 0; transition: clip-path var(--dur) var(--ease), opacity .25s ease; }
+  .lp.open .lp-ui { opacity: 1; transition: clip-path var(--dur) var(--ease), opacity .35s ease .16s; }
+  /* the rim, as four edges riding the same geometry (transforms only) */
+  .lp-e { position: absolute; left: 0; top: 0; transform-origin: 0 0; pointer-events: none; transition: transform var(--dur) var(--ease); background: color-mix(in srgb, var(--tint) 75%, #fff); opacity: calc(0.45 + 0.4 * var(--glow)); }
+  .lp-et, .lp-eb { width: calc(var(--SW) * 1px); height: 1px; }
+  .lp-el, .lp-er { height: calc(var(--SH) * 1px); width: 1px; }
+  .lp-et { transform: translate(calc(var(--L) * 1px), calc(var(--T) * 1px)) scaleX(calc((var(--SW) - var(--L) - var(--R)) / var(--SW))); }
+  .lp-eb { transform: translate(calc(var(--L) * 1px), calc((var(--SH) - var(--B) - 1) * 1px)) scaleX(calc((var(--SW) - var(--L) - var(--R)) / var(--SW))); opacity: calc(0.2 + 0.3 * var(--glow)); }
+  .lp-el { transform: translate(calc(var(--L) * 1px), calc(var(--T) * 1px)) scaleY(calc((var(--SH) - var(--T) - var(--B)) / var(--SH))); }
+  /* Bell's coat on the long edge */
+  .lp-er { width: 2px; background: linear-gradient(var(--glass-cyan), var(--glass-violet), var(--glass-amber)); opacity: calc(0.6 + 0.3 * var(--glow)); transform: translate(calc((var(--SW) - var(--R) - 2) * 1px), calc(var(--T) * 1px)) scaleY(calc((var(--SH) - var(--T) - var(--B)) / var(--SH))); }
+  /* the night wash: the pane's light on the ground around it */
+  .lp-glow { position: absolute; left: 0; top: 0; width: calc(var(--SW) * 1px); height: calc(var(--SH) * 1px); transform-origin: 0 0; pointer-events: none; background: var(--tint); filter: blur(22px); opacity: calc(var(--glow) * 0.34); transition: transform var(--dur) var(--ease), opacity .5s;
+    transform: translate(calc(var(--L) * 1px), calc(var(--T) * 1px)) scale(calc((var(--SW) - var(--L) - var(--R)) / var(--SW)), calc((var(--SH) - var(--T) - var(--B)) / var(--SH))); }
+  .lp.open .lp-glow { opacity: calc(var(--glow) * 0.22); }
+  .lp-glass:focus-visible ~ .lp-e { opacity: 1; background: var(--focus); }
+  .lp-name { position: absolute; left: 0; right: 0; bottom: 0; text-align: center; font: 500 11px/1 var(--mono); color: var(--ink-3); letter-spacing: 0.04em; transition: color .3s; }
+  .lpcell:hover .lp-name, .lpcell:focus-within .lp-name { color: var(--ink); }
+  @media (max-width: 520px) { .lp-name { font-size: 9.5px; letter-spacing: 0; } }
+</style>

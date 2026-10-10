@@ -1,0 +1,61 @@
+---
+// One dossier: the entry's scores and takeaway from the landscape data, then the dossier itself.
+import { getCollection, render } from 'astro:content';
+import Base from '../../../layouts/Base.astro';
+import Bars from '../../../components/research/Bars.astro';
+import Meta from '../../../components/research/Meta.astro';
+import { CLUSTERS, ENTRIES } from '../../../lib/landscape';
+import { byBoardOrder, clusterUrl, entryUrl, nearest, SHORT, shortName, SURFC, type Entry } from '../../../lib/landscape-meta';
+import '../../../styles/prose.css';
+import '../../../styles/research.css';
+
+export async function getStaticPaths() {
+  const docs = await getCollection('dossiers');
+  return ENTRIES.map((e) => ({ params: { cluster: e.cluster, slug: e.slug }, props: { e, doc: docs.find((d) => d.id === e.id)! } }));
+}
+const { e, doc } = Astro.props as { e: Entry; doc: Awaited<ReturnType<typeof getCollection<'dossiers'>>>[number] };
+const { Content } = await render(doc);
+const cluster = CLUSTERS.find((c) => c.key === e.cluster)!;
+const siblings = ENTRIES.filter((o) => o.cluster === e.cluster).sort(byBoardOrder);
+const i = siblings.findIndex((o) => o.id === e.id), prev = siblings[i - 1], next = siblings[i + 1];
+const near = nearest(ENTRIES, e, 4);
+const tick = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/`([^`]+)`/g, '<code>$1</code>');
+const host = (u: string) => u.replace(/^https?:\/\//, '').replace(/\/$/, '');
+---
+<Base title={`${e.name} · Research`} description={e.oneLiner} nav="research">
+  <article class="page dossier">
+    <nav class="crumbs" aria-label="Breadcrumb"><a href="/research/">Research</a><span aria-hidden="true">/</span><a href={clusterUrl(e.cluster)}>{SHORT[e.cluster]}</a></nav>
+    <header class="d-head glass" style={`--tint: ${SURFC[e.surface]}`}>
+      <span class="kicker"><span class="sw" style={`background:${SURFC[e.surface]}`}></span>{e.surface} · {e.layer} · {e.kind}</span>
+      <h1>{e.name}</h1>
+      <p class="one">{e.oneLiner}</p>
+      <div class="row">
+        <Meta relation={e.relation} threat={e.threat} evidence={e.evidence} />
+        <span class="by">by <b>{e.maker}</b></span>
+        <a class="visit" href={e.url} rel="noopener">{host(e.url)} ↗</a>
+      </div>
+    </header>
+    <div class="d-grid">
+      <div>
+        <aside class="take-box glass" aria-label="What fictty should take"><b>What fictty should take</b><Fragment set:html={tick(e.takeaway)} /></aside>
+        <div class="prose"><Content /></div>
+      </div>
+      <aside class="d-side">
+        <section class="glass" style="--tint: var(--glass-violet)">
+          <h2>Scores</h2>
+          <Bars e={e} />
+          <div class="bars-key"><span><i></i>{shortName(e.name)}</span><span><u></u>fictty</span></div>
+        </section>
+        <section class="glass" style="--tint: var(--glass-cyan)">
+          <h2>Closest on the shared scores</h2>
+          <ul>{near.map((o) => <li><a href={entryUrl(o)}>{o.name}<small>{SHORT[o.cluster]} · {o.relation}</small></a></li>)}</ul>
+        </section>
+      </aside>
+    </div>
+    <nav class="pn" aria-label={`More in ${cluster.title}`}>
+      {prev && <a class="prev glass" href={entryUrl(prev)} style="--tint: var(--glass-cyan)"><small>← previous in {SHORT[e.cluster]}</small>{prev.name}</a>}
+      {next && <a class="next glass" href={entryUrl(next)} style="--tint: var(--glass-violet)"><small>next in {SHORT[e.cluster]} →</small>{next.name}</a>}
+      {!next && <a class="next glass" href={clusterUrl(e.cluster)} style="--tint: var(--glass-violet)"><small>back to the cluster →</small>{SHORT[e.cluster]}</a>}
+    </nav>
+  </article>
+</Base>

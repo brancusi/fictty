@@ -1,0 +1,41 @@
+---
+// The wordmark (seed 2611) as static SVG, generated at build time from the same generator the
+// hero animates. Day: panes multiply. Night: they add, with a rim of light and a wash on the ground.
+import { CHOSEN, glassWord, pose } from '../lib/glass';
+interface Props { class?: string; label?: string; tight?: boolean; id?: string; glow?: boolean }
+const { class: cls = 'wordmark', label = 'fictty', tight = false, id = 'wm', glow = true } = Astro.props;
+const panes = pose(glassWord(CHOSEN), 9, 0);
+const [px, py] = tight ? [0.35, 0.45] : [1, 1];
+const vb = `${-px} ${-py} ${28 + 2 * px} ${9 + 2 * py}`;
+const n = (v: number) => +v.toFixed(3);
+---
+<svg class={cls} viewBox={vb} role="img" aria-label={label} focusable="false" style="overflow: visible">
+  <defs>
+    <linearGradient id={`${id}-v`} x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" style="stop-color: var(--glass-cyan)" /><stop offset=".5" style="stop-color: var(--glass-violet)" /><stop offset="1" style="stop-color: var(--glass-amber)" />
+    </linearGradient>
+    <linearGradient id={`${id}-h`} x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" style="stop-color: var(--glass-cyan)" /><stop offset=".5" style="stop-color: var(--glass-violet)" /><stop offset="1" style="stop-color: var(--glass-amber)" />
+    </linearGradient>
+    {glow && <filter id={`${id}-glow`} filterUnits="userSpaceOnUse" x="-4" y="-4" width="36" height="17"><feGaussianBlur stdDeviation="0.75" /></filter>}
+  </defs>
+  {glow && (
+    <g filter={`url(#${id}-glow)`} style="opacity: calc(var(--glow) * .85); mix-blend-mode: screen">
+      {panes.map((p) => <rect x={n(p.x)} y={n(p.y)} width={n(p.w)} height={n(p.h)} style={`fill: var(--glass-${p.tint})`} />)}
+    </g>
+  )}
+  {panes.map((p) => (
+    <rect x={n(p.x)} y={n(p.y)} width={n(p.w)} height={n(p.h)} style={`fill: var(--glass-${p.tint}); fill-opacity: ${n(p.alpha * 0.92)}; mix-blend-mode: var(--blend)`} />
+  ))}
+  <g style="opacity: calc(var(--glow) * .9); mix-blend-mode: screen" fill="none" stroke-width="0.05">
+    {panes.map((p) => <rect x={n(p.x + 0.025)} y={n(p.y + 0.025)} width={n(p.w - 0.05)} height={n(p.h - 0.05)} style={`stroke: var(--glass-${p.tint})`} />)}
+  </g>
+  <g style="opacity: calc((1 - var(--glow)) * .5)" fill="#fff">
+    {panes.map((p) => <path d={`M${n(p.x)} ${n(p.y)}h${n(p.w)}v0.03h${n(-p.w + 0.03)}v${n(p.h - 0.03)}h-0.03z`} />)}
+  </g>
+  <g style="opacity: .62; mix-blend-mode: var(--blend)">
+    {panes.map((p) => p.h > p.w
+      ? <rect x={n(p.x + p.w - 0.055)} y={n(p.y)} width="0.055" height={n(p.h)} fill={`url(#${id}-v)`} />
+      : <rect x={n(p.x)} y={n(p.y + p.h - 0.055)} width={n(p.w)} height="0.055" fill={`url(#${id}-h)`} />)}
+  </g>
+</svg>

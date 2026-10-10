@@ -1,0 +1,21 @@
+{
+  "name": "fictty-web",
+  "private": true,
+  "type": "module",
+  "version": "0.0.1",
+  "scripts": {
+    "dev": "astro dev",
+    "build": "astro build",
+    "preview": "astro preview",
+    "icons": "node scripts/icons.mjs",
+    "scan": "bash scripts/scan.sh",
+    "deploy": "npm run build && npm run scan && npm run links && npx wrangler deploy --config ./wrangler.jsonc",
+    "links": "node scripts/links.mjs"
+  },
+  "dependencies": {
+    "@astrojs/markdown-remark": "^7.3.2",
+    "@fontsource-variable/spline-sans": "^5.3.0",
+    "@fontsource-variable/spline-sans-mono": "^5.3.0",
+    "astro": "^7.3.8"
+  }
+}

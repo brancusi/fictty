@@ -1,0 +1,60 @@
+---
+import Base from '../layouts/Base.astro';
+---
+<Base title="Not found" description="There's no page here.">
+  <div class="nf">
+    <div class="art"><canvas id="nf" role="img" aria-label="Panes of glass scattered across the page, sliding back together into the number 404. Click to scatter them again."></canvas></div>
+    <h1>Nothing on this screen.</h1>
+    <p>The page you asked for isn't here. It may have been thrown away, like most screens.</p>
+    <div class="links"><a class="btn primary" href="/">Home</a><a class="btn" href="/docs/">Docs</a><a class="btn" href="/blog/">Blog</a></div>
+  </div>
+</Base>
+<style>
+  .nf { max-width: var(--wide); margin: 0 auto; padding: calc(var(--m) * 1.5) var(--gutter) calc(var(--m) * 3); display: grid; gap: 18px; justify-items: center; text-align: center; }
+  .art { position: relative; width: 100%; aspect-ratio: 30 / 13; }
+  .art canvas { position: absolute; left: -10%; top: -23.08%; width: 120%; height: 146.15%; cursor: pointer; }
+  .nf { overflow: clip; }
+  .nf h1 { font-size: clamp(28px, 4vw, 44px); letter-spacing: -0.02em; line-height: 1.1; }
+  .nf p { color: var(--ink-2); max-width: 46ch; }
+  .links { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; margin-top: 6px; }
+</style>
+<script>
+  import { clamp01, drawPanes, fit, glassWord, pose, readPalette, rng, spring, type Pane } from '../lib/glass';
+  import { liveWhen, onTheme, reducedMotion } from '../lib/live';
+  const cv = document.getElementById('nf') as HTMLCanvasElement;
+  const C = 30, Rw = 13, OX = 8, OY = 3, B = 3; // B: modules of bleed for the night wash
+  const home = pose(glassWord(404, '404'), 9, 0).map((p) => ({ ...p, x: p.x + OX, y: p.y + OY }));
+  let pal = readPalette(), from: Pane[] = home, t0 = 0, raf = 0, live = true, seed = 7;
+  const reduced = reducedMotion();
+  // scatter: every pane somewhere else on the grid, snapped to quarter modules, mirrored about the axis
+  function scatter(): Pane[] {
+    const R = rng(seed++);
+    return home.map((p) => {
+      const side = p.x + p.w / 2 < C / 2 ? -1 : 1;
+      const x = Math.round((C / 2 + side * (2 + R() * (C / 2 - 4)) - p.w / 2) * 4) / 4;
+      const y = Math.round((0.5 + R() * (Rw - p.h - 1)) * 4) / 4;
+      return { ...p, x, y, alpha: p.alpha * 0.7 };
+    });
+  }
+  function draw(now: number) {
+    raf = 0;
+    const s = fit(cv, C + 2 * B, Rw + 2 * B), ctx = cv.getContext('2d')!, t = (now - t0) / 1000;
+    let busy = false;
+    const panes = home.map((b, i) => {
+      const a = from[i], d = 0.25 + (Math.abs(b.x + b.w / 2 - C / 2) / (C / 2)) * 0.45 + (i % 3) * 0.04; // radiate from the axis
+      const ux = clamp01((t - d) / 1.1), uy = clamp01((t - d - 0.12) / 1.1);
+      if (uy < 1) busy = true;
+      const ex = spring(ux), ey = spring(uy);
+      return { ...b, x: a.x + (b.x - a.x) * ex, y: a.y + (b.y - a.y) * ey, alpha: a.alpha + (b.alpha - a.alpha) * ex };
+    });
+    ctx.clearRect(0, 0, cv.width, cv.height);
+    drawPanes(ctx, panes, { s, pal, ox: B * s, oy: B * s });
+    if (busy && live) raf = requestAnimationFrame(draw);
+  }
+  function throwIn() { if (reduced) { from = home; t0 = -1e9; } else { from = scatter(); t0 = performance.now() + 350; } if (!raf) raf = requestAnimationFrame(draw); }
+  cv.addEventListener('click', throwIn);
+  onTheme(() => { pal = readPalette(); requestAnimationFrame(draw); });
+  new ResizeObserver(() => { if (!raf) raf = requestAnimationFrame(draw); }).observe(cv);
+  liveWhen(cv, (l) => { live = l; if (l && !raf) raf = requestAnimationFrame(draw); });
+  throwIn();
+</script>

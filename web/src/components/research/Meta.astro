@@ -1,0 +1,10 @@
+---
+// The relation pill, the threat meter and the evidence grade, as one line.
+interface Props { relation: string; threat: number; evidence: string }
+const { relation, threat, evidence } = Astro.props;
+---
+<span class="rmeta">
+  <span class={`pill rel rel-${relation}`}>{relation}</span>
+  <span class="threat" role="img" aria-label={`threat ${threat} of 5`} title={`threat ${threat} of 5`}>{[1, 2, 3, 4, 5].map((i) => <i class={threat >= i ? 'on' : threat >= i - 0.5 ? 'half' : ''}></i>)}</span>
+  <span class="ev">evidence: {evidence}</span>
+</span>

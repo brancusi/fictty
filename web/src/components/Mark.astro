@@ -1,0 +1,19 @@
+---
+// The mark: a block cursor with a second pane laid over it. Vector, themed by the CSS tokens.
+import { CURSOR } from '../lib/glass';
+interface Props { class?: string; label?: string }
+const { class: cls = 'mark', label } = Astro.props;
+---
+<svg class={cls} viewBox="0 0 16 16" role={label ? 'img' : undefined} aria-label={label} aria-hidden={label ? undefined : 'true'} focusable="false">
+  {CURSOR.map((p) => (
+    <rect x={p.x} y={p.y} width={p.w} height={p.h} style={`fill: var(--glass-${p.tint}); fill-opacity: ${(p.alpha * 1.05).toFixed(2)}; mix-blend-mode: var(--blend)`} />
+  ))}
+  {CURSOR.map((p) => (
+    <rect x={p.x + p.w - 0.55} y={p.y} width="0.55" height={p.h} style="fill: url(#mark-coat); opacity: .6; mix-blend-mode: var(--blend)" />
+  ))}
+  <defs>
+    <linearGradient id="mark-coat" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" style="stop-color: var(--glass-cyan)" /><stop offset=".5" style="stop-color: var(--glass-violet)" /><stop offset="1" style="stop-color: var(--glass-amber)" />
+    </linearGradient>
+  </defs>
+</svg>

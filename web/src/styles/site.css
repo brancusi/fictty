@@ -1,0 +1,147 @@
+/* fictty.com. One square module under everything (half a terminal cell); panes of tinted glass that
+   multiply by day and add light at night. Tokens are from docs/design/identity/glass-v2.html. */
+
+:root {
+  --ground: #f2f3f5; --raised: #fafbfc; --sunken: #e7e9ee; --line: #d8dbe2; --line-strong: #b9bfcb;
+  --ink: #14161c; --ink-2: #545b69; --ink-3: #646b7b;
+  --glass-cyan: #2fbfd0; --glass-violet: #7a6cf0; --glass-amber: #f2b03c; --glass-rose: #f07196; --glass-smoke: #7c8698;
+  --ok: #18946c; --warn: #a96d05; --err: #cf3a59; --info: #13849f; --focus: #5a4be0;
+  --blend: multiply;
+  --term-bg: #f2f3f5; --term-fg: #1c1f26; --term-cursor: #7a6cf0; --term-sel: #dcd7fb; --term-flash: #f3e3bd;
+  --ansi-0: #14161c; --ansi-1: #a62a46; --ansi-2: #0e6e4d; --ansi-3: #835400;
+  --ansi-4: #3048b8; --ansi-5: #5a3fc4; --ansi-6: #08697d; --ansi-7: #d9dce3;
+  --ansi-8: #5a6171; --ansi-9: #e0506c; --ansi-10: #22a676; --ansi-11: #c98a10;
+  --ansi-12: #5a72e8; --ansi-13: #8f6cf0; --ansi-14: #1aa8c4; --ansi-15: #fafbfc;
+  /* glass panes */
+  --pane-body: rgba(250, 251, 252, 0.42);
+  --pane-shadow: 0 1px 0 rgba(255, 255, 255, 0.8) inset, 0 18px 40px -24px rgba(40, 44, 70, 0.35);
+  --rim-op: 0.55;
+  --glow: 0;
+  --sans: "Spline Sans Variable", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "Spline Sans Mono Variable", ui-monospace, "SF Mono", Menlo, monospace;
+  --term-font: ui-monospace, "SF Mono", SFMono-Regular, Menlo, "Cascadia Mono", Consolas, "DejaVu Sans Mono", monospace;
+  --m: 24px;
+  --gutter: clamp(16px, 4vw, 56px);
+  --wide: 1080px;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --ground: #0a0b10; --raised: #12141b; --sunken: #07080b; --line: #232731; --line-strong: #3a4050;
+    --ink: #eceff5; --ink-2: #9aa1b0; --ink-3: #80889a;
+    --glass-cyan: #39d6e6; --glass-violet: #8c7eff; --glass-amber: #ffbd4f; --glass-rose: #ff7aa2; --glass-smoke: #8792a6;
+    --ok: #4fd6a2; --warn: #ffbd4f; --err: #ff6f88; --info: #39d6e6; --focus: #a99fff;
+    --blend: screen;
+    --term-bg: #0a0b10; --term-fg: #dfe3eb; --term-cursor: #8c7eff; --term-sel: #2a2652; --term-flash: #3a2f14;
+    --ansi-0: #12141b; --ansi-1: #ff6f88; --ansi-2: #4fd6a2; --ansi-3: #ffbd4f;
+    --ansi-4: #6f8cff; --ansi-5: #a48cff; --ansi-6: #39d6e6; --ansi-7: #c9ceda;
+    --ansi-8: #7d8597; --ansi-9: #ff9aab; --ansi-10: #8ae8c2; --ansi-11: #ffd58a;
+    --ansi-12: #9db2ff; --ansi-13: #c6b5ff; --ansi-14: #8ce9f2; --ansi-15: #f4f6fa;
+    --pane-body: rgba(20, 22, 32, 0.46);
+    --pane-shadow: 0 1px 0 rgba(255, 255, 255, 0.05) inset, 0 24px 60px -30px rgba(0, 0, 0, 0.9);
+    --rim-op: 0.95;
+    --glow: 1;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --ground: #0a0b10; --raised: #12141b; --sunken: #07080b; --line: #232731; --line-strong: #3a4050;
+  --ink: #eceff5; --ink-2: #9aa1b0; --ink-3: #80889a;
+  --glass-cyan: #39d6e6; --glass-violet: #8c7eff; --glass-amber: #ffbd4f; --glass-rose: #ff7aa2; --glass-smoke: #8792a6;
+  --ok: #4fd6a2; --warn: #ffbd4f; --err: #ff6f88; --info: #39d6e6; --focus: #a99fff;
+  --blend: screen;
+  --term-bg: #0a0b10; --term-fg: #dfe3eb; --term-cursor: #8c7eff; --term-sel: #2a2652; --term-flash: #3a2f14;
+  --ansi-0: #12141b; --ansi-1: #ff6f88; --ansi-2: #4fd6a2; --ansi-3: #ffbd4f;
+  --ansi-4: #6f8cff; --ansi-5: #a48cff; --ansi-6: #39d6e6; --ansi-7: #c9ceda;
+  --ansi-8: #7d8597; --ansi-9: #ff9aab; --ansi-10: #8ae8c2; --ansi-11: #ffd58a;
+  --ansi-12: #9db2ff; --ansi-13: #c6b5ff; --ansi-14: #8ce9f2; --ansi-15: #f4f6fa;
+  --pane-body: rgba(20, 22, 32, 0.46);
+  --pane-shadow: 0 1px 0 rgba(255, 255, 255, 0.05) inset, 0 24px 60px -30px rgba(0, 0, 0, 0.9);
+  --rim-op: 0.95;
+  --glow: 1;
+  color-scheme: dark;
+}
+
+/* ---------- base ---------- */
+*, *::before, *::after { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; scroll-padding-top: 80px; }
+body { margin: 0; background: var(--ground); color: var(--ink); font: 400 16px/1.6 var(--sans); -webkit-font-smoothing: antialiased; overflow-x: clip; }
+[hidden] { display: none !important; }
+p { margin: 0; }
+h1, h2, h3, h4 { margin: 0; text-wrap: balance; font-weight: 500; }
+a { color: var(--focus); text-underline-offset: 0.18em; text-decoration-thickness: 1px; }
+code, kbd, .mono { font-family: var(--mono); }
+button { font: inherit; color: inherit; }
+img, svg, canvas { display: block; max-width: 100%; }
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 3px; border-radius: 2px; }
+::selection { background: color-mix(in srgb, var(--glass-violet) 32%, transparent); }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+.skip { position: absolute; left: 16px; top: -60px; z-index: 50; background: var(--ink); color: var(--ground); padding: 8px 12px; border-radius: 6px; text-decoration: none; }
+.skip:focus { top: 12px; }
+
+/* ---------- header ---------- */
+.top { position: sticky; top: 0; z-index: 30; background: color-mix(in srgb, var(--ground) 82%, transparent); backdrop-filter: saturate(1.3) blur(10px); -webkit-backdrop-filter: saturate(1.3) blur(10px); border-bottom: 1px solid color-mix(in srgb, var(--line) 70%, transparent); }
+.top-in { max-width: var(--wide); margin: 0 auto; padding: 10px var(--gutter); display: flex; align-items: center; gap: 16px; }
+.brand { display: inline-flex; align-items: center; gap: 10px; color: var(--ink); text-decoration: none; margin-right: auto; border-radius: 4px; }
+.brand .mark { width: 26px; height: 26px; }
+.brand .wm { height: 22px; width: auto; }
+.nav { display: flex; align-items: center; gap: clamp(10px, 2.4vw, 22px); font-size: 14px; }
+.nav a { color: var(--ink-2); text-decoration: none; padding: 4px 0; }
+.nav a:hover, .nav a[aria-current="page"] { color: var(--ink); }
+.nav a[aria-current="page"] { box-shadow: 0 1px 0 var(--glass-violet); }
+.theme { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line); background: var(--raised); color: var(--ink-2); border-radius: 999px; padding: 5px 10px 5px 8px; font: 500 12px/1 var(--mono); cursor: pointer; min-width: 74px; }
+.theme:hover { color: var(--ink); border-color: var(--line-strong); }
+.theme svg { width: 14px; height: 14px; }
+@media (max-width: 420px) { .nav .gh-text { display: none; } .theme { min-width: 0; } .theme .label { display: none; } }
+@media (max-width: 470px) { .brand .wm { display: none; } .nav { gap: 12px; } }
+
+/* ---------- footer ---------- */
+.foot { max-width: var(--wide); margin: 0 auto; padding: 28px var(--gutter) 48px; display: flex; gap: 12px 24px; flex-wrap: wrap; justify-content: space-between; font-size: 13px; color: var(--ink-3); position: relative; z-index: 1; }
+.foot a { color: var(--ink-2); text-decoration: none; }
+.foot a:hover { color: var(--ink); }
+.foot nav { display: flex; gap: 18px; flex-wrap: wrap; }
+
+/* ---------- shared bits ---------- */
+.eyebrow { font: 500 12px/1.3 var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-3); }
+.btn { display: inline-flex; align-items: center; gap: 8px; border: 1px solid var(--line); background: var(--raised); color: var(--ink); border-radius: 8px; padding: 10px 16px; font-size: 15px; text-decoration: none; cursor: pointer; transition: border-color .2s, background-color .2s; }
+.btn:hover { border-color: var(--line-strong); }
+.btn.primary { background: var(--ink); color: var(--ground); border-color: var(--ink); }
+.btn.primary:hover { background: color-mix(in srgb, var(--ink) 86%, var(--glass-violet)); }
+.btn svg { width: 16px; height: 16px; }
+.install { display: inline-grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 12px; border: 1px solid var(--line); border-radius: 8px; padding: 8px 8px 8px 14px; background: var(--raised); font: 400 13.5px/1.5 var(--mono); text-align: left; max-width: 100%; }
+.install code { overflow-x: auto; white-space: nowrap; scrollbar-width: none; }
+.install code::-webkit-scrollbar { display: none; }
+.install code .d { color: var(--ink-3); user-select: none; }
+.install button { border: 0; background: var(--sunken); border-radius: 6px; padding: 7px 10px; cursor: pointer; font: 500 12px/1 var(--mono); color: var(--ink-2); }
+.install button:hover { color: var(--ink); }
+.soon { font: 500 12px/1.4 var(--mono); color: var(--ink-3); }
+.soon b { color: var(--ink-2); font-weight: 500; }
+
+/* terminal frames: the system monospace, so box drawing lines up the way it does in a terminal */
+.term { background: var(--term-bg); color: var(--term-fg); border-radius: 6px; border: 1px solid var(--line); overflow-x: auto; position: relative; }
+.term pre { margin: 0; padding: 18px 20px; font: 400 13px/1.36 var(--term-font); white-space: pre; tab-size: 4; }
+.term .d { color: var(--ansi-8); } .term .b { color: var(--ansi-5); } .term .c { color: var(--ansi-6); }
+.term .g { color: var(--ansi-2); } .term .y { color: var(--ansi-3); } .term .r { color: var(--ansi-1); }
+.term .u { color: var(--ansi-4); } .term .w { color: var(--ink); font-weight: 600; }
+.term .sel { background: var(--term-sel); }
+.term .cur { background: var(--term-cursor); color: var(--term-bg); }
+
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { transition: none !important; animation: none !important; scroll-behavior: auto !important; } }
+
+/* ---------- glass: the material every card on the site is made of ----------
+   Translucent body over whatever is behind it (blurred, saturated), a tint mixed the way the
+   wordmark mixes (multiply by day, screen at night), a hairline rim and Bell's iridescent coat on
+   the long edge. Set --tint per element; ::before carries the tint gradient. */
+.glass { position: relative; isolation: isolate; border-radius: 3px; border: 1px solid color-mix(in srgb, var(--line-strong) 55%, transparent);
+  background: color-mix(in srgb, var(--raised) calc(58% - 12% * var(--glow)), transparent);
+  backdrop-filter: blur(9px) saturate(1.45); -webkit-backdrop-filter: blur(9px) saturate(1.45);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, calc(0.6 - 0.56 * var(--glow))) inset, 0 18px 40px -30px rgba(10, 12, 30, calc(0.35 + 0.5 * var(--glow))); }
+.glass::before { content: ""; position: absolute; inset: 0; z-index: -1; border-radius: inherit; pointer-events: none; mix-blend-mode: var(--blend); opacity: calc(0.22 + 0.08 * var(--glow)); background: linear-gradient(180deg, var(--tint, var(--glass-violet)), transparent 70%); }
+.glass::after { content: ""; position: absolute; top: -1px; bottom: -1px; right: -1px; width: 2px; border-radius: 0 3px 3px 0; pointer-events: none; background: linear-gradient(var(--glass-cyan), var(--glass-violet), var(--glass-amber)); opacity: calc(0.45 + 0.35 * var(--glow)); mix-blend-mode: var(--blend); }
+
+/* ---------- the footer's row of panes ---------- */
+.foot .panes { flex-basis: 100%; display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 14px; margin-bottom: 10px; }
+.foot .panes .line { height: 1px; }
+.foot .panes .line:first-child { background: linear-gradient(90deg, transparent, var(--line-strong)); }
+.foot .panes .line:last-child { background: linear-gradient(270deg, transparent, var(--line-strong)); }
+.foot .panes svg { width: 172px; height: auto; overflow: visible; }

@@ -1,0 +1,20 @@
+---
+// Score bars, one per axis, with fictty's own score marked where it has one.
+import { AXES, FICTTY } from '../../lib/landscape-meta';
+interface Props { e: Record<string, unknown>; mark?: boolean }
+const { e, mark = true } = Astro.props;
+const rows = AXES.filter((a) => typeof e[a[0]] === 'number');
+---
+<div class="bars">
+  {rows.map(([k, label, max]) => {
+    const v = e[k] as number, f = FICTTY[k];
+    const tone = k === 'threat' ? 'threat' : k === 'adoptFit' ? 'fit' : 'score';
+    return (
+      <div class={`bar-row ${tone}`}>
+        <span class="bl">{label}</span>
+        <span class="track"><span class="fill" style={`width:${(v / max) * 100}%`}></span>{mark && f !== undefined && <span class="fmark" title={`fictty: ${f}`} style={`left:calc(${(f / max) * 100}% - 1px)`}></span>}</span>
+        <span class="bv">{v}</span>
+      </div>
+    );
+  })}
+</div>

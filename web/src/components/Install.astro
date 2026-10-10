@@ -1,0 +1,17 @@
+---
+// Build from source: the crate isn't on crates.io yet.
+interface Props { compact?: boolean }
+const { compact = false } = Astro.props;
+const cmd = 'git clone https://github.com/brancusi/fictty && cd fictty && cargo build --release';
+---
+<div class="install-block">
+  <div class="install">
+    <code><span class="d">$ </span>{cmd}</code>
+    <button type="button" data-copy={cmd} aria-label="Copy the build command">copy</button>
+  </div>
+  {!compact && <p class="soon">Build from source (Rust stable). <b>crates.io:</b> coming soon.</p>}
+</div>
+<style>
+  .install-block { display: grid; gap: 8px; justify-items: center; max-width: 100%; min-width: 0; }
+  .install-block .install { max-width: min(100%, 640px); }
+</style>

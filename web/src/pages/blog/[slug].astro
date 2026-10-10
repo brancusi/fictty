@@ -1,0 +1,47 @@
+---
+import { getCollection, render } from 'astro:content';
+import Base from '../../layouts/Base.astro';
+import '../../styles/prose.css';
+
+export async function getStaticPaths() {
+  const posts = await getCollection('blog');
+  return posts.map((post) => ({ params: { slug: post.id }, props: { post } }));
+}
+const { post } = Astro.props;
+const { Content, headings } = await render(post);
+const fmt = (d: Date) => d.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' });
+const words = post.body ? post.body.split(/\s+/).length : 0;
+const toc = headings.filter((h) => h.depth === 2);
+---
+<Base title={post.data.title} description={post.data.description} type="article" published={post.data.date} nav="blog">
+  <article class="page post">
+    <header class="page-head">
+      <a class="eyebrow back" href="/blog/">← Blog{post.data.kicker && ` · ${post.data.kicker}`}</a>
+      <h1>{post.data.title}</h1>
+      <p class="lede">{post.data.description}</p>
+      <p class="meta"><time datetime={post.data.date.toISOString()}>{fmt(post.data.date)}</time><span>{Math.max(1, Math.round(words / 230))} min read</span></p>
+    </header>
+    <div class="layout">
+      {toc.length > 2 && (
+        <nav class="toc" aria-label="In this post">
+          <span class="eyebrow">In this post</span>
+          <ol>{toc.map((h) => <li><a href={`#${h.slug}`}>{h.text}</a></li>)}</ol>
+        </nav>
+      )}
+      <div class="prose"><Content /></div>
+    </div>
+  </article>
+</Base>
+<style>
+  .back { text-decoration: none; }
+  .back:hover { color: var(--ink); }
+  .layout { display: grid; grid-template-columns: minmax(0, 1fr); gap: calc(var(--m) * 2); }
+  .toc { display: none; }
+  @media (min-width: 1100px) {
+    .layout { grid-template-columns: 200px minmax(0, 1fr); }
+    .toc { display: grid; gap: 12px; align-content: start; position: sticky; top: 84px; max-height: calc(100vh - 110px); overflow: auto; }
+    .toc ol { list-style: none; padding: 0; margin: 0; display: grid; gap: 8px; border-left: 1px solid var(--line); }
+    .toc a { display: block; padding-left: 12px; margin-left: -1px; border-left: 1px solid transparent; color: var(--ink-3); text-decoration: none; font-size: 13.5px; line-height: 1.4; }
+    .toc a:hover { color: var(--ink); border-left-color: var(--glass-violet); }
+  }
+</style>
