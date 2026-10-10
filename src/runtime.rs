@@ -40,6 +40,13 @@ pub enum Request {
     },
     /// One store entry: its revision, who wrote it last, and its text or value.
     Read { key: String },
+    /// Add themes (by name) and choose one: a name, `next` or `prev`.
+    Theme {
+        #[serde(default)]
+        add: BTreeMap<String, crate::model::ThemeSpec>,
+        #[serde(default)]
+        choose: Option<String>,
+    },
     /// Move one node's view state: `selected` (lists, tables) or `tab`.
     Set {
         id: String,
@@ -328,16 +335,25 @@ impl Driver {
                     Effect::Reply(r) => Some(r),
                     _ => None,
                 });
-                return reply.unwrap_or_else(|| json!({"ok": false}));
+                let mut reply = reply.unwrap_or_else(|| json!({"ok": false}));
+                if !st.problems.is_empty() {
+                    reply["problems"] = json!(st.problems);
+                }
+                return reply;
             }
             Request::Set { id, selected, tab } => Msg::Set { id, selected, tab },
+            Request::Theme { add, choose } => Msg::Theme { add, choose },
             Request::Layers { layers } => Msg::Layers { layers },
             Request::Click { id, row, tab } => Msg::Click { id, row, tab },
             // The loop answers these itself (they need the last frame).
             Request::Mouse { .. } | Request::Screen | Request::Upgrade { .. } => return json!({"ok": false}),
         };
         self.apply(st, msg);
-        json!({"ok": st.status.is_none(), "version": st.version, "status": st.status})
+        let mut reply = json!({"ok": st.status.is_none(), "version": st.version, "status": st.status});
+        if !st.problems.is_empty() {
+            reply["problems"] = json!(st.problems);
+        }
+        reply
     }
 }
 
@@ -358,9 +374,24 @@ fn save_store(path: &Path, st: &State) -> Result<()> {
     Ok(())
 }
 
-/// Run a UI in the terminal until `quit`. With `store`, the store is read from that file at
-/// the start and written back after every change.
-pub fn run(file: Option<PathBuf>, watch: bool, socket: PathBuf, restore: Option<PathBuf>, store: Option<PathBuf>) -> Result<()> {
+/// Themes from a file: a JSON object of theme specs by name.
+pub fn load_themes(path: &Path) -> Result<BTreeMap<String, crate::model::ThemeSpec>> {
+    let raw = std::fs::read_to_string(path).with_context(|| format!("reading {}", path.display()))?;
+    serde_json::from_str(&raw).with_context(|| format!("{} is not a set of themes", path.display()))
+}
+
+/// What `run` starts from besides the UI: a store file, a themes file.
+#[derive(Default)]
+pub struct Files {
+    pub store: Option<PathBuf>,
+    pub themes: Option<PathBuf>,
+}
+
+/// Run a UI in the terminal until `quit`. With a store file, the store is read from it at the
+/// start and written back after every change; with a themes file, its themes are loaded and the
+/// first is chosen (unless a restored state already chose one).
+pub fn run(file: Option<PathBuf>, watch: bool, socket: PathBuf, restore: Option<PathBuf>, files: Files) -> Result<()> {
+    let Files { store, themes } = files;
     // Restoring (after an upgrade): the saved state, every selection and focus as it was.
     let mut st: State = match &restore {
         Some(p) => serde_json::from_str(&std::fs::read_to_string(p)?)?,
@@ -377,6 +408,18 @@ pub fn run(file: Option<PathBuf>, watch: bool, socket: PathBuf, restore: Option<
             "text": "Waiting for a UI.\n\nPush one:  fictty push ui.json"}}))?,
     };
     let (tx, rx) = mpsc::channel();
+    // Commands the screen runs (sources, `run`) can talk back to it: a helper script reads the
+    // store with `$FICTTY read …`. Set before any thread starts.
+    // SAFETY: no other thread exists yet, so nothing reads the environment concurrently.
+    unsafe {
+        std::env::set_var("FICTTY_SOCKET", &socket);
+        if let Ok(me) = std::env::current_exe() {
+            std::env::set_var("FICTTY", me);
+        }
+    }
+    if let Some(p) = &themes {
+        update(&mut st, Msg::Theme { add: load_themes(p)?, choose: None });
+    }
     serve(&socket, tx.clone())?;
     let mut d = Driver::new(tx, false);
     // A restored state's clock carries on from where it was.
@@ -495,6 +538,9 @@ pub fn run(file: Option<PathBuf>, watch: bool, socket: PathBuf, restore: Option<
                 cmd.args(["run", "--socket"]).arg(&socket).arg("--restore").arg(&path);
                 if let Some(p) = &store {
                     cmd.arg("--store").arg(p);
+                }
+                if let Some(p) = &themes {
+                    cmd.arg("--themes").arg(p);
                 }
                 if watch && let Some(p) = &file {
                     cmd.arg("--watch").arg(p);
@@ -833,6 +879,7 @@ fn activity(st: &State, req: &Request) -> Option<(&'static str, String)> {
             ("set", what)
         }
         Request::Key { key } => ("key", key.clone()),
+        Request::Theme { add, choose } => ("theme", choose.clone().unwrap_or_else(|| format!("{} loaded", add.len()))),
         Request::Layers { layers } => ("layers", format!("{} layers", layers.len())),
         Request::Click { id, .. } => ("click", id.clone()),
         _ => return None,
@@ -844,7 +891,7 @@ fn activity(st: &State, req: &Request) -> Option<(&'static str, String)> {
 fn resize_editors(d: &mut Driver, st: &mut State, sizes: Vec<(String, u16, u16)>) -> bool {
     let mut changed = false;
     for (id, width, height) in sizes {
-        let own = st.local.get(&id).and_then(|l| l.editor.as_ref()).map(|v| (v.viewport.width, v.viewport.height));
+        let own = crate::state::field_view(st, &id).map(|(_, v)| (v.viewport.width, v.viewport.height));
         if own.is_some_and(|o| o != (width.max(1), height.max(1))) {
             d.apply(st, Msg::Size { id, width, height });
             changed = true;

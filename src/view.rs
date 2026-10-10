@@ -2,8 +2,8 @@
 //! Besides the frame it returns the hit regions (what is under each cell, for the mouse), and
 //! it places the UI's layers with caretline-layers over what it drew.
 
-use crate::model::{Kind, LayerSpec, Look, Node, Seg, Size, Style as NodeStyle, fill, lookup, number, scalar, segments};
-use crate::state::{Slot, State, bound, items, selected, split_bind, tab_of, value_of};
+use crate::model::{Kind, LayerSpec, Look, Node, Seg, Size, Style as NodeStyle, ThemeSpec, Variant, fill, lookup, number, scalar, segments};
+use crate::state::{field_view, Slot, State, bound, items, selected, split_bind, tab_of, value_of};
 use crate::gfx::{Pic, Placed, Rgb};
 use caretline_layers as cl;
 use ratatui::Frame;
@@ -41,6 +41,8 @@ struct Theme {
 
 struct Cx<'a> {
     st: &'a State,
+    /// The active theme, if one is loaded and chosen.
+    active: Option<&'a ThemeSpec>,
     th: Theme,
     hits: Vec<Hit>,
     anchors: cl::AnchorMap,
@@ -73,8 +75,16 @@ pub struct Out {
 impl Cx<'_> {
     /// A colour by theme name, CSS-ish name or `#rrggbb`.
     fn color(&self, name: &str) -> Option<Color> {
-        let name = self.st.ui.theme.get(name).map(String::as_str).unwrap_or(name);
-        name.parse().ok()
+        token(self.st, self.active, name).unwrap_or(name).parse().ok()
+    }
+
+    /// A part of a component, styled by the active theme (`table.header`, `row.selected`), or
+    /// `fallback` when the theme doesn't say.
+    fn look(&self, part: &str, fallback: Style) -> Style {
+        match self.active.and_then(|t| t.parts.get(part)) {
+            Some(spec) => self.spec(spec, Style::default()),
+            None => fallback,
+        }
     }
 
     fn style(&self, s: Option<&NodeStyle>) -> Style {
@@ -223,11 +233,22 @@ fn draw_parts(buf: &mut Buffer, r: Rect, parts: Vec<Part>) {
     }
 }
 
-fn theme(st: &State) -> Theme {
-    let get = |k: &str, d: Color| st.ui.theme.get(k).and_then(|c| c.parse().ok()).unwrap_or(d);
+/// A token's colour: the active theme's, else the UI's own `theme` (a fallback under every theme).
+fn token<'a>(st: &'a State, active: Option<&'a ThemeSpec>, name: &str) -> Option<&'a str> {
+    active.and_then(|t| t.tokens.get(name)).or_else(|| st.ui.theme.get(name)).map(String::as_str)
+}
+
+/// The theme the person chose, if it's loaded.
+pub fn active(st: &State) -> Option<&ThemeSpec> {
+    st.theme.as_ref().and_then(|n| st.themes.get(n))
+}
+
+fn theme(st: &State, active: Option<&ThemeSpec>) -> Theme {
+    let tok = |k: &str| token(st, active, k).and_then(|c| c.parse().ok());
+    let get = |k: &str, d: Color| tok(k).unwrap_or(d);
     Theme {
-        bg: st.ui.theme.get("bg").and_then(|c| c.parse().ok()),
-        fg: st.ui.theme.get("fg").and_then(|c| c.parse().ok()),
+        bg: tok("bg"),
+        fg: tok("fg"),
         border: get("border", Color::Rgb(0x4a, 0x50, 0x60)),
         accent: get("accent", Color::Rgb(0x5f, 0xb3, 0xff)),
         dim: get("dim", Color::Rgb(0x55, 0x58, 0x60)),
@@ -241,7 +262,8 @@ fn theme(st: &State) -> Theme {
 
 /// Draw the whole screen; returns what's under each cell and the pictures to place.
 pub fn draw(st: &State, f: &mut Frame) -> Out {
-    let mut cx = Cx { st, th: theme(st), hits: Vec::new(), anchors: cl::AnchorMap::new(), pics: Vec::new(), scaled: Vec::new(), sizes: Vec::new() };
+    let act = active(st);
+    let mut cx = Cx { st, active: act, th: theme(st, act), hits: Vec::new(), anchors: cl::AnchorMap::new(), pics: Vec::new(), scaled: Vec::new(), sizes: Vec::new() };
     let mut base = Style::default();
     if let Some(bg) = cx.th.bg {
         base = base.bg(bg);
@@ -259,11 +281,11 @@ pub fn draw(st: &State, f: &mut Frame) -> Out {
     if !bar {
         return Out { hits: cx.hits, pics: cx.pics, scaled: cx.scaled, sizes: cx.sizes };
     }
-    let line = match &st.status {
-        Some(s) => Line::styled(s.clone(), Style::default().fg(cx.th.neg)),
+    let line = match st.status.as_ref().or(st.problems.first()) {
+        Some(s) => Line::styled(s.clone(), cx.look("status.error", Style::default().fg(cx.th.neg))),
         None => Line::styled(
             format!(" ui v{} · tab focus · j/k move · ←/→ tabs · click, wheel, hover · q quit", st.version),
-            Style::default().fg(cx.th.dim),
+            cx.look("status", Style::default().fg(cx.th.dim)),
         ),
     };
     let s = &st.stats;
@@ -274,11 +296,29 @@ pub fn draw(st: &State, f: &mut Frame) -> Out {
     Out { hits: cx.hits, pics: cx.pics, scaled: cx.scaled, sizes: cx.sizes }
 }
 
+/// How an editor or input looks: its text, the caret, a selection, the placeholder.
+struct FieldLook {
+    text: Style,
+    caret: Style,
+    selection: Style,
+    placeholder: Style,
+}
+
 /// An editor's cells, from caretline's own view of it. Until the runtime has told it its size
 /// (the first frame, or just after a resize), a copy sized to the area is drawn instead.
-fn editor(buf: &mut Buffer, area: Rect, doc: &caretline::Document, view: &caretline::View, style: Style, focused: bool) {
+fn editor(buf: &mut Buffer, area: Rect, doc: &caretline::Document, view: &caretline::View, look: &FieldLook, placeholder: Option<&str>, focused: bool) {
     use caretline::view::Role;
     if area.width == 0 || area.height == 0 {
+        return;
+    }
+    buf.set_style(area, look.text);
+    if doc.text.len_chars() == 0 {
+        if let Some(p) = placeholder {
+            buf.set_stringn(area.x, area.y, p, area.width as usize, look.placeholder);
+        }
+        if focused {
+            buf[(area.x, area.y)].set_style(look.caret);
+        }
         return;
     }
     let vp = view.viewport;
@@ -289,7 +329,6 @@ fn editor(buf: &mut Buffer, area: Rect, doc: &caretline::Document, view: &caretl
         caretline::views::update_doc(&mut d, &mut vs, 0, caretline::Msg::resize(area.width, area.height));
         caretline::view::render(&d, &vs[0])
     };
-    let mark = style.add_modifier(Modifier::REVERSED);
     for y in 0..frame.height.min(area.height) {
         for x in 0..frame.width.min(area.width) {
             let cell = frame.cell(x, y);
@@ -297,9 +336,10 @@ fn editor(buf: &mut Buffer, area: Rect, doc: &caretline::Document, view: &caretl
                 continue; // the second half of a wide grapheme
             }
             let s = match cell.role {
-                Role::Selection | Role::Caret => mark,
-                Role::Status | Role::StatusAccent | Role::Hang => style.add_modifier(Modifier::DIM),
-                _ => style,
+                Role::Selection => look.selection,
+                Role::Caret => look.caret,
+                Role::Status | Role::StatusAccent | Role::Hang => look.text.add_modifier(Modifier::DIM),
+                _ => look.text,
             };
             buf.set_string(area.x + x, area.y + y, &cell.symbol, s);
         }
@@ -307,7 +347,7 @@ fn editor(buf: &mut Buffer, area: Rect, doc: &caretline::Document, view: &caretl
     // The primary caret: a block, drawn only while the editor has focus.
     if let Some((x, y)) = frame.cursor.filter(|&(x, y)| focused && x < area.width && y < area.height) {
         let c = &mut buf[(area.x + x, area.y + y)];
-        c.set_style(mark);
+        c.set_style(look.caret);
         if c.symbol().trim().is_empty() {
             c.set_symbol(" ");
         }
@@ -329,9 +369,25 @@ fn node(cx: &mut Cx, n: &Node, f: &mut Frame, area: Rect) {
     if let Some(id) = &n.id {
         cx.mark(id, None, None, area);
     }
-    let style = cx.style(n.style.as_ref());
+    // A variant gives a style under the node's own, and a border and backdrop when it has none.
+    let var: Option<&Variant> = n.variant.as_ref().and_then(|v| cx.active?.variants.get(v));
+    let mut style = cx.style(var.and_then(|v| v.style.as_ref())).patch(cx.style(n.style.as_ref()));
+    if let Some(c) = n.tone.as_deref().and_then(|t| cx.color(t)) {
+        style = style.fg(c);
+    }
+    let edge_name = n.edge.as_deref().or(var.and_then(|v| v.edge.as_deref()));
+    let backdrop = n.backdrop.as_ref().or(var.and_then(|v| v.backdrop.as_ref()));
+    let bordered = n.title.is_some() || n.border || edge_name.is_some() || backdrop.is_some() || var.is_some_and(|v| v.border);
+    let title_style = |cx: &Cx| {
+        let fallback = if focused { Style::default().fg(cx.th.accent).add_modifier(Modifier::BOLD) } else { Style::default().fg(cx.th.fg.unwrap_or(Color::Reset)) };
+        let base = cx.look(if focused { "title.focused" } else { "title" }, fallback);
+        match var.and_then(|v| v.title.as_deref()) {
+            Some(spec) => cx.spec(spec, base),
+            None => base,
+        }
+    };
     let pixels = st.caps.graphics;
-    let card = n.backdrop.as_ref().filter(|_| pixels).and_then(|b| {
+    let card = backdrop.filter(|_| pixels).and_then(|b| {
         Some(Pic::Card {
             fill: cx.rgb(&b.fill)?,
             fill2: b.fill2.as_deref().and_then(|c| cx.rgb(c)),
@@ -353,21 +409,20 @@ fn node(cx: &mut Cx, n: &Node, f: &mut Frame, area: Rect) {
         cx.pics.push(Placed { x: area.x, y: area.y, w: area.width, h: area.height, z: crate::gfx::UNDER, pic });
         f.buffer_mut().set_style(area, Style::default().bg(Color::Reset));
         if let Some(t) = &n.title {
-            let ts = if focused { Style::default().fg(cx.th.accent).add_modifier(Modifier::BOLD) } else { Style::default().fg(cx.th.dim).add_modifier(Modifier::BOLD) };
+            let ts = title_style(cx);
             f.buffer_mut().set_string(area.x + 2, area.y + 1, t, ts);
             Rect::new(area.x + 2, area.y + 3, area.width.saturating_sub(4), area.height.saturating_sub(4))
         } else {
             Rect::new(area.x + 2, area.y + 1, area.width.saturating_sub(4), area.height.saturating_sub(2))
         }
-    } else if n.title.is_some() || n.border || n.edge.is_some() || n.backdrop.is_some() {
-        let edge = if focused { cx.th.accent } else { cx.th.border };
-        let mut b = Block::bordered().border_type(border_type(n.edge.as_deref())).border_style(Style::default().fg(edge));
-        if let Some(bg) = n.style.as_ref().and_then(|s| s.bg.as_deref()).and_then(|c| cx.color(c)) {
+    } else if bordered {
+        let edge = if focused { cx.look("border.focused", Style::default().fg(cx.th.accent)) } else { cx.look("border", Style::default().fg(cx.th.border)) };
+        let mut b = Block::bordered().border_type(border_type(edge_name)).border_style(edge);
+        if let Some(bg) = style.bg {
             b = b.style(Style::default().bg(bg));
         }
         if let Some(t) = &n.title {
-            let ts = if focused { Style::default().fg(cx.th.accent).add_modifier(Modifier::BOLD) } else { Style::default().fg(cx.th.fg.unwrap_or(Color::Reset)) };
-            b = b.title(Span::styled(format!(" {t} "), ts));
+            b = b.title(Span::styled(format!(" {t} "), title_style(cx)));
         }
         let inner = b.inner(area);
         f.render_widget(b, area);
@@ -449,15 +504,29 @@ fn node(cx: &mut Cx, n: &Node, f: &mut Frame, area: Rect) {
                 f.render_widget(Paragraph::new(lines).style(style).alignment(align).wrap(Wrap { trim: false }), inner);
             }
         }
-        Kind::Editor { .. } => {
+        Kind::Editor { .. } | Kind::Input { .. } => {
             cx.sizes.push((id.clone(), inner.width, inner.height));
-            let view = st.local.get(&id).and_then(|l| l.editor.as_ref());
-            let doc = crate::state::doc_key(n).and_then(|k| st.store.get(&k)).and_then(|e| match &e.body {
-                crate::store::Body::Text { doc } => Some(&**doc),
+            let field = n.field().expect("a text field");
+            let shown = field_view(st, &id).and_then(|(key, view)| match st.store.get(&key).map(|e| &e.body) {
+                Some(crate::store::Body::Text { doc }) => Some((&**doc, view)),
                 _ => None,
             });
-            let (Some(doc), Some(view)) = (doc, view) else { return };
-            editor(f.buffer_mut(), inner, doc, view, style, focused);
+            let Some((doc, view)) = shown else {
+                let e = field.placeholder.unwrap_or("Nothing to show");
+                return f.render_widget(Paragraph::new(e).style(cx.look("empty", Style::default().fg(cx.th.dim))), inner);
+            };
+            let looks = FieldLook {
+                text: style,
+                caret: cx.look("editor.caret", style.add_modifier(Modifier::REVERSED)),
+                selection: cx.look("editor.selection", style.add_modifier(Modifier::REVERSED)),
+                placeholder: cx.look("input.placeholder", style.fg(cx.th.dim).add_modifier(Modifier::ITALIC)),
+            };
+            if field.line && inner.height > 1 {
+                // An input is one row, in the middle of what it's given.
+                let row = Rect::new(inner.x, inner.y + (inner.height - 1) / 2, inner.width, 1);
+                return editor(f.buffer_mut(), row, doc, view, &looks, field.placeholder, focused);
+            }
+            editor(f.buffer_mut(), inner, doc, view, &looks, field.placeholder, focused);
         }
         Kind::Rule { glyph } => {
             let g = glyph.clone().unwrap_or_else(|| if inner.height > inner.width { "│".into() } else { "─".into() });
@@ -470,7 +539,8 @@ fn node(cx: &mut Cx, n: &Node, f: &mut Frame, area: Rect) {
             let rows = items(st, n);
             if rows.is_empty() {
                 let e = empty.clone().unwrap_or_else(|| "(nothing)".into());
-                return f.render_widget(Paragraph::new(e).style(Style::default().fg(cx.th.dim)), inner);
+                let es = cx.look("empty", Style::default().fg(cx.th.dim));
+                return f.render_widget(Paragraph::new(e).style(es).wrap(Wrap { trim: true }), inner);
             }
             let sel = n.id.as_ref().map(|id| selected(st, id));
             let (from, _) = window(sel, inner.height as usize);
@@ -486,8 +556,8 @@ fn node(cx: &mut Cx, n: &Node, f: &mut Frame, area: Rect) {
                 if is_sel {
                     rs = match sel_spec {
                         Some(spec) => cx.spec(spec, rs),
-                        None if focused => rs.add_modifier(Modifier::REVERSED),
-                        None => rs.add_modifier(Modifier::BOLD),
+                        None if focused => rs.patch(cx.look("row.selected", Style::default().add_modifier(Modifier::REVERSED))),
+                        None => rs.patch(cx.look("row.selected.blur", Style::default().add_modifier(Modifier::BOLD))),
                     };
                 }
                 f.buffer_mut().set_style(line, rs);
@@ -515,12 +585,13 @@ fn node(cx: &mut Cx, n: &Node, f: &mut Frame, area: Rect) {
             // Column positions once; each row reuses them at its own y.
             let spans = Layout::horizontal(widths).spacing(1).split(Rect::new(inner.x + 2, inner.y, inner.width.saturating_sub(2), 1));
             let cols = |y: u16| spans.iter().map(move |a| Rect { y, ..*a });
-            let head = Style::default().fg(cx.th.accent).add_modifier(Modifier::BOLD);
+            let head = cx.look("table.header", Style::default().fg(cx.th.accent).add_modifier(Modifier::BOLD));
             for (c, a) in columns.iter().zip(cols(inner.y)) {
                 let al = if c.align.as_deref() == Some("right") { Alignment::Right } else { Alignment::Left };
                 f.render_widget(Paragraph::new(c.title.clone()).style(head).alignment(al), a);
             }
-            let visible = (inner.height as usize).saturating_sub(1);
+            let totals = columns.iter().any(|c| c.total.is_some());
+            let visible = (inner.height as usize).saturating_sub(1 + totals as usize);
             let sel = n.id.as_ref().map(|id| selected(st, id));
             let (from, _) = window(sel, visible);
             for (k, r) in rows.iter().enumerate().skip(from).take(visible) {
@@ -531,7 +602,11 @@ fn node(cx: &mut Cx, n: &Node, f: &mut Frame, area: Rect) {
                     rs = rs.bg(cx.th.hover);
                 }
                 if sel == Some(k) {
-                    rs = if focused { rs.bg(cx.th.accent).fg(Color::Black) } else { rs.add_modifier(Modifier::BOLD) };
+                    rs = if focused {
+                        rs.patch(cx.look("row.selected", Style::default().bg(cx.th.accent).fg(Color::Black)))
+                    } else {
+                        rs.patch(cx.look("row.selected.blur", Style::default().add_modifier(Modifier::BOLD)))
+                    };
                 }
                 f.buffer_mut().set_style(line, rs);
                 if sel == Some(k) {
@@ -551,6 +626,31 @@ fn node(cx: &mut Cx, n: &Node, f: &mut Frame, area: Rect) {
                 }
                 if !id.is_empty() {
                     cx.mark(&id, Some(k), None, line);
+                }
+            }
+            if totals && inner.height >= 3 {
+                // The footer: each total under its column, on the last row, over a rule.
+                let y = inner.bottom() - 1;
+                let ts = cx.look("table.total", style.add_modifier(Modifier::BOLD));
+                let rule = cx.look("border", Style::default().fg(cx.th.border));
+                f.buffer_mut().set_string(inner.x, y, " ".repeat(inner.width as usize), ts);
+                for (c, a) in columns.iter().zip(cols(y)) {
+                    let Some(path) = &c.total else { continue };
+                    let sum: f64 = rows.iter().filter_map(|r| lookup(r, path)).filter_map(|v| v.as_f64().or_else(|| v.as_str().and_then(number))).sum();
+                    let text = money(sum);
+                    let al = if c.align.as_deref() == Some("right") { Alignment::Right } else { Alignment::Left };
+                    let mut cs = ts;
+                    if sum < 0.0 {
+                        cs = cs.fg(cx.th.neg);
+                    }
+                    let line = Line::from(Span::styled(text, cs)).alignment(al);
+                    f.buffer_mut().set_line(line_x(&line, a), y, &line, a.width);
+                    if y > inner.y + 1 {
+                        f.buffer_mut().set_string(a.x, y - 1, "─".repeat(a.width as usize), rule);
+                    }
+                }
+                if columns.first().is_some_and(|c| c.total.is_none()) {
+                    f.buffer_mut().set_string(inner.x + 2, y, "Total", ts);
                 }
             }
         }
@@ -637,11 +737,11 @@ fn node(cx: &mut Cx, n: &Node, f: &mut Frame, area: Rect) {
                 }
                 let r = Rect::new(x, inner.y, w, 1);
                 let ts = if k == shown {
-                    Style::default().fg(Color::Black).bg(cx.th.accent).add_modifier(Modifier::BOLD)
+                    cx.look("tabs.active", Style::default().fg(Color::Black).bg(cx.th.accent).add_modifier(Modifier::BOLD))
                 } else if cx.st.hover.as_ref().is_some_and(|h| h.id == id && h.row == Some(1000 + k)) {
                     Style::default().fg(cx.th.accent).bg(cx.th.hover)
                 } else {
-                    Style::default().fg(cx.th.dim)
+                    cx.look("tabs.idle", Style::default().fg(cx.th.dim))
                 };
                 f.buffer_mut().set_string(r.x, r.y, &label, ts);
                 if !id.is_empty() {
@@ -650,7 +750,7 @@ fn node(cx: &mut Cx, n: &Node, f: &mut Frame, area: Rect) {
                 x += w + 1;
             }
             let rule = Rect::new(inner.x, inner.y + 1, inner.width, 1);
-            f.buffer_mut().set_string(rule.x, rule.y, "─".repeat(inner.width as usize), Style::default().fg(cx.th.border));
+            f.buffer_mut().set_string(rule.x, rule.y, "─".repeat(inner.width as usize), cx.look("border", Style::default().fg(cx.th.border)));
             if let Some(c) = children.get(shown) {
                 let body = Rect::new(inner.x, inner.y + 2, inner.width, inner.height.saturating_sub(2));
                 node(cx, c, f, body);
@@ -839,6 +939,23 @@ fn numbers(values: &[f64], v: Option<&Value>, field: Option<&str>) -> Vec<f64> {
 }
 
 /// `1234567` → `1.23M`.
+/// A sum for a footer: thousands separated, two decimals unless it's whole.
+fn money(x: f64) -> String {
+    let neg = x < 0.0;
+    let cents = (x.abs() * 100.0).round() as u64;
+    let (whole, frac) = (cents / 100, cents % 100);
+    let digits = whole.to_string();
+    let mut grouped = String::new();
+    for (i, ch) in digits.chars().enumerate() {
+        if i > 0 && (digits.len() - i) % 3 == 0 {
+            grouped.push(',');
+        }
+        grouped.push(ch);
+    }
+    let sign = if neg { "-" } else { "" };
+    if frac == 0 { format!("{sign}{grouped}") } else { format!("{sign}{grouped}.{frac:02}") }
+}
+
 fn compact(x: f64) -> String {
     let a = x.abs();
     match a {
@@ -1242,6 +1359,37 @@ mod tests {
     fn big_digits_are_three_rows() {
         let [a, b, c] = big("1.5");
         assert_eq!((a.as_str(), b.as_str(), c.as_str()), ("▄█    █▀▀", " █    ▀▀█", "▀▀▀ ▀ ▀▀▀"));
+    }
+
+    fn screen(ui: serde_json::Value, w: u16, h: u16) -> Vec<String> {
+        use crate::state::{Msg, update};
+        let mut st = State::default();
+        update(&mut st, Msg::Push { ui: serde_json::from_value(ui).unwrap() });
+        let mut term = ratatui::Terminal::new(ratatui::backend::TestBackend::new(w, h)).unwrap();
+        term.draw(|f| {
+            draw(&st, f);
+        })
+        .unwrap();
+        let buf = term.backend().buffer();
+        (0..h).map(|y| (0..w).map(|x| buf[(x, y)].symbol()).collect::<String>().trim_end().to_string()).collect()
+    }
+
+    #[test]
+    fn a_table_totals_its_columns() {
+        let rows = screen(
+            serde_json::json!({
+                "root": {"type": "table", "id": "t", "bind": "ledger", "columns": [
+                    {"title": "payee", "value": "{payee}"},
+                    {"title": "amount", "value": "{amount}", "align": "right", "size": 10, "total": "amount"}
+                ]},
+                "store": {"ledger": [{"payee": "Rent", "amount": -1450}, {"payee": "Pay", "amount": "3200.5"}, {"payee": "Tea", "amount": "-4.25"}]},
+                "status_bar": false
+            }),
+            30,
+            7,
+        );
+        assert_eq!(rows[6], "  Total               1,746.25", "{rows:#?}");
+        assert!(rows[5].ends_with("──────────"), "{rows:#?}");
     }
 
     #[test]

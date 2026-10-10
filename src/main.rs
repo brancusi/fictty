@@ -30,6 +30,9 @@ enum Cmd {
         /// every change.
         #[arg(long)]
         store: Option<PathBuf>,
+        /// Load themes from this JSON file (theme specs by name); the first is chosen.
+        #[arg(long)]
+        themes: Option<PathBuf>,
     },
     /// Replace the running screen's binary with this one (or --binary), keeping its whole state.
     Upgrade {
@@ -72,6 +75,12 @@ enum Cmd {
     },
     /// Read a store entry: its revision, who wrote it last, and its text or value.
     Read { key: String },
+    /// Choose the running screen's theme (a name, `next` or `prev`), or load themes from a file.
+    Theme {
+        name: Option<String>,
+        #[arg(long)]
+        load: Option<PathBuf>,
+    },
     /// Move one node's view state, from a JSON object in a file (`-` reads stdin):
     /// `{"selected": 2}` for a list or table, `{"tab": 1}` for tabs.
     Set { id: String, file: PathBuf },
@@ -109,7 +118,9 @@ fn main() -> Result<()> {
     let cli = Cli::parse();
     let socket = cli.socket.unwrap_or_else(runtime::default_socket);
     let reply = match cli.cmd {
-        Cmd::Run { file, watch, restore, store } => return runtime::run(file, watch, socket, restore, store),
+        Cmd::Run { file, watch, restore, store, themes } => {
+            return runtime::run(file, watch, socket, restore, runtime::Files { store, themes });
+        }
         Cmd::Upgrade { binary } => {
             let bin = binary.or_else(|| std::env::current_exe().ok()).map(|p| p.display().to_string());
             runtime::send(&socket, json!({"op": "upgrade", "binary": bin}))?
@@ -133,6 +144,13 @@ fn main() -> Result<()> {
         Cmd::Merge { key, file, if_rev, by } => write(&socket, "merge", key, "value", &file, if_rev, by)?,
         Cmd::Edit { key, file, if_rev, by } => write(&socket, "edit", key, "changes", &file, if_rev, by)?,
         Cmd::Read { key } => runtime::send(&socket, json!({"op": "read", "key": key}))?,
+        Cmd::Theme { name, load } => {
+            let add = match load {
+                Some(p) => serde_json::to_value(runtime::load_themes(&p)?)?,
+                None => json!({}),
+            };
+            runtime::send(&socket, json!({"op": "theme", "add": add, "choose": name}))?
+        }
         Cmd::Set { id, file } => {
             let raw = if file.as_os_str() == "-" { std::io::read_to_string(std::io::stdin())? } else { std::fs::read_to_string(&file)? };
             let mut req: serde_json::Value = serde_json::from_str(&raw)?;

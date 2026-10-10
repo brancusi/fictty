@@ -94,8 +94,10 @@ write; there are no conditions, loops or expressions.
 ```
 
 Templates read `{field}` from the selected row, `{store.key}` (and `{store.key.path}`) from the
-store, and `{$id}`, a fresh id. Values that look like numbers become numbers. Each action is a
-write by `person`, logged like any other.
+store, and `{$id}`, a fresh id. A string that is a single placeholder takes the value with its type
+(a number stays a number); text is never guessed into a number, because a payee called "2024" or
+an id like "5" must stay text. Components that add up read numbers from strings. Each action is a
+write by `person`.
 
 ## Components added
 

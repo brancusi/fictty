@@ -2,7 +2,7 @@
 //! the terminal, the socket and child processes; it feeds messages in and carries effects out.
 //! `State` serializes, so `fictty get --state` shows exactly what is drawn.
 
-use crate::model::{Action, Kind, LayerSpec, Node, Ui, lookup};
+use crate::model::{Action, Kind, LayerSpec, Node, ThemeSpec, Ui, lookup};
 use crate::store::{Body, Entry, Write};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -25,6 +25,17 @@ pub struct State {
     /// Writes to the store so far, so the runtime knows when to save it.
     #[serde(default)]
     pub store_writes: u64,
+    /// The themes the person or project loaded (`--themes`), by name. A push doesn't change them.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub themes: BTreeMap<String, ThemeSpec>,
+    /// The active theme's name: the person's choice, like a selection.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub theme: Option<String>,
+    /// What's wrong with the UI against the store and the theme, in sentences an agent can act
+    /// on: a bound value of the wrong shape, an unknown variant or tone. Checked after every
+    /// message; the status line shows the first.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub problems: Vec<String>,
     /// One line at the bottom: the last error or message.
     #[serde(default)]
     pub status: Option<String>,
@@ -81,9 +92,10 @@ pub struct Local {
     /// The shown child of a tabs node.
     #[serde(default)]
     pub tab: usize,
-    /// An editor node's view of its text: carets, scroll, size. The text is in the store.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub editor: Option<caretline::View>,
+    /// An editor's or input's views of the text entries it has shown, by entry: carets,
+    /// scroll, size. The text is in the store.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub editors: BTreeMap<String, caretline::View>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -136,6 +148,13 @@ pub enum Msg {
         if_rev: Option<u64>,
         by: String,
     },
+    /// Add or replace themes (by name), and choose one: a name, or `next` / `prev` to cycle.
+    Theme {
+        #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+        add: BTreeMap<String, ThemeSpec>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        choose: Option<String>,
+    },
     /// Something an agent did over the socket, for the `$log` source (newest first).
     Activity { op: String, what: String },
     /// The cells an editor node got in the last frame (the view reports them; the runtime sends
@@ -159,6 +178,17 @@ pub enum Effect {
 }
 
 pub fn update(st: &mut State, msg: Msg) -> Vec<Effect> {
+    let checks = matches!(msg, Msg::Push { .. } | Msg::Patch { .. } | Msg::Data { .. } | Msg::Write { .. } | Msg::Theme { .. } | Msg::Key { .. });
+    let fx = apply(st, msg);
+    // A selection, a write or a new row can point an editor at an entry it hasn't shown yet.
+    fields(st);
+    if checks {
+        st.problems = problems(st);
+    }
+    fx
+}
+
+fn apply(st: &mut State, msg: Msg) -> Vec<Effect> {
     match msg {
         Msg::Push { ui } => {
             st.ui = ui;
@@ -273,6 +303,14 @@ pub fn update(st: &mut State, msg: Msg) -> Vec<Effect> {
             settle(st);
             vec![Effect::Reply(reply)]
         }
+        Msg::Theme { add, choose } => {
+            let first = add.keys().next().cloned();
+            st.themes.extend(add);
+            if let Some(c) = choose.or(if st.theme.is_none() { first } else { None }) {
+                choose_theme(st, &c);
+            }
+            vec![]
+        }
         Msg::Activity { op, what } => {
             log(st, op, what);
             vec![]
@@ -309,6 +347,68 @@ pub fn update(st: &mut State, msg: Msg) -> Vec<Effect> {
     }
 }
 
+/// What a store action's templates read: the selected row's fields, `store` (every entry: a
+/// value, or a text's contents) and `$id`, an id no write has used (the sum of all revisions only
+/// goes up, and survives a restart with the store).
+fn action_context(st: &State) -> Value {
+    let mut ctx = match selected_item(st) {
+        Some(Value::Object(m)) => Value::Object(m),
+        _ => Value::Object(Default::default()),
+    };
+    let store: serde_json::Map<String, Value> = st
+        .store
+        .iter()
+        .map(|(k, e)| {
+            let v = match &e.body {
+                Body::Value { value } => value.clone(),
+                Body::Text { doc } => doc.text.to_string().into(),
+            };
+            (k.clone(), v)
+        })
+        .collect();
+    ctx["store"] = Value::Object(store);
+    let next: u64 = st.store.values().map(|e| e.rev).sum::<u64>() + 1;
+    ctx["$id"] = format!("{next:x}").into();
+    ctx
+}
+
+/// A store action's `value` filled from `ctx`: strings are templates. A string that is one
+/// placeholder takes the value itself, so a number stays a number and a list a list; text is
+/// never guessed into a number (components that add up read numbers from strings).
+fn fill_value(v: &Value, ctx: &Value) -> Value {
+    match v {
+        Value::String(t) if t.contains('{') => {
+            let one = t.strip_prefix('{').and_then(|r| r.strip_suffix('}')).filter(|p| !p.contains(['{', '}', '|']));
+            if let Some(found) = one.and_then(|p| lookup(ctx, p)) {
+                return found.clone();
+            }
+            Value::String(crate::model::fill(t, ctx))
+        }
+        Value::Array(a) => Value::Array(a.iter().map(|x| fill_value(x, ctx)).collect()),
+        Value::Object(m) => Value::Object(m.iter().map(|(k, x)| (k.clone(), fill_value(x, ctx))).collect()),
+        other => other.clone(),
+    }
+}
+
+/// Make a theme active: a name, or `next` / `prev` through the loaded ones in name order.
+fn choose_theme(st: &mut State, choice: &str) {
+    let names: Vec<&String> = st.themes.keys().collect();
+    let at = st.theme.as_ref().and_then(|t| names.iter().position(|n| *n == t));
+    let pick = match choice {
+        "next" | "prev" if names.is_empty() => None,
+        "next" => Some(names[at.map_or(0, |i| (i + 1) % names.len())].clone()),
+        "prev" => Some(names[at.map_or(0, |i| (i + names.len() - 1) % names.len())].clone()),
+        name if st.themes.contains_key(name) => Some(name.to_string()),
+        name => {
+            st.status = Some(format!("theme: no theme named {name:?} (loaded: {})", names.iter().map(|n| n.as_str()).collect::<Vec<_>>().join(", ")));
+            None
+        }
+    };
+    if pick.is_some() {
+        st.theme = pick;
+    }
+}
+
 /// How many entries `$log` keeps.
 const LOG_LEN: usize = 40;
 
@@ -342,12 +442,12 @@ fn log(st: &mut State, op: String, what: String) {
     st.data.insert("$log".into(), Slot::Ready { value: Value::Array(entries) });
 }
 
-/// The focused editor that takes this key, if any: everything but focus moves (Tab, Shift-Tab)
-/// and the node's own `keys`. Ctrl-C copies there; quitting is from outside the editor.
+/// The focused editor or input that takes this key, if any: everything but Tab, Shift-Tab, Esc
+/// and the node's own `keys`. Ctrl-C copies there; quitting is from outside.
 fn editing(st: &State, key: &str) -> Option<String> {
     let id = st.focus.as_ref()?;
     let n = st.ui.root.find(id)?;
-    let taken = matches!(n.kind, Kind::Editor { .. }) && !n.keys.contains_key(key) && !matches!(key, "tab" | "s-tab");
+    let taken = n.field().is_some() && !n.keys.contains_key(key) && !matches!(key, "tab" | "s-tab" | "esc");
     taken.then(|| id.clone())
 }
 
@@ -361,33 +461,45 @@ fn type_into(st: &mut State, id: &str, key: &str) {
     on_doc(st, id, msg, "person");
 }
 
-/// The store key an editor shows: its `bind`, else its id.
-pub fn doc_key(n: &Node) -> Option<String> {
-    n.bind.clone().or_else(|| n.id.clone())
-}
-
-/// Every editor showing `key`, with its view taken out of the state (put back by `put_views`).
-fn take_views(st: &mut State, key: &str) -> Vec<(String, caretline::View)> {
-    let mut all = Vec::new();
-    st.ui.root.walk(&mut all);
-    let ids: Vec<String> = all
-        .iter()
-        .filter(|n| matches!(n.kind, Kind::Editor { .. }) && doc_key(n).as_deref() == Some(key))
-        .filter_map(|n| n.id.clone())
-        .collect();
-    ids.into_iter().filter_map(|id| Some((id.clone(), st.local.get_mut(&id)?.editor.take()?))).collect()
-}
-
-fn put_views(st: &mut State, views: Vec<(String, caretline::View)>) {
-    for (id, v) in views {
-        st.local.entry(id).or_default().editor = Some(v);
+/// The store entry an editor or input shows: its `doc` template over the bound value, else its
+/// `bind`, else its id. None while a `doc` has nothing to fill from (no row selected).
+pub fn doc_key(st: &State, n: &Node) -> Option<String> {
+    let f = n.field()?;
+    match (f.doc, n.bind.as_deref()) {
+        (Some(doc), Some(bind)) => Some(crate::model::fill(doc, value_of(st, bind)?)),
+        (Some(doc), None) => Some(doc.to_string()),
+        (None, Some(bind)) if !bind.starts_with('@') => Some(bind.to_string()),
+        _ => n.id.clone(),
     }
 }
 
-/// A caretline message through editor `id`'s view of its document. Every other editor on the
-/// same document follows the change. A change of text is a store write, by `by`.
+/// The view editor `id` has of the entry it shows now.
+pub fn field_view<'a>(st: &'a State, id: &str) -> Option<(String, &'a caretline::View)> {
+    let key = doc_key(st, st.ui.root.find(id)?)?;
+    let v = st.local.get(id)?.editors.get(&key)?;
+    Some((key, v))
+}
+
+/// Every editor showing `key`, with its view of it taken out of the state (put back by
+/// `put_views`).
+fn take_views(st: &mut State, key: &str) -> Vec<(String, caretline::View)> {
+    let mut all = Vec::new();
+    st.ui.root.walk(&mut all);
+    let ids: Vec<String> =
+        all.iter().filter(|n| n.field().is_some() && doc_key(st, n).as_deref() == Some(key)).filter_map(|n| n.id.clone()).collect();
+    ids.into_iter().filter_map(|id| Some((id.clone(), st.local.get_mut(&id)?.editors.remove(key)?))).collect()
+}
+
+fn put_views(st: &mut State, key: &str, views: Vec<(String, caretline::View)>) {
+    for (id, v) in views {
+        st.local.entry(id).or_default().editors.insert(key.to_string(), v);
+    }
+}
+
+/// A caretline message through editor `id`'s view of its text. Every other editor on the same
+/// text follows the change. A change of text is a store write, by `by`.
 fn on_doc(st: &mut State, id: &str, msg: caretline::Msg, by: &str) {
-    let Some(key) = st.ui.root.find(id).and_then(doc_key) else { return };
+    let Some(key) = st.ui.root.find(id).and_then(|n| doc_key(st, n)) else { return };
     let mut views = take_views(st, &key);
     let acting = views.iter().position(|(v, _)| v == id);
     if let (Some(acting), Some(Entry { body: Body::Text { doc }, .. })) = (acting, st.store.get_mut(&key)) {
@@ -401,7 +513,7 @@ fn on_doc(st: &mut State, id: &str, msg: caretline::Msg, by: &str) {
             wrote(st, &key, by);
         }
     }
-    put_views(st, views);
+    put_views(st, &key, views);
 }
 
 /// Count a write to `key`: its revision goes up, and it records who.
@@ -482,7 +594,7 @@ fn text_edit(st: &mut State, key: &str, changes: Vec<(usize, usize, String)>, by
             *v = new;
         }
     }
-    put_views(st, views);
+    put_views(st, key, views);
     wrote(st, key, by);
     Ok(())
 }
@@ -565,6 +677,52 @@ fn act(st: &mut State, a: Action) -> Vec<Effect> {
             }
             vec![]
         }
+        Action::Theme { theme } => {
+            choose_theme(st, &theme);
+            vec![]
+        }
+        Action::Append { append, value } => {
+            let v = fill_value(&value, &action_context(st));
+            match st.store.get_mut(&append).map(|e| &mut e.body) {
+                Some(Body::Value { value: Value::Array(a) }) => a.push(v),
+                None => {
+                    st.store.insert(append.clone(), Entry { rev: 0, by: "person".into(), body: Body::Value { value: Value::Array(vec![v]) } });
+                }
+                Some(_) => {
+                    st.status = Some(format!("append: {append} isn't a list"));
+                    return vec![];
+                }
+            }
+            wrote(st, &append, "person");
+            settle(st);
+            vec![]
+        }
+        Action::Put { put, value } => {
+            let value = fill_value(&value, &action_context(st));
+            if let Err(e) = write_entry(st, &put, Write::Put { value }, None, "person") {
+                st.status = Some(format!("put: {e}"));
+            }
+            settle(st);
+            vec![]
+        }
+        Action::Remove { remove } => {
+            let Some(id) = st.focus.clone() else { return vec![] };
+            let shows = st.ui.root.find(&id).and_then(|n| n.bind.as_deref()) == Some(remove.as_str());
+            let at = selected(st, &id);
+            match st.store.get_mut(&remove).map(|e| &mut e.body) {
+                Some(Body::Value { value: Value::Array(a) }) if shows && at < a.len() => {
+                    a.remove(at);
+                }
+                _ => {
+                    st.status = Some(format!("remove: the focused list doesn't show a row of {remove}"));
+                    return vec![];
+                }
+            }
+            wrote(st, &remove, "person");
+            settle(st);
+            vec![]
+        }
+        Action::Do { steps } => steps.into_iter().flat_map(|a| act(st, a)).collect(),
         Action::Named(n) => match n.as_str() {
             "quit" => vec![Effect::Quit],
             "refresh" => refresh(st),
@@ -641,36 +799,6 @@ fn settle(st: &mut State) {
     st.ui.root.walk(&mut all);
     let ids: Vec<String> = all.iter().filter_map(|n| n.id.clone()).collect();
     st.local.retain(|k, _| ids.contains(k));
-    // Every editor shows a text entry in the store: its seed `text` when the entry is new, or a
-    // string an agent put there before the editor existed. Its view is its own, by id.
-    for n in &all {
-        let (Some(id), Kind::Editor { text }) = (&n.id, &n.kind) else { continue };
-        let Some(key) = doc_key(n) else { continue };
-        match st.store.get(&key).map(|e| &e.body) {
-            None => {
-                st.store.insert(key.clone(), Entry::text(text, "seed"));
-                st.store_writes += 1;
-            }
-            Some(Body::Value { value: Value::String(s) }) => {
-                let text = s.clone();
-                let e = st.store.get_mut(&key).expect("present");
-                *e = Entry { rev: e.rev, by: e.by.clone(), ..Entry::text(&text, "") };
-            }
-            Some(Body::Value { .. }) => {
-                st.status = Some(format!("editor {id}: {key} isn't text"));
-                continue;
-            }
-            Some(Body::Text { .. }) => {}
-        }
-        let Some(Entry { body: Body::Text { doc }, .. }) = st.store.get(&key) else { continue };
-        let local = st.local.entry(id.clone()).or_default();
-        let view = local.editor.get_or_insert_with(|| {
-            let mut v = caretline::View::new(caretline::Viewport { width: 1, height: 1 });
-            v.config.status_bar = false;
-            v
-        });
-        view.fit(doc);
-    }
     if !st.focus.as_ref().is_some_and(|f| order.contains(f)) {
         st.focus = order.first().cloned();
     }
@@ -698,6 +826,101 @@ fn settle(st: &mut State) {
     for (id, k) in fix {
         st.local.entry(id).or_default().selected = k;
     }
+}
+
+/// Every editor and input shows a text entry in the store: its seed when the entry is new, or a
+/// string an agent put there before. Its view of each entry is its own, by id.
+fn fields(st: &mut State) {
+    let mut all = Vec::new();
+    st.ui.root.walk(&mut all);
+    let found: Vec<(String, String, String, bool)> = all
+        .iter()
+        .filter_map(|n| {
+            let f = n.field()?;
+            let key = doc_key(st, n)?;
+            let seed = match n.bind.as_deref().and_then(|b| value_of(st, b)) {
+                Some(v) if f.doc.is_some() => crate::model::fill(f.seed, v),
+                _ => f.seed.to_string(),
+            };
+            Some((n.id.clone()?, key, seed, f.line))
+        })
+        .collect();
+    for (id, key, seed, line) in found {
+        let fresh = |text: &str| {
+            let mut e = Entry::text(text, "seed");
+            if let Body::Text { doc } = &mut e.body {
+                doc.config.single_line = line;
+                doc.sanitize();
+            }
+            e
+        };
+        match st.store.get(&key).map(|e| &e.body) {
+            None => {
+                st.store.insert(key.clone(), fresh(&seed));
+                st.store_writes += 1;
+            }
+            Some(Body::Value { value: Value::String(s) }) => {
+                let text = s.clone();
+                let e = st.store.get_mut(&key).expect("present");
+                *e = Entry { rev: e.rev, by: e.by.clone(), ..fresh(&text) };
+            }
+            Some(Body::Value { .. }) => {
+                st.status = Some(format!("{id}: {key} holds a value, not text"));
+                continue;
+            }
+            Some(Body::Text { .. }) => {}
+        }
+        let Some(Entry { body: Body::Text { doc }, .. }) = st.store.get(&key) else { continue };
+        let view = st.local.entry(id).or_default().editors.entry(key).or_insert_with(|| {
+            let mut v = caretline::View::new(caretline::Viewport { width: 1, height: 1 });
+            v.config.status_bar = false;
+            v
+        });
+        view.fit(doc);
+    }
+}
+
+/// What's wrong with the UI against the store, the sources and the theme (see `problems`).
+pub fn problems(st: &State) -> Vec<String> {
+    let mut all = Vec::new();
+    st.ui.root.walk(&mut all);
+    let active = st.theme.as_ref().and_then(|t| st.themes.get(t));
+    let mut out = Vec::new();
+    let kind = |v: &Value| match v {
+        Value::Array(_) => "a list",
+        Value::Object(_) => "an object",
+        Value::String(_) => "text",
+        Value::Number(_) => "a number",
+        Value::Bool(_) => "true or false",
+        Value::Null => "nothing",
+    };
+    for n in &all {
+        let name = n.id.clone().unwrap_or_else(|| n.kind_name().to_string());
+        if let Some(v) = &n.variant
+            && active.is_some_and(|t| !t.variants.contains_key(v))
+        {
+            out.push(format!("{name}: the theme has no variant {v:?}"));
+        }
+        if let Some(t) = &n.tone {
+            let known = active.is_some_and(|a| a.tokens.contains_key(t)) || st.ui.theme.contains_key(t) || t.parse::<ratatui::style::Color>().is_ok();
+            if !known {
+                out.push(format!("{name}: tone {t:?} isn't a theme token or a colour"));
+            }
+        }
+        let Some(bind) = n.bind.as_deref().filter(|b| !b.starts_with('@')) else { continue };
+        let Some(v) = value_of(st, bind) else { continue };
+        let wants_list = matches!(n.kind, Kind::List { .. } | Kind::Table { .. } | Kind::Bars { .. } | Kind::Sparkline { .. });
+        let literal = !items(st, n).is_empty() && !v.is_array();
+        if wants_list && !v.is_array() && !literal {
+            out.push(format!("{} {name}: {bind} should be a list, but it's {}", n.kind_name(), kind(v)));
+        }
+        if let (Kind::Sparkline { field: None, .. }, Value::Array(a)) = (&n.kind, v)
+            && a.iter().any(|x| !x.is_number())
+        {
+            out.push(format!("sparkline {name}: {bind} should be a list of numbers (or set `field`)"));
+        }
+    }
+    out
 }
 
 /// The focusable nodes on screen, in tree order (hidden tabs left out).
@@ -816,7 +1039,7 @@ mod tests {
     }
 
     fn caret(st: &State, id: &str) -> usize {
-        st.local[id].editor.as_ref().unwrap().caret()
+        field_view(st, id).unwrap().1.caret()
     }
 
     fn keys(st: &mut State, ks: &[&str]) -> Vec<Effect> {
@@ -874,7 +1097,7 @@ mod tests {
         // The editor back, with a different seed: the note wins over the seed.
         let mut again = note();
         if let Some(c) = again.root.children_mut() {
-            c[0].kind = Kind::Editor { text: "a new seed".into() };
+            c[0].kind = Kind::Editor { text: "a new seed".into(), doc: None, placeholder: None };
         }
         update(&mut st, Msg::Push { ui: again });
         assert_eq!(text_of(&st, "note"), "hi!");
@@ -937,6 +1160,113 @@ mod tests {
         keys(&mut st, &["tab", "end", "s-tab", "x"]);
         assert_eq!(text_of(&st, "doc"), "xshared");
         assert_eq!((caret(&st, "a"), caret(&st, "b")), (1, 7), "b's caret moved with its text");
+    }
+
+    #[test]
+    fn a_notes_app_is_a_list_and_an_editor_on_the_selected_note() {
+        let mut st = State::default();
+        update(&mut st, Msg::Push {
+            ui: ui(json!({
+                "root": {"type": "col", "children": [
+                    {"type": "input", "id": "title", "bind": "draft", "placeholder": "New note",
+                     "keys": {"enter": {"do": [
+                         {"append": "notes", "value": {"id": "{$id}", "title": "{store.draft}"}},
+                         {"put": "draft", "value": ""}
+                     ]}}},
+                    {"type": "list", "id": "list", "bind": "notes", "item": "{title}", "keys": {"x": {"remove": "notes"}}},
+                    {"type": "editor", "id": "body", "bind": "@list", "doc": "note/{id}", "text": "# {title}\n"}
+                ]},
+                "store": {"notes": [{"id": "a", "title": "Groceries"}]}
+            })),
+        });
+        assert_eq!(text_of(&st, "note/a"), "# Groceries\n", "seeded from the selected row");
+        // Type a title into the input and press Enter: a new note, the input cleared.
+        keys(&mut st, &["H", "i", "enter"]);
+        let notes = st.store["notes"].read()["value"].clone();
+        assert_eq!(notes[1]["title"], json!("Hi"));
+        assert_eq!(text_of(&st, "draft"), "", "the input is cleared");
+        assert!(notes[1]["id"].is_string());
+        // Select it: the editor now shows (and seeds) that note.
+        keys(&mut st, &["tab", "j", "tab", "end", "!"]);
+        let id = notes[1]["id"].as_str().unwrap();
+        assert_eq!(text_of(&st, &format!("note/{id}")), "# Hi!\n");
+        assert_eq!(text_of(&st, "note/a"), "# Groceries\n", "the first note is untouched");
+        // Remove the first note from the list; its text stays in the store.
+        keys(&mut st, &["s-tab", "k", "x"]);
+        assert_eq!(st.store["notes"].read()["value"].as_array().unwrap().len(), 1);
+        assert!(st.store.contains_key("note/a"));
+    }
+
+    #[test]
+    fn an_input_is_one_line_and_esc_leaves_it() {
+        let mut st = State::default();
+        update(&mut st, Msg::Push { ui: ui(json!({"root": {"type": "row", "children": [
+            {"type": "input", "id": "q"}, {"type": "list", "id": "l", "items": [1]}
+        ]}, "keys": {"esc": "focus_next"}})) });
+        keys(&mut st, &["a", "enter", "b"]);
+        assert_eq!(text_of(&st, "q"), "ab", "enter adds no line");
+        keys(&mut st, &["esc"]);
+        assert_eq!(st.focus.as_deref(), Some("l"));
+    }
+
+    #[test]
+    fn store_actions_keep_types_and_say_what_went_wrong() {
+        let mut st = State::default();
+        update(&mut st, Msg::Push { ui: ui(json!({
+            "root": {"type": "list", "id": "l", "bind": "rows", "keys": {
+                "a": {"append": "rows", "value": {"amount": "{store.amt}", "n": "{store.n}", "note": "paid {store.amt}"}},
+                "b": {"append": "amt", "value": 1}
+            }},
+            "store": {"rows": [], "amt": "-12.50", "n": 3}
+        })) });
+        keys(&mut st, &["a"]);
+        assert_eq!(st.store["rows"].read()["value"], json!([{"amount": "-12.50", "n": 3, "note": "paid -12.50"}]));
+        keys(&mut st, &["b"]);
+        assert_eq!(st.status.as_deref(), Some("append: amt isn't a list"));
+    }
+
+    #[test]
+    fn themes_are_loaded_chosen_and_survive_a_push() {
+        let mut st = State::default();
+        let theme = |accent: &str| serde_json::from_value::<ThemeSpec>(json!({"tokens": {"accent": accent}})).unwrap();
+        update(&mut st, Msg::Theme { add: [("glass".to_string(), theme("#39d6e6")), ("paper".to_string(), theme("#0f8fa0"))].into(), choose: None });
+        assert_eq!(st.theme.as_deref(), Some("glass"), "the first loaded is chosen");
+        update(&mut st, Msg::Push { ui: note() });
+        assert_eq!(st.theme.as_deref(), Some("glass"));
+        keys(&mut st, &["tab"]);
+        update(&mut st, Msg::Push { ui: ui(json!({"root": {"type": "list", "id": "l", "items": [1], "keys": {"t": {"theme": "next"}}}})) });
+        keys(&mut st, &["t"]);
+        assert_eq!(st.theme.as_deref(), Some("paper"));
+        keys(&mut st, &["t"]);
+        assert_eq!(st.theme.as_deref(), Some("glass"), "next wraps around");
+        update(&mut st, Msg::Theme { add: BTreeMap::new(), choose: Some("neon".into()) });
+        assert!(st.status.as_deref().unwrap().starts_with("theme: no theme named \"neon\""));
+    }
+
+    #[test]
+    fn problems_say_what_is_wrong_in_words() {
+        let mut st = State::default();
+        let theme: ThemeSpec = serde_json::from_value(json!({"tokens": {"warn": "#ffbd4f"}, "variants": {"card": {}}})).unwrap();
+        update(&mut st, Msg::Theme { add: [("t".to_string(), theme)].into(), choose: None });
+        update(&mut st, Msg::Push { ui: ui(json!({
+            "root": {"type": "col", "children": [
+                {"type": "table", "id": "t", "bind": "rows", "columns": [{"title": "a", "value": "{a}"}]},
+                {"type": "sparkline", "id": "s", "bind": "nums"},
+                {"type": "text", "id": "x", "variant": "cardd", "tone": "warn", "text": "hi"},
+                {"type": "text", "id": "y", "variant": "card", "tone": "warning", "text": "hi"}
+            ]},
+            "store": {"rows": {"a": 1}, "nums": [1, "two"]}
+        })) });
+        assert_eq!(st.problems, vec![
+            "table t: rows should be a list, but it's an object".to_string(),
+            "sparkline s: nums should be a list of numbers (or set `field`)".to_string(),
+            "x: the theme has no variant \"cardd\"".to_string(),
+            "y: tone \"warning\" isn't a theme token or a colour".to_string(),
+        ]);
+        // Fixing the data clears it.
+        let r = write(&mut st, "rows", json!({"write": "put", "value": [{"a": 1}]}), None);
+        assert_eq!(r["ok"], json!(true));
+        assert_eq!(st.problems.len(), 3);
     }
 
     #[test]
