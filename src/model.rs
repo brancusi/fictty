@@ -166,6 +166,9 @@ pub struct Node {
     /// A meaning for the text colour, as a theme token: `warn`, `neg`, `accent`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tone: Option<String>,
+    /// Space inside the node's border: `1` (cells either side), or `[x, y]` (cells, rows).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pad: Option<Pad>,
     #[serde(flatten)]
     pub kind: Kind,
 }
@@ -188,6 +191,7 @@ impl Default for Node {
             scale: None,
             variant: None,
             tone: None,
+            pad: None,
             kind: Kind::Text { text: String::new() },
         }
     }
@@ -262,6 +266,10 @@ pub enum Kind {
         items: Vec<Value>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         width: Option<u16>,
+        /// One row per item, the bar growing to the right, the label before it and the value
+        /// after it, instead of columns.
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        horizontal: bool,
     },
     /// A filled bar: `value` (a template giving a number) out of `max` (default 1).
     Gauge {
@@ -442,6 +450,23 @@ pub struct Source {
     pub path: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub every: Option<f64>,
+}
+
+/// Space inside a node: cells either side, or `[x, y]`.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum Pad {
+    X(u16),
+    XY([u16; 2]),
+}
+
+impl Pad {
+    pub fn xy(self) -> (u16, u16) {
+        match self {
+            Pad::X(x) => (x, 0),
+            Pad::XY([x, y]) => (x, y),
+        }
+    }
 }
 
 /// An editor's or input's settings (see `Kind::Editor`, `Kind::Input`).

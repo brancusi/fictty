@@ -813,10 +813,16 @@ fn buffer_text(buf: &ratatui::buffer::Buffer) -> String {
 }
 
 /// Render one frame as text without a terminal, after fetching sources and replaying keys.
-pub fn render(ui: Ui, width: u16, height: u16, keys: &[String], ansi: bool) -> Result<String> {
+pub fn render(ui: Ui, width: u16, height: u16, keys: &[String], ansi: bool, files: Files, theme: Option<String>) -> Result<String> {
     use ratatui::{Terminal, backend::TestBackend};
     let (tx, _rx) = mpsc::channel();
     let mut st = State::default();
+    if let Some(p) = &files.store {
+        st.store = load_store(p)?;
+    }
+    if let Some(p) = &files.themes {
+        update(&mut st, Msg::Theme { add: load_themes(p)?, choose: theme });
+    }
     let mut d = Driver::new(tx, true);
     d.apply(&mut st, Msg::Push { ui });
     let mut term = Terminal::new(TestBackend::new(width, height))?;

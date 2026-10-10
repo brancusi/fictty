@@ -111,6 +111,14 @@ enum Cmd {
         /// Colours and attributes as ANSI (truecolour) escapes.
         #[arg(long)]
         ansi: bool,
+        /// Start from this store file.
+        #[arg(long)]
+        store: Option<PathBuf>,
+        /// Load themes from this file (the first is chosen, or --theme).
+        #[arg(long)]
+        themes: Option<PathBuf>,
+        #[arg(long)]
+        theme: Option<String>,
     },
 }
 
@@ -125,9 +133,10 @@ fn main() -> Result<()> {
             let bin = binary.or_else(|| std::env::current_exe().ok()).map(|p| p.display().to_string());
             runtime::send(&socket, json!({"op": "upgrade", "binary": bin}))?
         }
-        Cmd::Render { file, size, keys, ansi } => {
+        Cmd::Render { file, size, keys, ansi, store, themes, theme } => {
             let (w, h) = size.split_once('x').ok_or_else(|| anyhow::anyhow!("--size is WxH"))?;
-            print!("{}", runtime::render(runtime::load(&file)?, w.parse()?, h.parse()?, &keys, ansi)?);
+            let files = runtime::Files { store, themes };
+            print!("{}", runtime::render(runtime::load(&file)?, w.parse()?, h.parse()?, &keys, ansi, files, theme)?);
             return Ok(());
         }
         Cmd::Push { file } => runtime::send(&socket, json!({"op": "push", "ui": runtime::load(&file)?}))?,

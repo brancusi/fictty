@@ -179,11 +179,16 @@ pub enum Effect {
 
 pub fn update(st: &mut State, msg: Msg) -> Vec<Effect> {
     let checks = matches!(msg, Msg::Push { .. } | Msg::Patch { .. } | Msg::Data { .. } | Msg::Write { .. } | Msg::Theme { .. } | Msg::Key { .. });
+    let writes = st.store_writes;
     let fx = apply(st, msg);
     // A selection, a write or a new row can point an editor at an entry it hasn't shown yet.
     fields(st);
     if checks {
         st.problems = problems(st);
+    }
+    if st.store_writes != writes || !st.data.contains_key("$store") {
+        let value = store_summary(st);
+        st.data.insert("$store".into(), Slot::Ready { value });
     }
     fx
 }
@@ -407,6 +412,9 @@ fn choose_theme(st: &mut State, choice: &str) {
     if pick.is_some() {
         st.theme = pick;
     }
+    // Bindable as `$theme`: which one is on, and what else there is.
+    let value = serde_json::json!({"name": st.theme, "names": st.themes.keys().collect::<Vec<_>>()});
+    st.data.insert("$theme".into(), Slot::Ready { value });
 }
 
 /// How many entries `$log` keeps.
@@ -670,7 +678,11 @@ fn act(st: &mut State, a: Action) -> Vec<Effect> {
             let sel = selected_item(st).unwrap_or(Value::Null);
             vec![Effect::Run(run.iter().map(|s| crate::model::fill(s, &sel)).collect())]
         }
-        Action::Load { load } => vec![Effect::Load(load)],
+        Action::Load { load } => {
+            // `{file}` reads the selected row, so a menu of screens is a list.
+            let sel = selected_item(st).unwrap_or(Value::Null);
+            vec![Effect::Load(crate::model::fill(&load, &sel))]
+        }
         Action::Focus { focus } => {
             if st.ui.root.find(&focus).is_some_and(Node::focusable) {
                 st.focus = Some(focus);
@@ -878,6 +890,25 @@ fn fields(st: &mut State) {
         });
         view.fit(doc);
     }
+}
+
+/// The `$store` source: one row per entry (key, rev, by, what it holds), for a UI to show.
+fn store_summary(st: &State) -> Value {
+    let rows: Vec<Value> = st
+        .store
+        .iter()
+        .map(|(k, e)| {
+            let holds = match &e.body {
+                Body::Text { doc } => format!("text, {} chars", doc.text.len_chars()),
+                Body::Value { value: Value::String(t) } => format!("text, {} chars", t.chars().count()),
+                Body::Value { value: Value::Array(a) } => format!("a list of {}", a.len()),
+                Body::Value { value: Value::Object(o) } => format!("an object of {}", o.len()),
+                Body::Value { .. } => "a value".to_string(),
+            };
+            serde_json::json!({"key": k, "rev": e.rev, "by": e.by, "holds": holds})
+        })
+        .collect();
+    Value::Array(rows)
 }
 
 /// What's wrong with the UI against the store, the sources and the theme (see `problems`).

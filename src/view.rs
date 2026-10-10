@@ -433,6 +433,10 @@ fn node(cx: &mut Cx, n: &Node, f: &mut Frame, area: Rect) {
         }
         area
     };
+    let inner = match n.pad.map(|p| p.xy()) {
+        Some((x, y)) => inner.inner(ratatui::layout::Margin { horizontal: x, vertical: y }),
+        None => inner,
+    };
     // A bound node whose source hasn't arrived (or failed) says so instead of drawing.
     if let Some(bind) = n.bind.as_ref().filter(|b| !b.starts_with('@')) {
         let name = split_bind(bind).0;
@@ -689,12 +693,13 @@ fn node(cx: &mut Cx, n: &Node, f: &mut Frame, area: Rect) {
             let ylabels = vec![compact(lo), compact((lo + hi) / 2.0), compact(hi)];
             let chart = Chart::new(sets)
                 .style(style)
-                .legend_position(Some(LegendPosition::TopLeft))
+                .legend_position(if series.len() > 1 { Some(LegendPosition::TopLeft) } else { None })
                 .x_axis(Axis::default().style(axis).bounds([0.0, xmax]).labels(labels.clone()))
                 .y_axis(Axis::default().style(axis).bounds([lo, hi]).labels(ylabels));
             f.render_widget(chart, inner);
         }
-        Kind::Bars { label, value, width, .. } => bars(cx, n, f, inner, label, value, *width, &id),
+        Kind::Bars { label, value, horizontal: true, .. } => across(cx, n, f, inner, label, value, style, &id),
+        Kind::Bars { label, value, width, .. } => bars(cx, n, f, inner, label, value, *width, style, &id),
         Kind::Gauge { value, max, label } => {
             let v = bound(st, n).unwrap_or(&Value::Null);
             let x = number(&fill(value, v)).unwrap_or(0.0);
@@ -863,9 +868,42 @@ fn line_x(line: &Line, a: Rect) -> u16 {
     }
 }
 
+/// Bars across: a row per item, the label, a bar in eighths of a cell, the value.
+#[allow(clippy::too_many_arguments)]
+fn across(cx: &mut Cx, n: &Node, f: &mut Frame, inner: Rect, label: &str, value: &str, style: Style, id: &str) {
+    let rows = items(cx.st, n);
+    if rows.is_empty() || inner.width < 12 {
+        return;
+    }
+    let vals: Vec<f64> = rows.iter().map(|r| lookup(r, value).and_then(|v| v.as_f64().or_else(|| v.as_str().and_then(number))).unwrap_or(0.0)).collect();
+    let max = vals.iter().fold(0.0f64, |m, v| m.max(v.abs())).max(1e-9);
+    let labels: Vec<String> = rows.iter().map(|r| fill(label, r)).collect();
+    let lw = labels.iter().map(|l| l.chars().count()).max().unwrap_or(0).min(16) as u16;
+    let nums: Vec<String> = vals.iter().map(|v| money(v.round())).collect();
+    let nw = nums.iter().map(|s| s.chars().count()).max().unwrap_or(0) as u16;
+    let room = inner.width.saturating_sub(lw + nw + 2) as f64;
+    let eighths = ["", "▏", "▎", "▍", "▌", "▋", "▊", "▉"];
+    let ls = cx.look("bars.label", Style::default().fg(cx.th.dim));
+    for (k, ((l, v), num)) in labels.iter().zip(&vals).zip(&nums).enumerate().take(inner.height as usize) {
+        let y = inner.y + k as u16;
+        let hovered = cx.hovered(id, k);
+        let color = if hovered { cx.th.accent } else if *v < 0.0 { cx.th.neg } else { style.fg.unwrap_or(cx.th.pos) };
+        let cells = v.abs() / max * room;
+        let bar = format!("{}{}", "█".repeat(cells.floor() as usize), eighths[((cells - cells.floor()) * 8.0).round().min(7.0) as usize]);
+        let name: String = l.chars().take(lw as usize).collect();
+        f.buffer_mut().set_string(inner.x, y, &name, if hovered { ls.fg(cx.th.accent) } else { ls });
+        f.buffer_mut().set_string(inner.x + lw + 1, y, &bar, Style::default().fg(color));
+        let nx = inner.x + lw + 1 + bar.chars().count() as u16 + 1;
+        f.buffer_mut().set_string(nx.min(inner.right().saturating_sub(nw)), y, num, style.add_modifier(Modifier::BOLD));
+        if !id.is_empty() {
+            cx.mark(id, Some(k), None, Rect::new(inner.x, y, inner.width, 1));
+        }
+    }
+}
+
 /// Bars over zero: positive up, negative down, eighth blocks at the tips, labels underneath.
 #[allow(clippy::too_many_arguments)]
-fn bars(cx: &mut Cx, n: &Node, f: &mut Frame, inner: Rect, label: &str, value: &str, width: Option<u16>, id: &str) {
+fn bars(cx: &mut Cx, n: &Node, f: &mut Frame, inner: Rect, label: &str, value: &str, width: Option<u16>, style: Style, id: &str) {
     let rows = items(cx.st, n);
     if rows.is_empty() || inner.height < 3 {
         return;
@@ -879,7 +917,7 @@ fn bars(cx: &mut Cx, n: &Node, f: &mut Frame, inner: Rect, label: &str, value: &
     let w = width.unwrap_or(((inner.width / n_.max(1)).saturating_sub(1)).clamp(1, 9));
     let total = n_ * (w + 1);
     let x0 = inner.x + inner.width.saturating_sub(total) / 2;
-    let base = cx.style(n.style.as_ref());
+    let base = style;
     let eighths = [" ", "▁", "▂", "▃", "▄", "▅", "▆", "▇", "█"];
     for (k, (r, v)) in rows.iter().zip(vals.iter()).enumerate() {
         let x = x0 + k as u16 * (w + 1);
@@ -1390,6 +1428,46 @@ mod tests {
         );
         assert_eq!(rows[6], "  Total               1,746.25", "{rows:#?}");
         assert!(rows[5].ends_with("──────────"), "{rows:#?}");
+    }
+
+    #[test]
+    fn bars_across_label_bar_and_value() {
+        let rows = screen(
+            serde_json::json!({
+                "root": {"type": "bars", "horizontal": true, "label": "{k}", "value": "v",
+                         "items": [{"k": "rent", "v": 1450}, {"k": "food", "v": 362.5}]},
+                "status_bar": false
+            }),
+            30,
+            2,
+        );
+        assert_eq!(rows[0], "rent ███████████████████ 1,450");
+        assert_eq!(rows[1], "food ████▊ 363", "a quarter of the width: 4.75 cells");
+    }
+
+    #[test]
+    fn a_variant_and_pad_come_from_the_theme_and_the_node() {
+        use crate::state::{Msg, update};
+        let mut st = State::default();
+        let theme: ThemeSpec = serde_json::from_value(serde_json::json!({
+            "tokens": {"warn": "#ffbd4f"},
+            "parts": {"title": "warn+b"},
+            "variants": {"card": {"edge": "double"}}
+        }))
+        .unwrap();
+        update(&mut st, Msg::Theme { add: [("t".to_string(), theme)].into(), choose: None });
+        let ui = serde_json::json!({"root": {"type": "text", "title": "T", "variant": "card", "pad": 2, "text": "hi"}, "status_bar": false});
+        update(&mut st, Msg::Push { ui: serde_json::from_value(ui).unwrap() });
+        let mut term = ratatui::Terminal::new(ratatui::backend::TestBackend::new(12, 3)).unwrap();
+        term.draw(|f| {
+            draw(&st, f);
+        })
+        .unwrap();
+        let buf = term.backend().buffer();
+        let row = |y: u16| (0..12).map(|x| buf[(x, y)].symbol()).collect::<String>();
+        assert_eq!(row(0), "╔ T ═══════╗", "the variant's double edge");
+        assert_eq!(row(1), "║  hi      ║", "two cells of pad");
+        assert_eq!(buf[(2, 0)].fg, Color::Rgb(0xff, 0xbd, 0x4f), "the theme's title part");
     }
 
     #[test]
