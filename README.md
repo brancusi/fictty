@@ -30,6 +30,13 @@ It sits between [caretline](https://caretline.app), the text-editing engine, and
 ## Try it
 
 ```sh
+examples/showcase/play.sh       # a menu of screens: notes, a ledger, a live market, a gallery
+examples/showcase/tour.sh       # in another terminal: watch an agent drive it
+```
+
+Or by hand:
+
+```sh
 cargo build --release
 export PATH="$PWD/target/release:$PATH"
 
@@ -69,6 +76,11 @@ A UI is one JSON value:
 - **Data sources** are commands, JSON-line streams or literal values. `@tasks` binds the row
   selected in `tasks`.
 - **View state is kept by node id,** like React's keys, so a push keeps your selection and focus.
+- **The app's data lives in a store, apart from the UI.** A push never touches it. Typing, keys
+  and agents write it, each write with a revision, so an agent can't overwrite what you just
+  typed (`fictty put key file --if-rev 12`). Editors are [caretline](https://caretline.app).
+- **The look is a theme, not the UI's business.** Nodes ask for a `variant` and a `tone`; themes
+  (loaded with `--themes`, switched with a key) decide the colours.
 - **It's the Elm architecture:** a serializable state, a pure `update` that returns effects, a
   pure `view`. That's what makes reading back, replay and (soon) history possible.
 

@@ -35,9 +35,17 @@ reference, the dark version isn't there yet.
 
 ## 2 · Alphabet, theme and layout
 
-- [ ] Themes as data in the state: tokens plus a skin per primitive; push and patch them
+- [x] Themes as their own layer: tokens, parts (a skin per primitive) and variants, loaded with
+      `--themes`, switched by key or `fictty theme`; nodes ask for `variant` and `tone`
+      ([design/state-and-theme.md](design/state-and-theme.md))
+- [x] The store: the app's data apart from the UI, versioned entries, conditional writes
+      (`put`, `merge`, `edit` with `--if-rev`), seeds, `--store` persistence, store actions on keys
+- [x] `problems`: wrong shapes at binds and unknown variants or tones, in words, in replies
 - [ ] Layout on flexbox (a subset, via `taffy`): direction, size, grow, gap, padding, alignment
-- [ ] `input` and `textarea` on caretline (`single_line` mode), values written to the data model
+- [x] `input` and `editor` on caretline (single-line for inputs), their text in the store;
+      `doc` templates make an editor follow a list's selection
+- [ ] Collections keyed by id, writes by JSON Pointer path, a revision per record
+- [ ] Markdown styling in editors (headings, lists, code), and clicking to place the caret
 - [ ] Project components: JSON with named parameters, loaded from the project, `{"use": "kpi", …}`
 - [ ] Review the drawing-only components (`gauge`, `big`, `bars`, `sparkline`, `chart`, `map`):
       keep what's compact and degrades well, move the rest to recipes

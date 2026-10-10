@@ -10,17 +10,33 @@ sources they bind to and the keys) is plain JSON. A running screen holds no othe
 read the UI out, push a whole new one in, or replace one node, and it re-renders.
 
 ```
-world (thc, a market feed, any command that prints JSON)
-   │  sources: {"cmd": [...], "path": "items", "every": 3}
-   ▼
-State { ui, data, focus, local (selection by node id), status }   ← serializable, `get --state`
-   │  update(state, msg) -> effects        (pure)
+world (a market feed, any command that prints JSON)      agents and the person
+   │  sources: {"cmd": [...], "stream": [...]}              │  put / merge / edit, typing, store actions
+   ▼                                                        ▼
+State { ui, data, store (versioned entries), local (view state by id), focus, themes, theme }
+   │  update(state, msg) -> effects        (pure)          ← serializable, `get --state`
    │  view(state) -> frame                 (pure)
    ▼
 terminal
 ```
 
+Who owns what: the **UI** is the agent's (a push replaces it), the **store** is shared (only
+writes change it, each with a revision), **view state** is the person's (selection, carets,
+scroll), and the **theme** is the person's or the project's. The reasons are in
+[design/state-and-theme.md](design/state-and-theme.md).
+
 ## Try it
+
+The quickest way to see everything is the showcase: a menu of screens (notes, a ledger, a live
+market, a gallery of components, an agent's log), each one JSON, sharing one store and three
+themes.
+
+```sh
+examples/showcase/play.sh       # builds fictty if needed; t switches theme, esc goes back
+examples/showcase/tour.sh       # in another terminal: an agent drives the showcase
+```
+
+And by hand:
 
 ```sh
 cargo build --release                                     # binary: target/release/fictty
@@ -31,25 +47,67 @@ fictty key j x                                            # type keys
 fictty get --state                                        # everything on screen, as JSON
 fictty run --watch my.json                                # hot reload while you edit
 fictty render examples/tasks.json --size 100x30 --keys j  # no terminal
+fictty read ledger                                        # one store entry: rev, by, value or text
+fictty put ledger rows.json --if-rev 12                   # write it, unless someone wrote since 12
+fictty theme paper                                        # choose a loaded theme
 ```
 
 ## The model
 
-- **Components** (a closed set): `col`, `row`, `text`, `list`, `table`, `sparkline`. Every node can
-  have `id`, `size` (`12`, `"30%"`, `"*"`, `"2*"`), `title`, `border`, `style`, `bind` and `keys`.
-- **Sources** in `data`: `cmd` (argv), `shell`, or a literal `value`; `path` narrows the JSON, `every`
-  re-fetches. Text and columns are templates over the bound value: `"{text} · {due}"`.
+- **Components** (a closed set): `col`, `row`, `text`, `list`, `table` (with column `total`s),
+  `sparkline`, `chart`, `bars` (up, or `horizontal`), `gauge`, `big`, `tabs`, `editor`, `input`,
+  and the pixel ones below. Every node can have `id`, `size` (`12`, `"30%"`, `"*"`, `"2*"`),
+  `title`, `border`, `pad`, `variant`, `tone`, `style`, `bind` and `keys`.
+- **Sources** in `data`: `cmd` (argv), `shell`, `stream` (a command printing JSON lines) or a
+  literal `value`; `path` narrows the JSON, `every` re-fetches. Sources are disposable: a push
+  fetches them again. Built in: `$stats`, `$caps`, `$theme`, `$store` (every entry, by revision)
+  and `$log` (what agents did over the socket, newest first).
+- **Binds and templates**: `bind` names a store entry or a source, then a path (`books.running`);
+  `@id` is the selected row of another list. Text and columns are templates over the bound
+  value: `"{text} · {due}"`, `<accent+b>styled</>`, `{±change}` coloured by sign.
 - **Actions** on keys: `quit`, `up`, `down`, `top`, `bottom`, `focus_next`, `focus_prev`, `refresh`,
-  `{"run": [argv with {field} of the selected row]}`, `{"load": "other-ui.json"}`,
-  `{"focus": "id"}`. A focused node's keys win over the UI's, which win over the defaults.
-- **Identity**: view state (selection) and focus are keyed by node id, so they survive a push for
-  any id that's still there (React's `key`).
+  `{"run": [argv with {field} of the selected row]}`, `{"load": "{file}"}`, `{"focus": "id"}`,
+  `{"theme": "next"}`, and store actions: `append`, `put`, `remove`, `do`. A focused node's keys
+  win over the UI's, which win over the defaults.
+- **Identity**: view state (selection, carets, scroll) and focus are keyed by node id, so they
+  survive a push for any id that's still there (React's `key`).
+- **Problems**: a bound value of the wrong shape, an unknown variant or tone, comes back as a
+  sentence in `problems` (in `get --state`, in replies, on the status line).
+
+## The store
+
+The app's data, apart from the UI: named entries, each a JSON value or a text (a caretline
+document with its undo history), each with a revision (`rev`) and who wrote it last (`by`).
+
+- **A push never changes it.** A UI can seed entries that don't exist yet (`"store": {…}`, or an
+  editor's `text`); a seed never overwrites.
+- **Writes**: typing in an editor or input; store actions on keys; and from agents,
+  `fictty put` (a value, or a string as a text's new contents), `merge` (RFC 7396) and `edit`
+  (`[[from, to, "text"]]` ranges of a text). With `--if-rev N` a write is refused if anyone wrote
+  since revision N, and the reply carries the entry as it is now.
+- **An agent's text edit is an edit**: the person's carets move with the text, and one undo takes
+  it back.
+- **`fictty run --store file.json`** keeps it across runs, written atomically after each change.
+- **Editors**: `{"type": "editor", "bind": "@notes", "doc": "note/{id}", "text": "# {title}"}` edits
+  the entry its template names from the selected note, so a list and an editor make a notes app.
+  An editor takes every key but Tab, Shift-Tab and Esc; `input` is the one-line version, and
+  Enter runs its `keys.enter`.
+
+## Themes
+
+`fictty run --themes themes.json` loads named themes; the first is chosen, `{"theme": "next"}` on
+a key cycles, `fictty theme <name>` picks one. A push doesn't change them. A theme has `tokens`
+(colours), `parts` (how the runtime draws `table.header`, `row.selected`, `border.focused`,
+`title`, `editor.caret`, `input.placeholder`, `status` and the rest, as style specs like
+`accent+b`) and `variants` (named looks: a style, an edge, a backdrop, a title style). Nodes ask
+for a `variant` and a `tone`, never a colour. A UI's own `theme` map still works, as tokens under
+every theme. `examples/showcase/themes.json` has three: glass, paper and phosphor.
 
 ## Not yet
 
-Text fields (`input`, `textarea`) on caretline, a policy on what a pushed UI may `run` (today:
-anything you could run yourself, over a socket only you can open), flexbox layout, themes as
-data, history. The order is in [PLAN.md](PLAN.md).
+A policy on what a pushed UI may `run` (today: anything you could run yourself, over a socket
+only you can open), flexbox layout, collections keyed by id and writes by path, `watch`,
+history. The order is in [PLAN.md](PLAN.md).
 
 ## Stress demos
 
@@ -69,6 +127,11 @@ Release build, a 170×52 terminal, measured on one machine:
 | 50k-row list replaced 20×/s | 20 | 0.18 ms | 20 |
 | patch storm, 1,000 patches/s | 116 | 0.22 ms | 1,000 |
 | push storm, whole UIs as fast as a client can send | 108 | 0.84 ms | ~6,200 |
+
+With the store, editors and problem checks (10 October 2026, the same machine, a 170×52
+pseudo-terminal, both builds measured back to back): the ticker, plasma, list and patch storm
+are unchanged; whole-UI pushes as fast as a client can send went from about 5,800 to 5,000 a
+second, the cost of checking every push for problems.
 
 ## Finance dashboard, mouse and layers
 
