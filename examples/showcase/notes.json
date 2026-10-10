@@ -1,0 +1,40 @@
+{
+  "root": {"type": "col", "children": [
+    {"type": "text", "size": 1, "pad": 1, "bind": "$theme",
+     "text": "<c1>●</> <b>fictty</> <d>›</> notes\t<d>esc menu · t theme ·</> <accent>{name}</> "},
+    {"type": "row", "pad": 1, "children": [
+      {"type": "col", "size": 34, "children": [
+        {"type": "input", "id": "draft", "bind": "draft", "title": "New note", "size": 3, "pad": 1,
+         "placeholder": "Type a title, then Enter",
+         "keys": {"enter": {"do": [
+           {"append": "notes", "value": {"id": "{$id}", "title": "{store.draft}", "tag": "new"}},
+           {"put": "draft", "value": ""},
+           {"focus": "notes"}
+         ]}}},
+        {"type": "list", "id": "notes", "bind": "notes", "title": "Notes", "variant": "card",
+         "item": "<b>{title}</>\t<d>{tag}</> ", "mark": "▌ ", "lead": "  ",
+         "empty": "No notes. Type a title above and press Enter.",
+         "keys": {"x": {"remove": "notes"}}}
+      ]},
+      {"type": "text", "size": 1, "text": ""},
+      {"type": "editor", "id": "body", "bind": "@notes", "doc": "note/{id}", "title": "Note", "pad": [2, 1],
+       "text": "# {title}\n\n", "placeholder": "Pick a note on the left, or make one."}
+    ]},
+    {"type": "text", "size": 1, "pad": 1,
+     "text": "<d>enter add · x delete · tab next pane · ctrl-z undo · every note is a store entry: </><accent>fictty read note/welcome</>"}
+  ]},
+  "store": {
+    "notes": [
+      {"id": "welcome", "title": "Welcome to fictty", "tag": "guide"},
+      {"id": "standup", "title": "Standup, 10 October", "tag": "work"},
+      {"id": "ideas", "title": "Ideas for the site", "tag": "work"},
+      {"id": "groceries", "title": "Groceries", "tag": "home"}
+    ],
+    "note/welcome": "# Welcome to fictty\n\nThis whole screen is one JSON value: an input, a list and this editor.\nThe editor is caretline, a text engine with Helix's model inside.\n\nThings to try\n- Type here. Ctrl-Z and Ctrl-Y undo and redo, in steps of typing.\n- Shift and the arrows select. Ctrl-C, Ctrl-X and Ctrl-V copy, cut and paste.\n- Tab to the list and pick another note: each keeps its own caret.\n- Press Esc, open another chapter, come back. Nothing is lost.\n\nWhere the text lives\nEvery note is an entry in the store (`note/welcome`), apart from the UI.\nA push replaces the screen; it never touches the store. Agents write\nwith a revision (`--if-rev`), so they can't overwrite what you just typed.\n",
+    "note/standup": "# Standup, 10 October\n\nDone\n- Search index rebuilt; p95 back to 205 ms\n- Billing invoices ran clean overnight\n\nToday\n- Ship the notes editor\n- Write the guide page\n\nAsk\n- Who owns the search alerts?\n",
+    "note/ideas": "# Ideas for the site\n\n- A live demo on the landing page: the showcase, recorded\n- One page per component, each drawn by fictty itself\n- The landscape board, with a column for what we took from each\n",
+    "note/groceries": "# Groceries\n\n- Oat milk\n- Lemons, garlic, parsley\n- Sourdough\n- Coffee beans (the Ethiopian one)\n"
+  },
+  "keys": {"esc": {"load": "home.json"}, "t": {"theme": "next"}},
+  "status_bar": false
+}

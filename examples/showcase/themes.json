@@ -1,0 +1,68 @@
+{
+  "glass": {
+    "tokens": {
+      "bg": "#0a0b10", "fg": "#d6dae3", "dim": "#5f6675", "border": "#262b38", "panel": "#11131b",
+      "ring": "#1b2533", "hover": "#161a24", "accent": "#39d6e6", "violet": "#8c7eff",
+      "amber": "#ffbd4f", "rose": "#ff7aa2", "pos": "#4fd18b", "neg": "#ff7aa2", "warn": "#ffbd4f",
+      "c1": "#39d6e6", "c2": "#8c7eff", "c3": "#ffbd4f", "c4": "#ff7aa2"
+    },
+    "parts": {
+      "border": "border", "border.focused": "accent", "title": "dim+b", "title.focused": "accent+b",
+      "table.header": "violet+b", "table.total": "fg+b", "row.selected": "fg+on-ring+b",
+      "row.selected.blur": "on-panel", "tabs.active": "bg+on-accent+b", "tabs.idle": "dim",
+      "editor.caret": "bg+on-accent", "editor.selection": "fg+on-ring", "input.placeholder": "dim+i",
+      "empty": "dim+i", "status": "dim", "status.error": "rose"
+    },
+    "variants": {
+      "card": {"edge": "rounded", "style": {"bg": "panel"}},
+      "quiet": {"edge": "plain", "style": {"fg": "dim"}, "title": "dim"},
+      "hero": {"edge": "double", "title": "accent+b"},
+      "alert": {"edge": "thick", "style": {"fg": "rose"}, "title": "rose+b"},
+      "bare": {}
+    }
+  },
+  "paper": {
+    "tokens": {
+      "bg": "#f2f3f5", "fg": "#1d2029", "dim": "#8a90a0", "border": "#cdd1da", "panel": "#e7e9ef",
+      "ring": "#cfe9ee", "hover": "#e9ebf0", "accent": "#0f8fa0", "violet": "#5b4fd6",
+      "amber": "#a8670a", "rose": "#c2416c", "pos": "#1d8a52", "neg": "#c2416c", "warn": "#a8670a",
+      "c1": "#0f8fa0", "c2": "#5b4fd6", "c3": "#c98a1a", "c4": "#c2416c"
+    },
+    "parts": {
+      "border": "border", "border.focused": "accent", "title": "dim+b", "title.focused": "accent+b",
+      "table.header": "violet+b", "table.total": "fg+b", "row.selected": "fg+on-ring+b",
+      "row.selected.blur": "on-panel", "tabs.active": "bg+on-accent+b", "tabs.idle": "dim",
+      "editor.caret": "bg+on-accent", "editor.selection": "fg+on-ring", "input.placeholder": "dim+i",
+      "empty": "dim+i", "status": "dim", "status.error": "rose"
+    },
+    "variants": {
+      "card": {"edge": "rounded", "style": {"bg": "panel"}},
+      "quiet": {"edge": "plain", "style": {"fg": "dim"}, "title": "dim"},
+      "hero": {"edge": "double", "title": "accent+b"},
+      "alert": {"edge": "thick", "style": {"fg": "rose"}, "title": "rose+b"},
+      "bare": {}
+    }
+  },
+  "phosphor": {
+    "tokens": {
+      "bg": "#040904", "fg": "#9dffae", "dim": "#3a7a47", "border": "#1c3b24", "panel": "#0a160c",
+      "ring": "#123a1c", "hover": "#0d1f11", "accent": "#c4ff6a", "violet": "#6affd0",
+      "amber": "#ecff7a", "rose": "#ff8f6a", "pos": "#9dffae", "neg": "#ff7a6a", "warn": "#ecff7a",
+      "c1": "#c4ff6a", "c2": "#6affd0", "c3": "#9dffae", "c4": "#ecff7a"
+    },
+    "parts": {
+      "border": "border", "border.focused": "accent", "title": "dim+b", "title.focused": "accent+b",
+      "table.header": "violet+b", "table.total": "accent+b", "row.selected": "accent+on-ring+b",
+      "row.selected.blur": "on-panel", "tabs.active": "bg+on-accent+b", "tabs.idle": "dim",
+      "editor.caret": "bg+on-fg", "editor.selection": "bg+on-dim", "input.placeholder": "dim+i",
+      "empty": "dim+i", "status": "dim", "status.error": "rose"
+    },
+    "variants": {
+      "card": {"edge": "plain", "style": {"bg": "panel"}},
+      "quiet": {"edge": "plain", "style": {"fg": "dim"}, "title": "dim"},
+      "hero": {"edge": "double", "title": "accent+b"},
+      "alert": {"edge": "thick", "style": {"fg": "rose"}, "title": "rose+b"},
+      "bare": {}
+    }
+  }
+}
