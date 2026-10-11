@@ -443,7 +443,8 @@ pub struct Style {
 
 /// Where a source's value comes from. A command prints JSON on stdout; `path` picks a part of it
 /// (`"items"`); `every` re-runs it (seconds). A `stream` command keeps running and each JSON line
-/// it prints replaces the value: a live feed without a process per update.
+/// it prints replaces the value: a live feed without a process per update. `host` asks the app
+/// that embeds the screen (`Host::fetch`, with `args`), in process.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Source {
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -458,6 +459,10 @@ pub struct Source {
     pub path: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub every: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub host: Option<String>,
+    #[serde(default, skip_serializing_if = "Value::is_null")]
+    pub args: Value,
 }
 
 /// Space inside a node: cells either side, or `[x, y]`.
@@ -533,6 +538,13 @@ pub enum Action {
     /// Put text on the system clipboard (through the terminal, OSC 52). A template over the
     /// selected row, `store` and `$self`, like the store actions.
     Copy { copy: String },
+    /// Ask the app that embeds the screen to do something (`Host::act`): `args` are templates, as
+    /// in the store actions. The answer goes in `$log`; a failure shows on the status line.
+    Host {
+        host: String,
+        #[serde(default, skip_serializing_if = "Value::is_null")]
+        args: Value,
+    },
     Do {
         #[serde(rename = "do")]
         steps: Vec<Action>,

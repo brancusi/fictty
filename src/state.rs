@@ -119,6 +119,10 @@ pub enum Msg {
     Data { name: String, result: Result<Value, String> },
     /// A `run` finished.
     Ran { argv: Vec<String>, result: Result<(), String> },
+    /// The host says its source `host` changed: the sources that read it fetch again.
+    Changed { host: String },
+    /// A host action finished, at the local clock time (`HH:MM:SS`, from the runtime).
+    Acted { name: String, result: Result<Value, String>, at: String },
     /// The runtime's measurements.
     Stats { stats: Stats },
     /// A click on a node (a row of it, or a tab title).
@@ -185,6 +189,8 @@ pub enum Effect {
     Copy(String),
     /// The answer to the request that sent the message (a write: its new revision, or why not).
     Reply(Value),
+    /// A host action, its args filled.
+    Host { name: String, args: Value },
 }
 
 pub fn update(st: &mut State, msg: Msg) -> Vec<Effect> {
@@ -253,6 +259,18 @@ fn apply(st: &mut State, msg: Msg) -> Vec<Effect> {
         Msg::Ran { argv, result } => {
             st.status = result.err().map(|e| format!("{}: {e}", argv.join(" ")));
             refresh(st)
+        }
+        Msg::Changed { host } => st.ui.data.iter().filter(|(_, s)| s.host.as_deref() == Some(&host)).map(|(k, _)| Effect::Fetch(k.clone())).collect(),
+        Msg::Acted { name, result, at } => {
+            match result {
+                Ok(_) => log(st, "host".into(), name, at),
+                Err(e) => {
+                    st.status = Some(format!("{name}: {e}"));
+                    log(st, "refused".into(), format!("{name} ({e})"), at);
+                }
+            }
+            // What the host did may have changed what its sources say.
+            st.ui.data.iter().filter(|(_, s)| s.host.is_some()).map(|(k, _)| Effect::Fetch(k.clone())).collect()
         }
         Msg::Click { id, row, tab } => {
             let Some(n) = st.ui.root.find(&id) else { return vec![] };
@@ -783,6 +801,10 @@ fn act(st: &mut State, a: Action) -> Vec<Effect> {
         Action::Copy { copy } => {
             let text = crate::model::fill(&copy, &action_context(st));
             vec![Effect::Copy(text)]
+        }
+        Action::Host { host, args } => {
+            let args = fill_value(&args, &action_context(st));
+            vec![Effect::Host { name: host, args }]
         }
         Action::Remove { remove } => {
             let Some(id) = st.focus.clone() else { return vec![] };

@@ -116,6 +116,35 @@ a key cycles, `fictty theme <name>` picks one. A push doesn't change them. A the
 for a `variant` and a `tone`, never a colour. A UI's own `theme` map still works, as tokens under
 every theme. `examples/showcase/themes.json` has three: glass, paper and phosphor.
 
+## Embedding fictty in an app
+
+fictty is a library too: the `fictty` binary is one user of `fictty::App`, and an app is another.
+
+```rust
+let ui: fictty::model::Ui = build_my_ui();          // a value; no file needed
+fictty::App::new(ui)
+    .socket(my_socket)                               // agents reach it as they reach any screen
+    .themes(my_themes).theme("night")
+    .host(MyHost::new())                             // the app's data and actions, in process
+    .run()?;
+```
+
+- **`Host`** gives the screen what a standalone screen gets from commands. A source
+  `{"host": "today", "args": {"limit": 20}, "path": "rows"}` calls `Host::fetch("today", args)`;
+  an action `{"host": "done", "args": {"id": "{id}"}}` (a template, like the store actions) calls
+  `Host::act`. Both run off the drawing thread. An action's answer goes in `$log` (a failure on
+  the status line too), and the host sources fetch again after it.
+- **`Notifier`**: `Host::start` gets one, for any thread. `changed("today")` refetches every source
+  that reads `today` (the app's world changed; no polling), `write(key, write, by)` writes the
+  store, and `msg` sends any message.
+- **Everything the host says arrives as a message**, so `get --state`, `$log` and replays see it;
+  the view never reads the host.
+- **Tests without a terminal**: `App::new(ui).host(h).headless(80, 24)?` gives a screen to send
+  `keys(&["j", "x"])` and messages to, and to read back as text (`screen()`, `ansi()`) or state
+  (`state()`). Sources are fetched and actions done inline. See `tests/host.rs`.
+- **Upgrade** re-runs the same command line as the new binary with `FICTTY_RESTORE` pointing at
+  the saved state, so an embedding app keeps its state across `fictty upgrade` like the binary.
+
 ## Not yet
 
 A policy on what a pushed UI may `run` (today: anything you could run yourself, over a socket

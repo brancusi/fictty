@@ -2,7 +2,8 @@
 //! processes and the watched file, turns what happens into `Msg`s for `update`, and carries out
 //! the `Effect`s that come back.
 
-use crate::model::{Source, Ui};
+use crate::host::{Host, NoHost, Notifier};
+use crate::model::{Source, ThemeSpec, Ui};
 use crate::state::{Effect, Msg, State, Stats, narrow, update};
 use crate::view;
 use anyhow::{Context, Result, bail};
@@ -18,7 +19,8 @@ use std::io::{BufRead, BufReader, Write};
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
-use std::sync::mpsc::{self, Sender};
+use std::sync::Arc;
+use std::sync::mpsc::{self, Receiver, Sender};
 use std::time::{Duration, Instant, SystemTime};
 
 /// One request line on the control socket.
@@ -101,7 +103,14 @@ pub fn load(path: &Path) -> Result<Ui> {
 }
 
 /// Fetch a source now (blocking).
-pub fn fetch(src: &Source) -> Result<Value, String> {
+pub fn fetch(src: &Source, host: &dyn Host) -> Result<Value, String> {
+    if let Some(name) = &src.host {
+        let v = host.fetch(name, &src.args)?;
+        return match src.path.as_deref() {
+            Some(p) => crate::model::lookup(&v, p).cloned().ok_or_else(|| format!("{name}: no {p} in its value")),
+            None => Ok(v),
+        };
+    }
     if let Some(v) = &src.value {
         return narrow(&v.to_string(), src.path.as_deref());
     }
@@ -170,6 +179,7 @@ struct Driver {
     upgrade: Option<String>,
     /// Zero on the logical clock (`State::now_ms`).
     started: Instant,
+    host: Arc<dyn Host>,
 }
 
 impl Drop for Driver {
@@ -182,8 +192,8 @@ impl Drop for Driver {
 }
 
 impl Driver {
-    fn new(tx: Sender<Event>, blocking: bool) -> Driver {
-        Driver { tx, in_flight: BTreeSet::new(), last_fetch: BTreeMap::new(), streams: BTreeMap::new(), quit: false, blocking, upgrade: None, started: Instant::now() }
+    fn new(tx: Sender<Event>, blocking: bool, host: Arc<dyn Host>) -> Driver {
+        Driver { tx, in_flight: BTreeSet::new(), last_fetch: BTreeMap::new(), streams: BTreeMap::new(), quit: false, blocking, upgrade: None, started: Instant::now(), host }
     }
 
     fn apply(&mut self, st: &mut State, msg: Msg) {
@@ -215,13 +225,25 @@ impl Driver {
                 },
                 Effect::Fetch(name) if self.blocking => {
                     let Some(src) = st.ui.data.get(&name) else { continue };
-                    let result = fetch(src);
+                    let result = fetch(src, &*self.host);
                     queue.extend(update(st, Msg::Data { name, result }));
                 }
                 Effect::Fetch(name) if st.ui.data.get(&name).is_some_and(|s| s.stream.is_some()) => {
                     self.start_stream(st, name)
                 }
                 Effect::Fetch(name) => self.spawn_fetch(st, name),
+                Effect::Host { name, args } => {
+                    if self.blocking {
+                        let result = self.host.act(&name, &args);
+                        queue.extend(update(st, Msg::Acted { name, result, at: String::new() }));
+                    } else {
+                        let (tx, host) = (self.tx.clone(), self.host.clone());
+                        std::thread::spawn(move || {
+                            let result = host.act(&name, &args);
+                            let _ = tx.send(Event::Msg(Msg::Acted { name, result, at: clock() }));
+                        });
+                    }
+                }
                 Effect::Run(argv) => {
                     if self.blocking {
                         let result = exec(&argv);
@@ -317,9 +339,9 @@ impl Driver {
         if !self.in_flight.insert(name.clone()) {
             return;
         }
-        let tx = self.tx.clone();
+        let (tx, host) = (self.tx.clone(), self.host.clone());
         std::thread::spawn(move || {
-            let _ = tx.send(Event::Msg(Msg::Data { result: fetch(&src), name }));
+            let _ = tx.send(Event::Msg(Msg::Data { result: fetch(&src, &*host), name }));
         });
     }
 
@@ -401,206 +423,331 @@ pub fn load_themes(path: &Path) -> Result<BTreeMap<String, crate::model::ThemeSp
     serde_json::from_str(&raw).with_context(|| format!("{} is not a set of themes", path.display()))
 }
 
-/// What `run` starts from besides the UI: a store file, a themes file.
-#[derive(Default)]
-pub struct Files {
-    pub store: Option<PathBuf>,
-    pub themes: Option<PathBuf>,
+/// A screen to run: its UI (a value, or a file), and what it starts from. The `fictty` binary is
+/// one user of this; an app that embeds fictty is another, with a `Host` for its own data.
+///
+/// ```no_run
+/// # let ui: fictty::model::Ui = serde_json::from_str(r#"{"root": {"type": "text", "text": "hi"}}"#).unwrap();
+/// fictty::App::new(ui).socket("/tmp/my.sock").run().unwrap();
+/// ```
+pub struct App {
+    ui: Option<Ui>,
+    file: Option<PathBuf>,
+    watch: bool,
+    socket: PathBuf,
+    restore: Option<PathBuf>,
+    store: Option<PathBuf>,
+    themes: BTreeMap<String, ThemeSpec>,
+    theme: Option<String>,
+    host: Arc<dyn Host>,
 }
 
-/// Run a UI in the terminal until `quit`. With a store file, the store is read from it at the
-/// start and written back after every change; with a themes file, its themes are loaded and the
-/// first is chosen (unless a restored state already chose one).
-pub fn run(file: Option<PathBuf>, watch: bool, socket: PathBuf, restore: Option<PathBuf>, files: Files) -> Result<()> {
-    let Files { store, themes } = files;
-    // Restoring (after an upgrade): the saved state, every selection and focus as it was.
-    let mut st: State = match &restore {
-        Some(p) => serde_json::from_str(&std::fs::read_to_string(p)?)?,
-        None => State::default(),
-    };
-    if let (None, Some(p)) = (&restore, &store) {
-        st.store = load_store(p)?;
+impl App {
+    /// A screen showing `ui`.
+    pub fn new(ui: Ui) -> App {
+        App { ui: Some(ui), ..App::empty() }
     }
-    let mut saved_writes = st.store_writes;
-    let ui = match (&restore, &file) {
-        (Some(_), _) => st.ui.clone(),
-        (None, Some(p)) => load(p)?,
-        (None, None) => serde_json::from_value(json!({"root": {"type": "text",
-            "text": "Waiting for a UI.\n\nPush one:  fictty push ui.json"}}))?,
-    };
-    let (tx, rx) = mpsc::channel();
-    // Commands the screen runs (sources, `run`) can talk back to it: a helper script reads the
-    // store with `$FICTTY read …`. Set before any thread starts.
-    // SAFETY: no other thread exists yet, so nothing reads the environment concurrently.
-    unsafe {
-        std::env::set_var("FICTTY_SOCKET", &socket);
-        if let Ok(me) = std::env::current_exe() {
-            std::env::set_var("FICTTY", me);
+
+    /// A screen showing the UI in `path` (`-` reads stdin), read when it starts.
+    pub fn file(path: impl Into<PathBuf>) -> App {
+        App { file: Some(path.into()), ..App::empty() }
+    }
+
+    /// A screen waiting for a UI to be pushed.
+    pub fn empty() -> App {
+        App {
+            ui: None,
+            file: None,
+            watch: false,
+            socket: default_socket(),
+            restore: None,
+            store: None,
+            themes: BTreeMap::new(),
+            theme: None,
+            host: Arc::new(NoHost),
         }
     }
-    if let Some(p) = &themes {
-        update(&mut st, Msg::Theme { add: load_themes(p)?, choose: None });
-    }
-    serve(&socket, tx.clone())?;
-    let mut d = Driver::new(tx, false);
-    // A restored state's clock carries on from where it was.
-    d.started = Instant::now().checked_sub(Duration::from_millis(st.now_ms)).unwrap_or_else(Instant::now);
-    d.apply(&mut st, Msg::Push { ui });
-    let here = file.as_deref().and_then(|f| std::fs::canonicalize(f).ok()).and_then(|f| f.parent().map(Path::to_path_buf)).unwrap_or_default();
-    let bin = std::env::current_exe().map(|p| p.display().to_string()).unwrap_or_else(|_| "fictty".into());
-    let sock = std::fs::canonicalize(&socket).unwrap_or_else(|_| socket.clone());
-    d.apply(&mut st, Msg::Host { bin, socket: sock.display().to_string(), dir: here.display().to_string() });
-    let caps = |sizing: bool| Msg::Caps { caps: crate::gfx::Caps::detect(), text_sizing: sizing };
-    let mut kitty = crate::gfx::Kitty::default();
-    let mut seen = file.as_deref().and_then(mtime);
 
-    generic_tty()?;
-    let mut term = ratatui::init();
-    // Larger text: the terminal's to say (a probe), unless FICTTY_TEXT_SIZE forces it.
-    let sizing = match std::env::var("FICTTY_TEXT_SIZE").as_deref() {
-        Ok("1") => true,
-        Ok("0") => false,
-        _ => crate::gfx::probe_text_sizing(),
-    };
-    // (The probe clears what it printed; ratatui's first frame draws every cell.)
-    d.apply(&mut st, caps(sizing));
-    let _ = ratatui::crossterm::execute!(std::io::stdout(), EnableMouseCapture);
-    let started = d.started;
-    let res = (|| -> Result<()> {
-        // Draw only when something changed, at most once per frame budget (120 fps).
-        let budget = Duration::from_micros(8_333);
-        // Terminal input joins the same queue as everything else.
-        let input = d.tx.clone();
+    /// Reload the UI file whenever it changes.
+    pub fn watch(mut self, on: bool) -> App {
+        self.watch = on;
+        self
+    }
+
+    /// The control socket agents reach the screen on (default: `$FICTTY_SOCKET`, else
+    /// `fictty.sock` in the temp dir).
+    pub fn socket(mut self, path: impl Into<PathBuf>) -> App {
+        self.socket = path.into();
+        self
+    }
+
+    /// Start from a saved state (what `upgrade` hands the new process).
+    pub fn restore(mut self, path: Option<PathBuf>) -> App {
+        self.restore = path;
+        self
+    }
+
+    /// Keep the store in this JSON file: read at the start, written after every change.
+    pub fn store(mut self, path: impl Into<PathBuf>) -> App {
+        self.store = Some(path.into());
+        self
+    }
+
+    /// Add themes (by name). The first is chosen unless `theme` names one.
+    pub fn themes(mut self, themes: BTreeMap<String, ThemeSpec>) -> App {
+        self.themes.extend(themes);
+        self
+    }
+
+    /// Add the themes in a JSON file (theme specs by name).
+    pub fn themes_file(self, path: &Path) -> Result<App> {
+        Ok(self.themes(load_themes(path)?))
+    }
+
+    /// The theme to start with.
+    pub fn theme(mut self, name: impl Into<String>) -> App {
+        self.theme = Some(name.into());
+        self
+    }
+
+    /// The app embedding the screen: its sources and actions.
+    pub fn host(mut self, host: impl Host) -> App {
+        self.host = Arc::new(host);
+        self
+    }
+
+    /// The state a screen starts from: restored, or new with the store file and the themes.
+    fn start(&self) -> Result<State> {
+        let mut st: State = match &self.restore {
+            Some(p) => serde_json::from_str(&std::fs::read_to_string(p)?)?,
+            None => State::default(),
+        };
+        if let (None, Some(p)) = (&self.restore, &self.store) {
+            st.store = load_store(p)?;
+        }
+        if !self.themes.is_empty() || self.theme.is_some() {
+            update(&mut st, Msg::Theme { add: self.themes.clone(), choose: self.theme.clone().filter(|_| self.restore.is_none()) });
+        }
+        Ok(st)
+    }
+
+    /// The UI to show first: a restored state's own, the given one, the file's, or a placeholder.
+    fn first_ui(&self, st: &State) -> Result<Ui> {
+        Ok(match (&self.restore, &self.ui, &self.file) {
+            (Some(_), _, _) => st.ui.clone(),
+            (None, Some(ui), _) => ui.clone(),
+            (None, None, Some(p)) => load(p)?,
+            (None, None, None) => serde_json::from_value(json!({"root": {"type": "text",
+                "text": "Waiting for a UI.\n\nPush one:  fictty push ui.json"}}))?,
+        })
+    }
+
+    /// Without a terminal: a screen of `width`×`height` cells that renders to text, for tests
+    /// and `fictty render`. Sources are fetched and host actions done inline.
+    pub fn headless(self, width: u16, height: u16) -> Result<Headless> {
+        let mut st = self.start()?;
+        let ui = self.first_ui(&st)?;
+        let (tx, _) = mpsc::channel();
+        let (ntx, notes) = mpsc::channel();
+        self.host.start(Notifier::new(ntx));
+        let mut d = Driver::new(tx, true, self.host.clone());
+        d.apply(&mut st, Msg::Push { ui });
+        let term = ratatui::Terminal::new(ratatui::backend::TestBackend::new(width, height))?;
+        let mut h = Headless { st, d, term, notes };
+        // One frame to learn each editor's size, so keys scroll it as they would on screen.
+        h.frame();
+        Ok(h)
+    }
+
+    /// Run in this terminal until `quit`.
+    pub fn run(mut self) -> Result<()> {
+        if self.restore.is_none() {
+            self.restore = std::env::var_os("FICTTY_RESTORE").map(PathBuf::from);
+        }
+        let App { file, watch, socket, store, host, .. } = &self;
+        let (watch, socket, host) = (*watch, socket.clone(), host.clone());
+        // Restoring (after an upgrade): the saved state, every selection and focus as it was.
+        let mut st = self.start()?;
+        let mut saved_writes = st.store_writes;
+        let ui = self.first_ui(&st)?;
+        let (tx, rx) = mpsc::channel();
+        // Commands the screen runs (sources, `run`) can talk back to it: a helper script reads the
+        // store with `$FICTTY read …`. Set before any thread starts.
+        // SAFETY: no other thread exists yet, so nothing reads the environment concurrently.
+        unsafe {
+            std::env::set_var("FICTTY_SOCKET", &socket);
+            std::env::remove_var("FICTTY_RESTORE");
+            if let Ok(me) = std::env::current_exe() {
+                std::env::set_var("FICTTY", me);
+            }
+        }
+        serve(&socket, tx.clone())?;
+        // The host's notices join the queue like everything else.
+        let (ntx, nrx) = mpsc::channel::<Msg>();
+        let fwd = tx.clone();
         std::thread::spawn(move || {
-            while let Ok(ev) = event::read() {
-                if input.send(Event::Term(ev)).is_err() {
+            for m in nrx {
+                if fwd.send(Event::Msg(m)).is_err() {
                     return;
                 }
             }
         });
-        let mut dirty = true;
-        let mut last_draw = Instant::now() - budget;
-        let mut window = Window::new();
-        // What's under each cell in the last frame: the view's, for turning the mouse into messages.
-        let mut hits: Vec<Hit> = Vec::new();
-        let mut screens: Vec<Sender<Value>> = Vec::new();
-        let mut scaled_last: Vec<view::Scaled> = Vec::new();
-        while !d.quit {
-            // Animations (a pulsing ring) need time to move: tick every frame while one shows.
-            let animating = st.ui.layers.iter().any(|l| l.pulse.is_some());
-            if animating && last_draw.elapsed() >= budget {
-                d.apply(&mut st, Msg::Tick { now_ms: started.elapsed().as_millis() as u64 });
-                dirty = true;
-            }
-            dirty |= !screens.is_empty();
-            if dirty && last_draw.elapsed() >= budget {
-                let t = Instant::now();
-                let mut text = None;
-                let mut pics = Vec::new();
-                let mut scaled = Vec::new();
-                let mut sizes = Vec::new();
-                term.draw(|f| {
-                    let out = view::draw(&st, f);
-                    (hits, pics, scaled, sizes) = (out.hits, out.pics, out.scaled, out.sizes);
-                    if !screens.is_empty() {
-                        text = Some(buffer_text(f.buffer_mut()));
+        host.start(Notifier::new(ntx));
+        let mut d = Driver::new(tx, false, host);
+        // A restored state's clock carries on from where it was.
+        d.started = Instant::now().checked_sub(Duration::from_millis(st.now_ms)).unwrap_or_else(Instant::now);
+        d.apply(&mut st, Msg::Push { ui });
+        let here = match file {
+            Some(f) => std::fs::canonicalize(f).ok().and_then(|f| f.parent().map(Path::to_path_buf)).unwrap_or_default(),
+            None => std::env::current_dir().unwrap_or_default(),
+        };
+        let bin = std::env::current_exe().map(|p| p.display().to_string()).unwrap_or_else(|_| "fictty".into());
+        let sock = std::fs::canonicalize(&socket).unwrap_or_else(|_| socket.clone());
+        d.apply(&mut st, Msg::Host { bin, socket: sock.display().to_string(), dir: here.display().to_string() });
+        let caps = |sizing: bool| Msg::Caps { caps: crate::gfx::Caps::detect(), text_sizing: sizing };
+        let mut kitty = crate::gfx::Kitty::default();
+        let mut seen = file.as_deref().and_then(mtime);
+
+        generic_tty()?;
+        let mut term = ratatui::init();
+        // Larger text: the terminal's to say (a probe), unless FICTTY_TEXT_SIZE forces it.
+        let sizing = match std::env::var("FICTTY_TEXT_SIZE").as_deref() {
+            Ok("1") => true,
+            Ok("0") => false,
+            _ => crate::gfx::probe_text_sizing(),
+        };
+        // (The probe clears what it printed; ratatui's first frame draws every cell.)
+        d.apply(&mut st, caps(sizing));
+        let _ = ratatui::crossterm::execute!(std::io::stdout(), EnableMouseCapture);
+        let started = d.started;
+        let res = (|| -> Result<()> {
+            // Draw only when something changed, at most once per frame budget (120 fps).
+            let budget = Duration::from_micros(8_333);
+            // Terminal input joins the same queue as everything else.
+            let input = d.tx.clone();
+            std::thread::spawn(move || {
+                while let Ok(ev) = event::read() {
+                    if input.send(Event::Term(ev)).is_err() {
+                        return;
                     }
-                })?;
-                // Pictures and larger text go out after the cells, in one write.
-                let mut extra = kitty.sync(&pics, st.caps);
-                if scaled != scaled_last {
-                    for t in &scaled {
-                        extra.extend(osc66(t));
-                    }
-                    scaled_last = scaled;
                 }
-                if !extra.is_empty() {
+            });
+            let mut dirty = true;
+            let mut last_draw = Instant::now() - budget;
+            let mut window = Window::new();
+            // What's under each cell in the last frame: the view's, for turning the mouse into messages.
+            let mut hits: Vec<Hit> = Vec::new();
+            let mut screens: Vec<Sender<Value>> = Vec::new();
+            let mut scaled_last: Vec<view::Scaled> = Vec::new();
+            while !d.quit {
+                // Animations (a pulsing ring) need time to move: tick every frame while one shows.
+                let animating = st.ui.layers.iter().any(|l| l.pulse.is_some());
+                if animating && last_draw.elapsed() >= budget {
+                    d.apply(&mut st, Msg::Tick { now_ms: started.elapsed().as_millis() as u64 });
+                    dirty = true;
+                }
+                dirty |= !screens.is_empty();
+                if dirty && last_draw.elapsed() >= budget {
+                    let t = Instant::now();
+                    let mut text = None;
+                    let mut pics = Vec::new();
+                    let mut scaled = Vec::new();
+                    let mut sizes = Vec::new();
+                    term.draw(|f| {
+                        let out = view::draw(&st, f);
+                        (hits, pics, scaled, sizes) = (out.hits, out.pics, out.scaled, out.sizes);
+                        if !screens.is_empty() {
+                            text = Some(buffer_text(f.buffer_mut()));
+                        }
+                    })?;
+                    // Pictures and larger text go out after the cells, in one write.
+                    let mut extra = kitty.sync(&pics, st.caps);
+                    if scaled != scaled_last {
+                        for t in &scaled {
+                            extra.extend(osc66(t));
+                        }
+                        scaled_last = scaled;
+                    }
+                    if !extra.is_empty() {
+                        let mut out = std::io::stdout().lock();
+                        out.write_all(&extra)?;
+                        out.flush()?;
+                    }
+                    if let Some(text) = text {
+                        for s in screens.drain(..) {
+                            let _ = s.send(json!({"ok": true, "screen": text}));
+                        }
+                    }
+                    window.frame(t.elapsed());
+                    last_draw = Instant::now();
+                    dirty = resize_editors(&mut d, &mut st, sizes);
+                }
+                // Sleep until the next frame is due (when there's something to draw) or a while.
+                let wait = if dirty || animating { budget.saturating_sub(last_draw.elapsed()) } else { Duration::from_millis(50) };
+                let mut batch = Vec::new();
+                if let Ok(ev) = rx.recv_timeout(wait) {
+                    batch.push(ev);
+                    batch.extend(rx.try_iter().take(10_000));
+                }
+                let resized = batch.iter().any(|e| matches!(e, Event::Term(TermEvent::Resize(..))));
+                let n = apply_batch(batch, &mut d, &mut st, &hits, &mut screens);
+                window.msgs += n;
+                dirty |= n > 0;
+                if let Some(p) = store.as_deref().filter(|_| st.store_writes != saved_writes) {
+                    match save_store(p, &st) {
+                        Ok(()) => saved_writes = st.store_writes,
+                        Err(e) => st.status = Some(format!("saving the store: {e:#}")),
+                    }
+                }
+                if resized {
+                    // The cell size can change with the window (a font size change, another display).
+                    d.apply(&mut st, caps(sizing));
+                    scaled_last.clear();
+                }
+                if let Some(bin) = d.upgrade.take() {
+                    let path = std::env::temp_dir().join(format!("fictty-state-{}.json", std::process::id()));
+                    std::fs::write(&path, serde_json::to_vec(&st)?)?;
                     let mut out = std::io::stdout().lock();
-                    out.write_all(&extra)?;
+                    out.write_all(&kitty.clear())?;
                     out.flush()?;
+                    drop(out);
+                    d.stop_streams();
+                    let _ = std::fs::remove_file(&socket);
+                    use std::os::unix::process::CommandExt;
+                    // The same command line, as the new binary, told where the state is.
+                    let mut cmd = Command::new(&bin);
+                    cmd.args(std::env::args_os().skip(1)).env("FICTTY_RESTORE", &path);
+                    // Only returns if the exec failed.
+                    let err = cmd.exec();
+                    st.status = Some(format!("upgrade to {bin} failed: {err}"));
+                    serve(&socket, d.tx.clone())?;
+                    dirty = true;
                 }
-                if let Some(text) = text {
-                    for s in screens.drain(..) {
-                        let _ = s.send(json!({"ok": true, "screen": text}));
-                    }
-                }
-                window.frame(t.elapsed());
-                last_draw = Instant::now();
-                dirty = resize_editors(&mut d, &mut st, sizes);
-            }
-            // Sleep until the next frame is due (when there's something to draw) or a while.
-            let wait = if dirty || animating { budget.saturating_sub(last_draw.elapsed()) } else { Duration::from_millis(50) };
-            let mut batch = Vec::new();
-            if let Ok(ev) = rx.recv_timeout(wait) {
-                batch.push(ev);
-                batch.extend(rx.try_iter().take(10_000));
-            }
-            let resized = batch.iter().any(|e| matches!(e, Event::Term(TermEvent::Resize(..))));
-            let n = apply_batch(batch, &mut d, &mut st, &hits, &mut screens);
-            window.msgs += n;
-            dirty |= n > 0;
-            if let Some(p) = store.as_deref().filter(|_| st.store_writes != saved_writes) {
-                match save_store(p, &st) {
-                    Ok(()) => saved_writes = st.store_writes,
-                    Err(e) => st.status = Some(format!("saving the store: {e:#}")),
-                }
-            }
-            if resized {
-                // The cell size can change with the window (a font size change, another display).
-                d.apply(&mut st, caps(sizing));
-                scaled_last.clear();
-            }
-            if let Some(bin) = d.upgrade.take() {
-                let path = std::env::temp_dir().join(format!("fictty-state-{}.json", std::process::id()));
-                std::fs::write(&path, serde_json::to_vec(&st)?)?;
-                let mut out = std::io::stdout().lock();
-                out.write_all(&kitty.clear())?;
-                out.flush()?;
-                drop(out);
-                d.stop_streams();
-                let _ = std::fs::remove_file(&socket);
-                use std::os::unix::process::CommandExt;
-                let mut cmd = Command::new(&bin);
-                cmd.args(["run", "--socket"]).arg(&socket).arg("--restore").arg(&path);
-                if let Some(p) = &store {
-                    cmd.arg("--store").arg(p);
-                }
-                if let Some(p) = &themes {
-                    cmd.arg("--themes").arg(p);
-                }
+                d.tick(&mut st);
                 if watch && let Some(p) = &file {
-                    cmd.arg("--watch").arg(p);
-                }
-                // Only returns if the exec failed.
-                let err = cmd.exec();
-                st.status = Some(format!("upgrade to {bin} failed: {err}"));
-                serve(&socket, d.tx.clone())?;
-                dirty = true;
-            }
-            d.tick(&mut st);
-            if watch && let Some(p) = &file {
-                let now = mtime(p);
-                if now != seen {
-                    seen = now;
-                    match load(p) {
-                        Ok(ui) => d.apply(&mut st, Msg::Push { ui }),
-                        Err(e) => st.status = Some(format!("{e:#}")),
+                    let now = mtime(p);
+                    if now != seen {
+                        seen = now;
+                        match load(p) {
+                            Ok(ui) => d.apply(&mut st, Msg::Push { ui }),
+                            Err(e) => st.status = Some(format!("{e:#}")),
+                        }
+                        dirty = true;
                     }
+                }
+                if let Some(stats) = window.report(st.stats.frames) {
+                    d.apply(&mut st, Msg::Stats { stats });
                     dirty = true;
                 }
             }
-            if let Some(stats) = window.report(st.stats.frames) {
-                d.apply(&mut st, Msg::Stats { stats });
-                dirty = true;
-            }
-        }
-        Ok(())
-    })();
-    let _ = std::io::stdout().write_all(&kitty.clear());
-    let _ = ratatui::crossterm::execute!(std::io::stdout(), DisableMouseCapture);
-    ratatui::restore();
-    let _ = std::fs::remove_file(&socket);
-    res
+            Ok(())
+        })();
+        let _ = std::io::stdout().write_all(&kitty.clear());
+        let _ = ratatui::crossterm::execute!(std::io::stdout(), DisableMouseCapture);
+        ratatui::restore();
+        let _ = std::fs::remove_file(&socket);
+        res
+    }
 }
 
 /// Apply a batch of queued events. A source's value replaces the last one, so of several queued
@@ -841,41 +988,67 @@ fn buffer_text(buf: &ratatui::buffer::Buffer) -> String {
     out
 }
 
-/// Render one frame as text without a terminal, after fetching sources and replaying keys.
-pub fn render(ui: Ui, width: u16, height: u16, keys: &[String], ansi: bool, files: Files, theme: Option<String>) -> Result<String> {
-    use ratatui::{Terminal, backend::TestBackend};
-    let (tx, _rx) = mpsc::channel();
-    let mut st = State::default();
-    if let Some(p) = &files.store {
-        st.store = load_store(p)?;
+/// A screen without a terminal (`App::headless`): send it keys and messages, read its frame and
+/// its state. Everything the host sends arrives before the next read.
+pub struct Headless {
+    st: State,
+    d: Driver,
+    term: ratatui::Terminal<ratatui::backend::TestBackend>,
+    notes: Receiver<Msg>,
+}
+
+impl Headless {
+    /// Keys, by name (`j`, `tab`, `enter`, `c-s`), as if typed.
+    pub fn keys(&mut self, keys: &[&str]) -> &mut Headless {
+        for k in keys {
+            self.msg(Msg::Key { key: (*k).into() });
+        }
+        self
     }
-    if let Some(p) = &files.themes {
-        update(&mut st, Msg::Theme { add: load_themes(p)?, choose: theme });
+
+    /// Any message, as if it came from the socket.
+    pub fn msg(&mut self, msg: Msg) -> &mut Headless {
+        self.drain();
+        self.d.apply(&mut self.st, msg);
+        self
     }
-    let mut d = Driver::new(tx, true);
-    d.apply(&mut st, Msg::Push { ui });
-    let mut term = Terminal::new(TestBackend::new(width, height))?;
-    // One frame to learn each editor's size, so keys scroll it as they would on screen.
-    let mut sizes = Vec::new();
-    term.draw(|f| sizes = view::draw(&st, f).sizes)?;
-    resize_editors(&mut d, &mut st, sizes);
-    for k in keys {
-        d.apply(&mut st, Msg::Key { key: k.clone() });
+
+    /// The state, as `get --state` shows it.
+    pub fn state(&mut self) -> &State {
+        self.drain();
+        &self.st
     }
-    term.draw(|f| {
-        view::draw(&st, f);
-    })?;
-    let buf = term.backend().buffer();
-    if ansi {
-        return Ok(buffer_ansi(buf));
+
+    /// The frame as text, one line per row (trailing spaces trimmed).
+    pub fn screen(&mut self) -> String {
+        self.frame();
+        buffer_text(self.term.backend().buffer())
     }
-    let mut out = String::new();
-    for y in 0..height {
-        let line: String = (0..width).map(|x| buf[(x, y)].symbol().to_string()).collect();
-        out.push_str(line.trim_end());
-        out.push('\n');
+
+    /// The frame with its colours and attributes, as ANSI (truecolour) escapes.
+    pub fn ansi(&mut self) -> String {
+        self.frame();
+        buffer_ansi(self.term.backend().buffer())
     }
-    Ok(out)
+
+    fn drain(&mut self) {
+        while let Ok(m) = self.notes.try_recv() {
+            self.d.apply(&mut self.st, m);
+        }
+    }
+
+    fn frame(&mut self) {
+        self.drain();
+        let mut sizes = Vec::new();
+        let st = &self.st;
+        let _ = self.term.draw(|f| sizes = view::draw(st, f).sizes);
+        if resize_editors(&mut self.d, &mut self.st, sizes) {
+            let st = &self.st;
+            let _ = self.term.draw(|f| {
+                view::draw(st, f);
+            });
+        }
+    }
 }
 
 fn agent() -> String {

@@ -2,7 +2,7 @@ use anyhow::Result;
 use clap::{Parser, Subcommand};
 use serde_json::json;
 use std::path::PathBuf;
-use fictty::runtime;
+use fictty::{App, runtime};
 
 /// A terminal UI that is one serializable value: run a screen, then push whole UIs into it.
 #[derive(Parser)]
@@ -127,7 +127,18 @@ fn main() -> Result<()> {
     let socket = cli.socket.unwrap_or_else(runtime::default_socket);
     let reply = match cli.cmd {
         Cmd::Run { file, watch, restore, store, themes } => {
-            return runtime::run(file, watch, socket, restore, runtime::Files { store, themes });
+            let mut app = match file {
+                Some(f) => App::file(f),
+                None => App::empty(),
+            };
+            app = app.watch(watch).socket(socket).restore(restore);
+            if let Some(p) = store {
+                app = app.store(p);
+            }
+            if let Some(p) = themes {
+                app = app.themes_file(&p)?;
+            }
+            return app.run();
         }
         Cmd::Upgrade { binary } => {
             let bin = binary.or_else(|| std::env::current_exe().ok()).map(|p| p.display().to_string());
@@ -135,8 +146,20 @@ fn main() -> Result<()> {
         }
         Cmd::Render { file, size, keys, ansi, store, themes, theme } => {
             let (w, h) = size.split_once('x').ok_or_else(|| anyhow::anyhow!("--size is WxH"))?;
-            let files = runtime::Files { store, themes };
-            print!("{}", runtime::render(runtime::load(&file)?, w.parse()?, h.parse()?, &keys, ansi, files, theme)?);
+            let mut app = App::new(runtime::load(&file)?);
+            if let Some(p) = store {
+                app = app.store(p);
+            }
+            if let Some(p) = themes {
+                app = app.themes_file(&p)?;
+            }
+            if let Some(t) = theme {
+                app = app.theme(t);
+            }
+            let mut screen = app.headless(w.parse()?, h.parse()?)?;
+            let keys: Vec<&str> = keys.iter().map(String::as_str).collect();
+            screen.keys(&keys);
+            print!("{}", if ansi { screen.ansi() } else { screen.screen() });
             return Ok(());
         }
         Cmd::Push { file } => runtime::send(&socket, json!({"op": "push", "ui": runtime::load(&file)?}))?,
