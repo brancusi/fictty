@@ -616,3 +616,26 @@ fn a_toasts_node_covers_what_is_under_it_while_one_shows() {
     assert!(s.screen().contains("the bar's own text"));
     assert_eq!(s.state().data["$toasting"], fictty::state::Slot::Ready { value: json!(false) });
 }
+
+#[test]
+fn an_editor_can_start_with_the_caret_at_the_end() {
+    use fictty::state::{State, update};
+    let mut st = State { hosted: vec!["page/".into()], ..State::default() };
+    let ui = serde_json::from_value(json!({"root": {"type": "editor", "id": "e", "doc": "page/a", "caret": "end"}})).unwrap();
+    update(&mut st, Msg::Push { ui });
+    update(&mut st, Msg::Key { key: "x".into() });
+    update(&mut st, Msg::Loaded { key: "page/a".into(), result: Ok(json!("# Page")) });
+    assert_eq!(st.store["page/a"].read()["text"], "# Pagex");
+}
+
+#[test]
+fn keys_type_into_a_field_a_key_just_showed() {
+    let ui = json!({"root": {"type": "col", "children": [
+        {"type": "input", "id": "find", "size": 1, "when": "finding"},
+        {"type": "list", "id": "l", "items": ["a"]}]},
+        "focus": "l", "store": {"finding": false},
+        "keys": {"/": {"do": [{"put": "finding", "value": true}, {"focus": "find"}]}}});
+    let mut s = screen(ui, 30, 4);
+    s.keys(&["/", "m", "q", "4"]);
+    assert!(s.screen().starts_with("mq4"), "{}", s.screen());
+}

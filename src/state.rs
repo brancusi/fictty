@@ -2161,10 +2161,19 @@ fn fields(st: &mut State) {
             Some(Body::Text { .. }) => {}
         }
         let Some(Entry { body: Body::Text { doc }, .. }) = st.store.get(&key) else { continue };
-        let readonly = st.ui.root.find(&id).and_then(|n| n.field()).is_some_and(|f| f.readonly);
+        let (readonly, at_end) = st.ui.root.find(&id).and_then(|n| n.field()).map_or((false, false), |f| (f.readonly, f.caret_end));
+        let len = doc.text.len_chars();
         let view = st.local.entry(id).or_default().editors.entry(key).or_insert_with(|| {
             let mut v = caretline::View::new(caretline::Viewport { width: 1, height: 1 });
             v.config.status_bar = false;
+            // The first time this editor shows this entry, the caret starts where it says.
+            if at_end {
+                v.selection = v.selection.clone().transform(|mut r| {
+                    r.anchor = len;
+                    r.head = len;
+                    r
+                });
+            }
             v
         });
         view.read_only = readonly;
@@ -2481,7 +2490,7 @@ mod tests {
         // The editor back, with a different seed: the note wins over the seed.
         let mut again = note();
         if let Some(c) = again.root.children_mut() {
-            c[0].kind = Kind::Editor { text: "a new seed".into(), doc: None, placeholder: None, syntax: None, readonly: false, tab: None, tasks: None };
+            c[0].kind = Kind::Editor { text: "a new seed".into(), doc: None, placeholder: None, syntax: None, readonly: false, tab: None, tasks: None, caret: None };
         }
         update(&mut st, Msg::Push { ui: again });
         assert_eq!(text_of(&st, "note"), "hi!");

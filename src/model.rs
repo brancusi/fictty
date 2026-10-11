@@ -384,6 +384,10 @@ pub enum Kind {
         /// it; `cycle` makes it plain text again, so text → task → done → text.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         tasks: Option<String>,
+        /// Where the caret starts the first time the editor shows an entry: `start` (the
+        /// default) or `end`. Shown again, an entry keeps its caret.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        caret: Option<String>,
     },
     /// A one-line field (caretline, single-line): an editor whose text never holds a line
     /// break. Enter runs the node's `keys.enter`, so a form submits with a store action.
@@ -643,6 +647,8 @@ pub struct Field<'a> {
     pub indent_lines: bool,
     /// Ctrl-T on a ticked task makes it plain text again (`tasks: "cycle"`).
     pub task_cycle: bool,
+    /// The caret starts at the end of an entry shown for the first time.
+    pub caret_end: bool,
 }
 
 /// Where a Markdown task item's box is in a line: the column of the char inside `[ ]`, and whether
@@ -841,7 +847,7 @@ impl Node {
     /// An editor or an input: the text component's settings.
     pub fn field(&self) -> Option<Field<'_>> {
         match &self.kind {
-            Kind::Editor { text, doc, placeholder, syntax, readonly, tab, tasks } => Some(Field {
+            Kind::Editor { text, doc, placeholder, syntax, readonly, tab, tasks, caret } => Some(Field {
                 seed: text,
                 doc: doc.as_deref(),
                 placeholder: placeholder.as_deref(),
@@ -852,6 +858,7 @@ impl Node {
                 indents: matches!(tab.as_deref(), Some("indent" | "indent-lines")),
                 indent_lines: tab.as_deref() == Some("indent-lines"),
                 task_cycle: tasks.as_deref() == Some("cycle"),
+                caret_end: caret.as_deref() == Some("end"),
             }),
             Kind::Input { text, placeholder, accept } => Some(Field {
                 seed: text,
@@ -864,6 +871,7 @@ impl Node {
                 indents: false,
                 indent_lines: false,
                 task_cycle: false,
+                caret_end: false,
             }),
             _ => None,
         }

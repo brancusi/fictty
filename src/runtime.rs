@@ -1159,6 +1159,9 @@ impl Headless {
     pub fn keys(&mut self, keys: &[&str]) -> &mut Headless {
         for k in keys {
             self.msg(Msg::Key { key: (*k).into() });
+            // A frame after each, as a running screen draws one: a node a key brought on screen
+            // learns its size before the next key types into it.
+            self.frame();
         }
         self
     }

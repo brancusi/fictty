@@ -16,7 +16,8 @@ pub fn wezterm_lua() -> &'static str {
 /// went, and the line their config needs unless it has it already.
 pub fn wezterm() -> Result<String> {
     let home = std::env::var_os("HOME").map(PathBuf::from);
-    let base = std::env::var_os("XDG_CONFIG_HOME").map(PathBuf::from).or_else(|| home.clone().map(|h| h.join(".config")));
+    // An empty XDG_CONFIG_HOME counts as unset (the XDG spec).
+    let base = std::env::var_os("XDG_CONFIG_HOME").filter(|v| !v.is_empty()).map(PathBuf::from).or_else(|| home.clone().map(|h| h.join(".config")));
     let dir = base.context("no HOME to find the WezTerm config in")?.join("wezterm");
     std::fs::create_dir_all(&dir)?;
     let file = dir.join("fictty.lua");
