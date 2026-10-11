@@ -129,8 +129,10 @@ run in process, at Headless speed.
       headless screen's clock stays still through agent requests (the same writes replay the same)
 - [x] Driver: host acts (`Act::Host`, the app's handler run inside the act), `Config::normalize`
       before replay compares, `Config::class` so shrinking keeps to one failure
-- [ ] From the same run, waiting on a replay line: focus left on a node that's never shown (pty
-      only), and an agent's write during unsaved typing that the frame and state disagree on
+- [x] From its replay lines: the focus moves off a node that hid by any message (the screen
+      narrowing past a `when` on `$screen` left it there); a host reload of an entry with
+      unsaved typing saves the typing first, so the host merges both; a headless reload no
+      longer saves straight back what it loaded
 
 ## 1 · Land the prototype (now)
 

@@ -259,8 +259,11 @@ fictty::App::new(ui)
   seeded: when something first shows it the screen asks `Host::load` (a spinner meanwhile, the
   reason if it fails), and once it has changed and been still for half a second it goes back
   through `Host::save`. `Notifier::reload(key)` loads it again when it changed at the host; text
-  comes in as an edit, so the person's carets and undo carry on. The `--store` file leaves these
-  entries out.
+  comes in as an edit, so the person's carets and undo carry on. Typing not saved yet is saved
+  first, so the host can merge it with its change before the load. A host whose `save` merges
+  (the person's text with an agent's line written meanwhile) calls `reload` when what it keeps
+  differs from what it was given, or the editor never sees the merge. The `--store` file leaves
+  these entries out.
 - **Upgrade** re-runs the same command line as the new binary with `FICTTY_RESTORE` pointing at
   the saved state, so an embedding app keeps its state across `fictty upgrade` like the binary.
 

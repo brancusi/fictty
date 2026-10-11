@@ -472,6 +472,11 @@ pub fn update(st: &mut State, msg: Msg) -> Vec<Effect> {
     if !quiet && derive_rows(st, only.as_deref()) {
         settle(st);
     }
+    // Anything that shows or hides nodes (a write, a source, the screen's size) can leave the
+    // focus on one that's gone: it moves, whatever the message.
+    if !quiet && let Some(to) = moved_focus(st, &focus_order(st)) {
+        st.focus = to;
+    }
     // A selection, a write or a new row can point an editor at an entry it hasn't shown yet.
     fields(st);
     if st.focus != was && was.is_some() {
@@ -2214,6 +2219,16 @@ fn refresh(st: &State) -> Vec<Effect> {
 
 /// After any change: drop view state for ids that are gone, keep focus on something focusable,
 /// and keep each selection inside its list.
+/// Where the focus goes when it has to move (its node went or hid): the first node that takes
+/// it, past a tab bar to the content when there is any. None when it can stay.
+fn moved_focus(st: &State, order: &[String]) -> Option<Option<String>> {
+    if st.focus.as_ref().is_some_and(|f| order.contains(f)) {
+        return None;
+    }
+    let tabs = |id: &String| tree!(st).find(id).is_some_and(|n| matches!(n.kind, Kind::Tabs { .. }));
+    Some(order.iter().find(|id| !tabs(id)).or(order.first()).cloned())
+}
+
 fn settle(st: &mut State) {
     let order = focus_order(st);
     let mut all = Vec::new();
@@ -2228,11 +2243,8 @@ fn settle(st: &mut State) {
         st.local.entry(id).or_default().tab = t;
     }
     let order = if refocus { focus_order(st) } else { order };
-    // When the focus has to move (its node went or hid), the first node that takes it, past a
-    // tab bar to the content when there is any.
-    if !st.focus.as_ref().is_some_and(|f| order.contains(f)) {
-        let tabs = |id: &String| tree!(st).find(id).is_some_and(|n| matches!(n.kind, Kind::Tabs { .. }));
-        st.focus = order.iter().find(|id| !tabs(id)).or(order.first()).cloned();
+    if let Some(to) = moved_focus(st, &order) {
+        st.focus = to;
     }
     // A row asked for by key is selected once it's there.
     let wanted: Vec<(String, usize)> = all
@@ -3197,6 +3209,45 @@ mod tests {
         assert_eq!(fx, vec![Effect::Run(vec!["echo".into(), "3".into()])]);
         update(&mut st, Msg::Scroll { id: "b".into(), by: -5 });
         assert_eq!(selected(&st, "b"), 0);
+    }
+
+    #[test]
+    fn focus_leaves_a_node_a_write_hides() {
+        // Thought Control's pty run: a write hid the focused node's column, and the focus stayed
+        // on it, out of the focus order, where no key reached anything.
+        let mut st = State::default();
+        let first = ui(json!({"root": {"type": "row", "children": [
+            {"type": "list", "id": "main", "items": ["a"]},
+            {"type": "col", "when": "side", "children": [{"type": "list", "id": "head", "items": ["h"]}]}
+        ]}, "store": {"side": true}, "focus": "head"}));
+        update(&mut st, Msg::Push { ui: first });
+        assert_eq!(st.focus.as_deref(), Some("head"));
+        let write = crate::store::Write::Put { value: json!(false) };
+        update(&mut st, Msg::Write { key: "side".into(), write, if_rev: None, by: "agent".into(), for_ms: None });
+        assert_eq!(st.focus.as_deref(), Some("main"));
+        // And when a source's value hides it.
+        let mut st = State::default();
+        let pushed = ui(json!({"root": {"type": "row", "children": [
+            {"type": "list", "id": "main", "items": ["a"]},
+            {"type": "col", "when": "sidebar.open", "children": [{"type": "list", "id": "head", "items": ["h"]}]}
+        ]}, "data": {"sidebar": {"host": "sidebar"}}, "focus": "main"}));
+        update(&mut st, Msg::Push { ui: pushed });
+        update(&mut st, Msg::Data { name: "sidebar".into(), result: Ok(json!({"open": true})) });
+        update(&mut st, Msg::Focus { id: "head".into() });
+        assert_eq!(st.focus.as_deref(), Some("head"));
+        update(&mut st, Msg::Data { name: "sidebar".into(), result: Ok(json!({"open": false})) });
+        assert_eq!(st.focus.as_deref(), Some("main"));
+        // And when the screen narrows past its `when`.
+        let mut st = State::default();
+        update(&mut st, Msg::Screen { width: 130, height: 30 });
+        let pushed = ui(json!({"root": {"type": "row", "children": [
+            {"type": "list", "id": "main", "items": ["a"]},
+            {"type": "col", "when": "$screen.width>=120", "children": [{"type": "list", "id": "head", "items": ["h"]}]}
+        ]}, "focus": "head"}));
+        update(&mut st, Msg::Push { ui: pushed });
+        assert_eq!(st.focus.as_deref(), Some("head"));
+        update(&mut st, Msg::Screen { width: 100, height: 30 });
+        assert_eq!(st.focus.as_deref(), Some("main"));
     }
 
     #[test]

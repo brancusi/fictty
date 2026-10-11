@@ -71,8 +71,9 @@ impl Notifier {
         self.msg(Msg::Changed { host: name.into() });
     }
 
-    /// A kept entry changed outside the screen (the file was edited): load it again. Text comes
-    /// in as an edit, so the person's carets and undo carry on.
+    /// A kept entry changed outside the screen (the file was edited): load it again. Typing the
+    /// screen hasn't saved yet is saved first; text comes in as an edit, so the person's carets
+    /// and undo carry on.
     pub fn reload(&self, key: &str) {
         self.msg(Msg::Reload { key: key.into() });
     }

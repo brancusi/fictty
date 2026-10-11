@@ -296,13 +296,24 @@ impl Driver {
                     }
                 }
                 Effect::Read(key) => {
+                    // What the person typed and the screen hasn't saved yet goes to the host
+                    // first, so the load that follows has both sides (the host merges); loading
+                    // first would put the host's text over the typing.
+                    let unsaved = self.unsaved(st, &key);
                     if self.blocking {
-                        let result = self.host.load(&key);
-                        queue.extend(update(st, Msg::Loaded { key, result }));
+                        let saved = unsaved.map_or(Ok(()), |v| self.host.save(&key, &v));
+                        let result = saved.map_err(|e| format!("saving before a reload: {e}")).and_then(|()| self.host.load(&key));
+                        let ok = result.is_ok();
+                        queue.extend(update(st, Msg::Loaded { key: key.clone(), result }));
+                        // What the host just gave is what it has, as for a load from a thread.
+                        if let Some(e) = st.store.get(&key).filter(|_| ok) {
+                            self.kept.insert(key, e.rev);
+                        }
                     } else {
                         let (tx, host) = (self.tx.clone(), self.host.clone());
                         std::thread::spawn(move || {
-                            let result = host.load(&key);
+                            let saved = unsaved.map_or(Ok(()), |v| host.save(&key, &v));
+                            let result = saved.map_err(|e| format!("saving before a reload: {e}")).and_then(|()| host.load(&key));
                             let _ = tx.send(Event::Msg(Msg::Loaded { key, result }));
                         });
                     }
@@ -329,6 +340,21 @@ impl Driver {
             self.spawn_fetch(st, name);
         }
         self.reap(st);
+    }
+
+    /// A hosted entry's value when it has changed since it was last saved or loaded, noted as
+    /// saved (the caller saves it).
+    fn unsaved(&mut self, st: &State, key: &str) -> Option<Value> {
+        let e = st.store.get(key).filter(|_| crate::state::hosted(st, key))?;
+        if self.kept.get(key) == Some(&e.rev) {
+            return None;
+        }
+        self.kept.insert(key.into(), e.rev);
+        self.changed.remove(key);
+        Some(match &e.body {
+            crate::store::Body::Text { doc } => Value::String(doc.text.to_string()),
+            crate::store::Body::Value { value } => value.clone(),
+        })
     }
 
     /// Save hosted entries that changed and have been still for `settle` (a headless screen
@@ -1648,6 +1674,55 @@ pub fn key_name(k: KeyEvent) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Mutex;
+
+    /// A host that keeps one page and merges what's saved into it, as a vault does: it notes
+    /// every save and load.
+    #[derive(Default)]
+    struct Merging {
+        page: Mutex<String>,
+        calls: Mutex<Vec<String>>,
+    }
+
+    impl Host for Merging {
+        fn keys(&self) -> Vec<String> {
+            vec!["page".into()]
+        }
+        fn load(&self, _: &str) -> std::result::Result<Value, String> {
+            self.calls.lock().unwrap().push("load".into());
+            Ok(Value::String(self.page.lock().unwrap().clone()))
+        }
+        fn save(&self, _: &str, value: &Value) -> std::result::Result<(), String> {
+            self.calls.lock().unwrap().push(format!("save {value}"));
+            // The agent's line stays; the person's typing joins it.
+            let mut page = self.page.lock().unwrap();
+            let typed = value.as_str().unwrap().trim_start_matches("base").to_string();
+            *page = format!("base{typed}{}", page.trim_start_matches("base"));
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn a_reload_saves_unsaved_typing_first() {
+        // Thought Control's pty run: an agent's write landed while the person's typing wasn't
+        // saved yet. Loading over it would lose the typing; saving first lets the host merge.
+        let host = Arc::new(Merging::default());
+        *host.page.lock().unwrap() = "base".into();
+        let (tx, _rx) = mpsc::channel();
+        let mut d = Driver::new(tx, true, host.clone());
+        let mut st = State { hosted: host.keys(), ..State::default() };
+        let ui: Ui = serde_json::from_value(json!({"root": {"type": "editor", "id": "e", "doc": "page", "caret": "end"}, "focus": "e"})).unwrap();
+        d.apply(&mut st, Msg::Push { ui });
+        d.apply(&mut st, Msg::Key { key: "!".into() });
+        // The agent writes; the host says so before the screen has saved.
+        *host.page.lock().unwrap() = "base\nagent".into();
+        d.apply(&mut st, Msg::Reload { key: "page".into() });
+        assert_eq!(*host.calls.lock().unwrap(), vec!["load", "save \"base!\"", "load"]);
+        assert_eq!(st.store["page"].read()["text"], "base!\nagent");
+        // Nothing left to save.
+        d.keep(&mut st, Duration::ZERO);
+        assert_eq!(host.calls.lock().unwrap().len(), 3);
+    }
 
     #[test]
     fn key_names_put_modifiers_in_one_order() {
