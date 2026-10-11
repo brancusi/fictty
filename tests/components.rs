@@ -107,3 +107,86 @@ fn a_filtered_tree_opens_to_show_what_matches() {
     assert!(text.contains("Launch") && text.contains("Record the demo") && text.contains("Script it"), "{text}");
     assert!(!text.contains("Write the post") && !text.contains("Rest"), "{text}");
 }
+
+fn dialog() -> Value {
+    json!({
+        "root": {"type": "stack", "children": [
+            {"type": "row", "children": [
+                {"type": "list", "id": "files", "items": ["a.txt", "b.txt"],
+                 "keys": {"d": {"put": "confirm", "value": true}}},
+                {"type": "text", "id": "detail", "text": "wide detail", "when": "$screen.width>=60"}
+            ]},
+            {"type": "col", "id": "ask", "title": "Delete?", "modal": true, "when": "confirm",
+             "float": {"width": 30, "height": 5},
+             "children": [
+                {"type": "text", "text": "This can't be undone.", "size": 1},
+                {"type": "row", "size": 1, "children": [
+                    {"type": "button", "id": "yes", "label": "Delete",
+                     "click": {"do": [{"put": "confirm", "value": false}, {"toast": "Deleted", "tone": "neg"}]}},
+                    {"type": "button", "id": "no", "label": "Keep", "click": {"put": "confirm", "value": false}}
+                ]}
+            ]}
+        ]},
+        "store": {"confirm": false}
+    })
+}
+
+#[test]
+fn when_hides_a_node_and_gives_its_room_away() {
+    let mut wide = screen(dialog(), 80, 6);
+    assert!(wide.screen().contains("wide detail"));
+    let mut narrow = screen(dialog(), 50, 6);
+    let text = narrow.screen();
+    assert!(!text.contains("wide detail"), "{text}");
+}
+
+#[test]
+fn a_modal_floats_over_the_screen_and_keeps_the_focus() {
+    let mut s = screen(dialog(), 80, 12);
+    assert!(!s.screen().contains("Delete?"));
+    s.keys(&["d"]);
+    let text = s.screen();
+    assert!(text.contains("╭ Delete? ") && text.contains("Delete") && text.contains("Keep"), "{text}");
+    assert_eq!(s.state().focus.as_deref(), Some("yes"), "focus moves into the dialog");
+    s.keys(&["tab"]);
+    assert_eq!(s.state().focus.as_deref(), Some("no"));
+    s.keys(&["tab"]);
+    assert_eq!(s.state().focus.as_deref(), Some("yes"), "and stays there");
+    // A click behind the dialog goes nowhere.
+    s.msg(Msg::Click { id: String::new(), row: None, tab: None });
+    assert_eq!(s.state().focus.as_deref(), Some("yes"));
+    s.keys(&["enter"]);
+    let text = s.screen();
+    assert!(!text.contains("Delete?"), "{text}");
+    assert!(text.contains("Deleted"), "the toast shows: {text}");
+    assert_eq!(s.state().focus.as_deref(), Some("files"), "focus goes back");
+}
+
+#[test]
+fn toasts_go_when_their_time_is_up() {
+    let mut s = screen(dialog(), 60, 10);
+    s.msg(Msg::Toast { text: "Saved".into(), tone: Some("pos".into()), ms: Some(500) });
+    assert!(s.screen().contains("Saved"));
+    s.msg(Msg::Tick { now_ms: 499 });
+    assert!(s.screen().contains("Saved"));
+    s.msg(Msg::Tick { now_ms: 500 });
+    assert!(!s.screen().contains("Saved"));
+}
+
+#[test]
+fn a_cut_line_ends_in_an_ellipsis_and_keeps_its_right_side() {
+    let ui = json!({"root": {"type": "list", "id": "l", "item": "{t}\t<d>{when}</>",
+                              "items": [{"t": "a title far too long to fit", "when": "Tue · tilde"}]}});
+    let mut s = screen(ui, 30, 3);
+    let line = s.screen().lines().next().unwrap().to_string();
+    assert!(line.ends_with("Tue · tilde"), "{line:?}");
+    assert!(line.contains("…"), "{line:?}");
+}
+
+#[test]
+fn gaps_space_out_a_row() {
+    let ui = json!({"root": {"type": "row", "gap": 3, "children": [
+        {"type": "text", "text": "A", "size": 1}, {"type": "text", "text": "B", "size": 1}]}});
+    let mut s = screen(ui, 20, 2);
+    assert!(s.screen().starts_with("A   B"));
+}

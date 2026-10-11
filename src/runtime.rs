@@ -59,6 +59,14 @@ pub enum Request {
     },
     /// Replace the layers only (callouts, rings, spotlights).
     Layers { layers: Vec<crate::model::LayerSpec> },
+    /// A message in the corner for a while.
+    Toast {
+        text: String,
+        #[serde(default)]
+        tone: Option<String>,
+        #[serde(default)]
+        ms: Option<u64>,
+    },
     /// The mouse at a cell, as the terminal would report it: `move`, `click`, `up` or `down`
     /// (the wheel).
     Mouse { kind: String, x: u16, y: u16 },
@@ -200,9 +208,10 @@ impl Driver {
         if let Msg::Data { name, .. } = &msg {
             self.in_flight.remove(name);
         }
-        // Keys carry the time they arrived (an editor groups typing into undo steps by it).
-        // Headless renders keep the clock still, so they come out the same every time.
-        if matches!(msg, Msg::Key { .. }) && !self.blocking {
+        // Messages carry the time they arrived (an editor groups typing into undo steps by it; a
+        // toast lasts from then). Headless renders keep the clock still, so they come out the
+        // same every time.
+        if !matches!(msg, Msg::Tick { .. }) && !self.blocking {
             update(st, Msg::Tick { now_ms: self.started.elapsed().as_millis() as u64 });
         }
         let mut queue: Vec<Effect> = update(st, msg);
@@ -387,6 +396,7 @@ impl Driver {
             Request::Set { id, selected, tab } => Msg::Set { id, selected, tab },
             Request::Theme { add, choose } => Msg::Theme { add, choose },
             Request::Layers { layers } => Msg::Layers { layers },
+            Request::Toast { text, tone, ms } => Msg::Toast { text, tone, ms },
             Request::Click { id, row, tab } => Msg::Click { id, row, tab },
             // The loop answers these itself (they need the last frame).
             Request::Mouse { .. } | Request::Screen | Request::Upgrade { .. } => return json!({"ok": false}),
@@ -551,6 +561,7 @@ impl App {
         let (ntx, notes) = mpsc::channel();
         self.host.start(Notifier::new(ntx));
         let mut d = Driver::new(tx, true, self.host.clone());
+        d.apply(&mut st, Msg::Screen { width, height });
         d.apply(&mut st, Msg::Push { ui });
         let term = ratatui::Terminal::new(ratatui::backend::TestBackend::new(width, height))?;
         let mut h = Headless { st, d, term, notes };
@@ -618,6 +629,9 @@ impl App {
         };
         // (The probe clears what it printed; ratatui's first frame draws every cell.)
         d.apply(&mut st, caps(sizing));
+        if let Ok(size) = term.size() {
+            d.apply(&mut st, Msg::Screen { width: size.width, height: size.height });
+        }
         let _ = ratatui::crossterm::execute!(std::io::stdout(), EnableMouseCapture);
         let started = d.started;
         let res = (|| -> Result<()> {
@@ -639,10 +653,14 @@ impl App {
             let mut hits: Vec<Hit> = Vec::new();
             let mut screens: Vec<Sender<Value>> = Vec::new();
             let mut scaled_last: Vec<view::Scaled> = Vec::new();
+            // When the last frame said it would change by itself (a toast going, a spinner).
+            let mut wake: Option<u64> = None;
             while !d.quit {
                 // Animations (a pulsing ring) need time to move: tick every frame while one shows.
                 let animating = st.ui.layers.iter().any(|l| l.pulse.is_some());
-                if animating && last_draw.elapsed() >= budget {
+                let now = started.elapsed().as_millis() as u64;
+                if (animating && last_draw.elapsed() >= budget) || wake.is_some_and(|w| now >= w) {
+                    wake = None;
                     d.apply(&mut st, Msg::Tick { now_ms: started.elapsed().as_millis() as u64 });
                     dirty = true;
                 }
@@ -655,7 +673,7 @@ impl App {
                     let mut sizes = Vec::new();
                     term.draw(|f| {
                         let out = view::draw(&st, f);
-                        (hits, pics, scaled, sizes) = (out.hits, out.pics, out.scaled, out.sizes);
+                        (hits, pics, scaled, sizes, wake) = (out.hits, out.pics, out.scaled, out.sizes, out.wake);
                         if !screens.is_empty() {
                             text = Some(buffer_text(f.buffer_mut()));
                         }
@@ -683,7 +701,10 @@ impl App {
                     dirty = resize_editors(&mut d, &mut st, sizes);
                 }
                 // Sleep until the next frame is due (when there's something to draw) or a while.
-                let wait = if dirty || animating { budget.saturating_sub(last_draw.elapsed()) } else { Duration::from_millis(50) };
+                let mut wait = if dirty || animating { budget.saturating_sub(last_draw.elapsed()) } else { Duration::from_millis(50) };
+                if let Some(w) = wake {
+                    wait = wait.min(Duration::from_millis(w.saturating_sub(started.elapsed().as_millis() as u64)));
+                }
                 let mut batch = Vec::new();
                 if let Ok(ev) = rx.recv_timeout(wait) {
                     batch.push(ev);
@@ -700,6 +721,9 @@ impl App {
                     }
                 }
                 if resized {
+                    if let Ok(size) = term.size() {
+                        d.apply(&mut st, Msg::Screen { width: size.width, height: size.height });
+                    }
                     // The cell size can change with the window (a font size change, another display).
                     d.apply(&mut st, caps(sizing));
                     scaled_last.clear();
@@ -1089,6 +1113,7 @@ fn activity(st: &State, req: &Request) -> Option<(&'static str, String)> {
         Request::Key { key } => ("key", key.clone()),
         Request::Theme { add, choose } => ("theme", choose.clone().unwrap_or_else(|| format!("{} loaded", add.len()))),
         Request::Layers { layers } => ("layers", format!("{} layers", layers.len())),
+        Request::Toast { text, .. } => ("toast", short(text)),
         Request::Click { id, .. } => ("click", id.clone()),
         _ => return None,
     })

@@ -62,6 +62,18 @@ pub struct State {
     /// saved); `items` reads them.
     #[serde(skip)]
     pub rows: BTreeMap<String, Vec<Value>>,
+    /// Messages showing in the corner until their time is up, oldest first.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub toasts: Vec<Toast>,
+}
+
+/// A message in the corner (`Action::Toast`), shown until `until` on the logical clock.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct Toast {
+    pub text: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tone: Option<String>,
+    pub until: u64,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
@@ -178,6 +190,16 @@ pub enum Msg {
     Size { id: String, width: u16, height: u16 },
     /// Replace the layers only.
     Layers { layers: Vec<LayerSpec> },
+    /// Show a message in the corner for `ms` (default 3000), in a `tone`.
+    Toast {
+        text: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        tone: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        ms: Option<u64>,
+    },
+    /// The terminal's size in cells, bindable as `$screen` (`width`, `height`).
+    Screen { width: u16, height: u16 },
     /// What the terminal can draw.
     Caps { caps: crate::gfx::Caps, text_sizing: bool },
     /// Where this screen runs: its binary, its socket, the folder its UI came from. Bindable as
@@ -329,6 +351,15 @@ fn apply(st: &mut State, msg: Msg) -> Vec<Effect> {
         }
         Msg::Tick { now_ms } => {
             st.now_ms = now_ms;
+            st.toasts.retain(|t| t.until > now_ms);
+            vec![]
+        }
+        Msg::Toast { text, tone, ms } => {
+            toast(st, text, tone, ms);
+            vec![]
+        }
+        Msg::Screen { width, height } => {
+            st.data.insert("$screen".into(), Slot::Ready { value: serde_json::json!({"width": width, "height": height}) });
             vec![]
         }
         Msg::Set { id, selected, tab } => {
@@ -485,6 +516,15 @@ fn choose_theme(st: &mut State, choice: &str) {
     // Bindable as `$theme`: which one is on, and what else there is.
     let value = serde_json::json!({"name": st.theme, "names": st.themes.keys().collect::<Vec<_>>()});
     st.data.insert("$theme".into(), Slot::Ready { value });
+}
+
+/// How many toasts show at once (the oldest goes first).
+const TOASTS: usize = 4;
+
+fn toast(st: &mut State, text: String, tone: Option<String>, ms: Option<u64>) {
+    st.toasts.push(Toast { text, tone, until: st.now_ms + ms.unwrap_or(3000) });
+    let over = st.toasts.len().saturating_sub(TOASTS);
+    st.toasts.drain(..over);
 }
 
 /// How many entries `$log` keeps.
@@ -750,6 +790,10 @@ fn resolve(st: &State, key: &str) -> Option<Action> {
     if let Some(a) = st.ui.keys.get(key) {
         return Some(a.clone());
     }
+    // A button presses on Enter and Space.
+    if let Some(n) = focused.filter(|n| matches!(n.kind, Kind::Button { .. }) && matches!(key, "enter" | "space")) {
+        return n.click.clone();
+    }
     // A tree folds where a list would switch tabs.
     if focused.is_some_and(|n| matches!(n.kind, Kind::Tree { .. })) {
         match key {
@@ -823,6 +867,11 @@ fn act(st: &mut State, a: Action) -> Vec<Effect> {
         Action::Copy { copy } => {
             let text = crate::model::fill(&copy, &action_context(st));
             vec![Effect::Copy(text)]
+        }
+        Action::Toast { toast: text, tone, ms } => {
+            let text = crate::model::fill(&text, &action_context(st));
+            toast(st, text, tone, ms);
+            vec![]
         }
         Action::Host { host, args } => {
             let args = fill_value(&args, &action_context(st));
@@ -1293,11 +1342,67 @@ pub fn problems(st: &State) -> Vec<String> {
     out
 }
 
-/// The focusable nodes on screen, in tree order (hidden tabs left out).
+/// The focusable nodes on screen, in tree order (hidden tabs and nodes left out). While a modal
+/// node shows, only the ones inside it (the last one, if several show).
 pub fn focus_order(st: &State) -> Vec<String> {
     let mut all = Vec::new();
-    st.ui.root.walk_shown(&|n| tab_of(st, n), &mut all);
+    st.ui.root.walk_shown(&|n| tab_of(st, n), &|n| shown(st, n), &mut all);
+    if let Some(m) = all.iter().rev().find(|n| n.modal) {
+        let mut inside = Vec::new();
+        m.walk_shown(&|n| tab_of(st, n), &|n| shown(st, n), &mut inside);
+        all = inside;
+    }
     all.into_iter().filter(|n| n.focusable()).filter_map(|n| n.id.clone()).collect()
+}
+
+/// Whether a node shows: its `when` holds (see `Node::when`).
+pub fn shown(st: &State, n: &Node) -> bool {
+    n.when.as_deref().is_none_or(|w| holds(st, w))
+}
+
+/// A `when` condition against the state.
+pub fn holds(st: &State, cond: &str) -> bool {
+    let cond = cond.trim();
+    if let Some(rest) = cond.strip_prefix('!') {
+        return !holds(st, rest);
+    }
+    let found = ["!=", ">=", "<=", "=", ">", "<"].iter().find_map(|op| cond.split_once(op).map(|(a, b)| (a.trim(), *op, b.trim())));
+    let read = |bind: &str| -> Option<Value> {
+        match st.store.get(bind).map(|e| &e.body) {
+            Some(Body::Text { doc }) => Some(Value::String(doc.text.to_string())),
+            _ => value_of(st, bind).cloned(),
+        }
+    };
+    let Some((bind, op, want)) = found else {
+        return match read(cond) {
+            None | Some(Value::Null) | Some(Value::Bool(false)) => false,
+            Some(Value::String(s)) => !s.is_empty(),
+            Some(Value::Number(n)) => n.as_f64() != Some(0.0),
+            Some(Value::Array(a)) => !a.is_empty(),
+            Some(Value::Object(o)) => !o.is_empty(),
+            Some(Value::Bool(true)) => true,
+        };
+    };
+    let have = crate::model::scalar(read(bind).as_ref());
+    let want = want.trim_matches('"');
+    match (crate::model::number(&have), crate::model::number(want)) {
+        (Some(a), Some(b)) => match op {
+            "=" => a == b,
+            "!=" => a != b,
+            ">=" => a >= b,
+            "<=" => a <= b,
+            ">" => a > b,
+            _ => a < b,
+        },
+        _ => match op {
+            "=" => have == want,
+            "!=" => have != want,
+            ">=" => have.as_str() >= want,
+            "<=" => have.as_str() <= want,
+            ">" => have.as_str() > want,
+            _ => have.as_str() < want,
+        },
+    }
 }
 
 /// The shown child of a tabs node.

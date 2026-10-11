@@ -169,8 +169,34 @@ pub struct Node {
     /// Space inside the node's border: `1` (cells either side), or `[x, y]` (cells, rows).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub pad: Option<Pad>,
+    /// Shown only while this holds: a bind that's set (`"dialog"`; not empty, false, 0 or null),
+    /// not set (`"!dialog"`), or compared with a value (`"mode=edit"`, `"$screen.width>=120"`;
+    /// `=`, `!=`, `<`, `<=`, `>`, `>=`). A hidden node takes no room and no focus.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub when: Option<String>,
+    /// In a `stack`: where the node floats over the ones before it, instead of filling it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub float: Option<Float>,
+    /// While shown, focus stays inside this node and what's behind it dims: a dialog.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub modal: bool,
     #[serde(flatten)]
     pub kind: Kind,
+}
+
+/// Where a floating node sits in its stack: `width` and `height` (cells, `"50%"`; default the
+/// whole stack) and `at` (`center`, the default, or `top`, `bottom`, `left`, `right` and the
+/// corners, `top-right`), `margin` cells in from the edge it's at.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct Float {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub width: Option<Size>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub height: Option<Size>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub at: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub margin: Option<u16>,
 }
 
 impl Default for Node {
@@ -192,6 +218,9 @@ impl Default for Node {
             variant: None,
             tone: None,
             pad: None,
+            when: None,
+            float: None,
+            modal: false,
             kind: Kind::Text { text: String::new() },
         }
     }
@@ -201,10 +230,23 @@ impl Default for Node {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "lowercase")]
 pub enum Kind {
-    /// Children stacked top to bottom.
-    Col { children: Vec<Node> },
-    /// Children side by side.
-    Row { children: Vec<Node> },
+    /// Children stacked top to bottom, `gap` rows apart.
+    Col {
+        children: Vec<Node>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        gap: Option<u16>,
+    },
+    /// Children side by side, `gap` cells apart.
+    Row {
+        children: Vec<Node>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        gap: Option<u16>,
+    },
+    /// Children over each other, the last on top: each fills the stack, or floats where its
+    /// `float` says (a dialog, a popup, a corner badge). With `when`, a layer comes and goes.
+    Stack { children: Vec<Node> },
+    /// A labelled control: Enter or Space while focused, or a click, runs its `click`.
+    Button { label: String },
     /// Text. `{field}` placeholders fill from the bound value (`{a.b}` reaches in).
     Text { text: String },
     /// A selectable list of `items`, or of the bound array. `item` formats each one; with
@@ -567,6 +609,15 @@ pub enum Action {
     /// Flip a true-or-false field of the focused list's or tree's selected row, in the store entry
     /// it shows (a missing field becomes true): a checkbox.
     Toggle { toggle: String },
+    /// A message that shows for a while (`ms`, default 3000) in the corner, in a `tone`. A
+    /// template, like `copy`.
+    Toast {
+        toast: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        tone: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        ms: Option<u64>,
+    },
     /// Put text on the system clipboard (through the terminal, OSC 52). A template over the
     /// selected row, `store` and `$self`, like the store actions.
     Copy { copy: String },
@@ -594,14 +645,14 @@ impl Node {
 
     pub fn children(&self) -> &[Node] {
         match &self.kind {
-            Kind::Col { children } | Kind::Row { children } | Kind::Tabs { children, .. } => children,
+            Kind::Col { children, .. } | Kind::Row { children, .. } | Kind::Stack { children } | Kind::Tabs { children, .. } => children,
             _ => &[],
         }
     }
 
     pub fn children_mut(&mut self) -> Option<&mut Vec<Node>> {
         match &mut self.kind {
-            Kind::Col { children } | Kind::Row { children } | Kind::Tabs { children, .. } => Some(children),
+            Kind::Col { children, .. } | Kind::Row { children, .. } | Kind::Stack { children } | Kind::Tabs { children, .. } => Some(children),
             _ => None,
         }
     }
@@ -616,7 +667,7 @@ impl Node {
 
     /// Lists, tables, trees, tabs and editors with an id take focus.
     pub fn focusable(&self) -> bool {
-        self.id.is_some() && (matches!(self.kind, Kind::List { .. } | Kind::Table { .. } | Kind::Tree { .. } | Kind::Tabs { .. }) || self.field().is_some())
+        self.id.is_some() && (matches!(self.kind, Kind::List { .. } | Kind::Table { .. } | Kind::Tree { .. } | Kind::Tabs { .. } | Kind::Button { .. }) || self.field().is_some())
     }
 
     /// The component's name, as written in `type`.
@@ -624,6 +675,8 @@ impl Node {
         match &self.kind {
             Kind::Col { .. } => "col",
             Kind::Row { .. } => "row",
+            Kind::Stack { .. } => "stack",
+            Kind::Button { .. } => "button",
             Kind::Text { .. } => "text",
             Kind::List { .. } => "list",
             Kind::Tree { .. } => "tree",
@@ -668,18 +721,22 @@ impl Node {
         }
     }
 
-    /// Like `walk`, but only into the shown child of each tabs node (`tab` gives its index).
-    pub fn walk_shown<'a>(&'a self, tab: &dyn Fn(&Node) -> usize, out: &mut Vec<&'a Node>) {
+    /// Like `walk`, but only into what's shown: nodes `shown` passes, and the shown child of each
+    /// tabs node (`tab` gives its index).
+    pub fn walk_shown<'a>(&'a self, tab: &dyn Fn(&Node) -> usize, shown: &dyn Fn(&Node) -> bool, out: &mut Vec<&'a Node>) {
+        if !shown(self) {
+            return;
+        }
         out.push(self);
         match &self.kind {
             Kind::Tabs { children, .. } => {
                 if let Some(c) = children.get(tab(self).min(children.len().saturating_sub(1))) {
-                    c.walk_shown(tab, out);
+                    c.walk_shown(tab, shown, out);
                 }
             }
             _ => {
                 for c in self.children() {
-                    c.walk_shown(tab, out);
+                    c.walk_shown(tab, shown, out);
                 }
             }
         }

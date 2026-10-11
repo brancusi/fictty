@@ -2,8 +2,8 @@
 //! Besides the frame it returns the hit regions (what is under each cell, for the mouse), and
 //! it places the UI's layers with caretline-layers over what it drew.
 
-use crate::model::{Kind, LayerSpec, Look, Node, Seg, Size, Style as NodeStyle, ThemeSpec, Variant, fill, lookup, number, scalar, segments};
-use crate::state::{field_view, Slot, State, bound, items, selected, split_bind, tab_of, value_of};
+use crate::model::{Float, Kind, LayerSpec, Look, Node, Seg, Size, Style as NodeStyle, ThemeSpec, Variant, fill, lookup, number, scalar, segments};
+use crate::state::{Slot, State, bound, field_view, items, selected, shown, split_bind, tab_of, value_of};
 use crate::gfx::{Pic, Placed, Rgb};
 use caretline_layers as cl;
 use ratatui::Frame;
@@ -51,6 +51,7 @@ struct Cx<'a> {
     pics: Vec<Placed>,
     scaled: Vec<Scaled>,
     sizes: Vec<(String, u16, u16)>,
+    wake: Option<u64>,
 }
 
 /// Text the terminal draws larger (OSC 66): its cell, the text, the scale and the style.
@@ -72,6 +73,9 @@ pub struct Out {
     /// The cells each editor got: (id, width, height). The runtime tells an editor when its
     /// own size differs, so its scroll keeps the caret in view.
     pub sizes: Vec<(String, u16, u16)>,
+    /// When (on the logical clock) the frame changes by itself next: a toast going, a spinner
+    /// turning. The runtime ticks and draws again then.
+    pub wake: Option<u64>,
 }
 
 impl Cx<'_> {
@@ -206,8 +210,10 @@ fn draw_parts(buf: &mut Buffer, r: Rect, parts: Vec<Part>) {
     let rw = width(&right).min(r.width as usize);
     let room = (r.width as usize).saturating_sub(if rw > 0 { rw + 1 } else { 0 });
     let fixed = width(&left);
+    let fills = left.iter().any(|p| matches!(p, Part::Fill(..)));
     let mut x = r.x;
     let end = r.x + room as u16;
+    let cut = !fills && fixed > room && room > 1;
     for p in left {
         if x >= end {
             break;
@@ -225,6 +231,10 @@ fn draw_parts(buf: &mut Buffer, r: Rect, parts: Vec<Part>) {
             }
             Part::Tab => {}
         }
+    }
+    // Text that didn't fit ends in an ellipsis, so a cut is never mistaken for the whole.
+    if cut {
+        buf[(end - 1, r.y)].set_symbol("…");
     }
     let mut x = r.x + r.width - rw as u16;
     for p in right {
@@ -265,7 +275,7 @@ fn theme(st: &State, active: Option<&ThemeSpec>) -> Theme {
 /// Draw the whole screen; returns what's under each cell and the pictures to place.
 pub fn draw(st: &State, f: &mut Frame) -> Out {
     let act = active(st);
-    let mut cx = Cx { st, active: act, th: theme(st, act), hits: Vec::new(), anchors: cl::AnchorMap::new(), pics: Vec::new(), scaled: Vec::new(), sizes: Vec::new() };
+    let mut cx = Cx { st, active: act, th: theme(st, act), hits: Vec::new(), anchors: cl::AnchorMap::new(), pics: Vec::new(), scaled: Vec::new(), sizes: Vec::new(), wake: None };
     let mut base = Style::default();
     if let Some(bg) = cx.th.bg {
         base = base.bg(bg);
@@ -280,8 +290,9 @@ pub fn draw(st: &State, f: &mut Frame) -> Out {
     node(&mut cx, &st.ui.root, f, body);
     let shade = layers(&cx, f.buffer_mut(), body);
     cx.pics.extend(shade);
+    toasts(&mut cx, f.buffer_mut(), body);
     if !bar {
-        return Out { hits: cx.hits, pics: cx.pics, scaled: cx.scaled, sizes: cx.sizes };
+        return Out { hits: cx.hits, pics: cx.pics, scaled: cx.scaled, sizes: cx.sizes, wake: cx.wake };
     }
     let line = match st.status.as_ref().or(st.problems.first()) {
         Some(s) => Line::styled(s.clone(), cx.look("status.error", Style::default().fg(cx.th.neg))),
@@ -295,7 +306,63 @@ pub fn draw(st: &State, f: &mut Frame) -> Out {
     let [left, right] = Layout::horizontal([Constraint::Fill(1), Constraint::Length(meter.chars().count() as u16)]).areas(status);
     f.render_widget(Paragraph::new(line), left);
     f.render_widget(Paragraph::new(Line::styled(meter, Style::default().fg(Color::Yellow))), right);
-    Out { hits: cx.hits, pics: cx.pics, scaled: cx.scaled, sizes: cx.sizes }
+    Out { hits: cx.hits, pics: cx.pics, scaled: cx.scaled, sizes: cx.sizes, wake: cx.wake }
+}
+
+/// The toasts, newest at the bottom, in the body's bottom-right corner.
+fn toasts(cx: &mut Cx, buf: &mut Buffer, body: Rect) {
+    let mut bottom = body.bottom();
+    for t in cx.st.toasts.iter().rev() {
+        cx.wake = Some(cx.wake.map_or(t.until, |w| w.min(t.until)));
+        let w = (t.text.chars().count() as u16 + 4).min(body.width.saturating_sub(2)).max(5);
+        if bottom < body.y + 3 || body.width < 6 {
+            break;
+        }
+        let r = Rect::new(body.right().saturating_sub(w + 1), bottom - 3, w, 3);
+        let tone = t.tone.as_deref().and_then(|c| cx.color(c)).unwrap_or(cx.th.accent);
+        let fill = cx.look("toast", Style::default().bg(cx.th.panel).fg(cx.th.fg.unwrap_or(Color::White)));
+        ratatui::widgets::Widget::render(ratatui::widgets::Clear, r, buf);
+        buf.set_style(r, fill);
+        let block = Block::bordered().border_type(BorderType::Rounded).border_style(fill.fg(tone));
+        let inner = block.inner(r);
+        ratatui::widgets::Widget::render(block, r, buf);
+        buf.set_stringn(inner.x + 1, inner.y, &t.text, inner.width.saturating_sub(1) as usize, fill);
+        bottom -= 3;
+    }
+}
+
+/// A floating node's place in its stack.
+fn float_rect(fl: &Float, area: Rect) -> Rect {
+    let m = fl.margin.unwrap_or(0);
+    let dim = |s: Option<&Size>, full: u16| -> u16 {
+        let n = match s {
+            None => full,
+            Some(Size::Cells(n)) => *n,
+            Some(Size::Spec(t)) => match t.trim().strip_suffix('%') {
+                Some(p) => p.trim().parse::<u32>().map_or(full, |p| (full as u32 * p / 100) as u16),
+                None => t.trim().parse().unwrap_or(full),
+            },
+        };
+        n.min(full)
+    };
+    let w = dim(fl.width.as_ref(), area.width.saturating_sub(2 * m));
+    let h = dim(fl.height.as_ref(), area.height.saturating_sub(2 * m));
+    let at = fl.at.as_deref().unwrap_or("center");
+    let x = if at.contains("left") {
+        area.x + m
+    } else if at.contains("right") {
+        area.right().saturating_sub(m + w)
+    } else {
+        area.x + (area.width - w) / 2
+    };
+    let y = if at.contains("top") {
+        area.y + m
+    } else if at.contains("bottom") {
+        area.bottom().saturating_sub(m + h)
+    } else {
+        area.y + (area.height - h) / 2
+    };
+    Rect::new(x, y, w, h)
 }
 
 /// How an editor or input looks: its text, the caret, a selection, the placeholder, and its
@@ -426,6 +493,9 @@ fn border_type(edge: Option<&str>) -> BorderType {
 
 fn node(cx: &mut Cx, n: &Node, f: &mut Frame, area: Rect) {
     let st = cx.st;
+    if !shown(st, n) {
+        return;
+    }
     let focused = n.id.is_some() && n.id == st.focus;
     if let Some(id) = &n.id {
         cx.mark(id, None, None, area);
@@ -520,15 +590,62 @@ fn node(cx: &mut Cx, n: &Node, f: &mut Frame, area: Rect) {
     };
     let id = n.id.clone().unwrap_or_default();
     match &n.kind {
-        Kind::Col { children } | Kind::Row { children } => {
-            let cs: Vec<Constraint> = children.iter().map(|c| constraint(c.size.as_ref())).collect();
+        Kind::Col { children, gap } | Kind::Row { children, gap } => {
+            let showing: Vec<&Node> = children.iter().filter(|c| shown(st, c)).collect();
+            let cs: Vec<Constraint> = showing.iter().map(|c| constraint(c.size.as_ref())).collect();
             let areas = match n.kind {
-                Kind::Col { .. } => Layout::vertical(cs).split(inner),
-                _ => Layout::horizontal(cs).split(inner),
+                Kind::Col { .. } => Layout::vertical(cs).spacing(gap.unwrap_or(0)).split(inner),
+                _ => Layout::horizontal(cs).spacing(gap.unwrap_or(0)).split(inner),
             };
-            for (c, a) in children.iter().zip(areas.iter()) {
+            for (c, a) in showing.into_iter().zip(areas.iter()) {
                 node(cx, c, f, *a);
             }
+        }
+        Kind::Stack { children } => {
+            for c in children.iter().filter(|c| shown(st, c)) {
+                let at = c.float.as_ref().map_or(inner, |fl| float_rect(fl, inner));
+                if c.modal {
+                    // What's behind a dialog dims, and a click there goes nowhere.
+                    let buf = f.buffer_mut();
+                    for y in inner.top()..inner.bottom() {
+                        for x in inner.left()..inner.right() {
+                            let cell = &mut buf[(x, y)];
+                            cell.modifier.insert(Modifier::DIM);
+                        }
+                    }
+                    cx.hits.push(Hit { rect: inner, id: String::new(), row: None, tab: None, text: false });
+                }
+                if c.float.is_some() {
+                    f.render_widget(ratatui::widgets::Clear, at);
+                    let mut base = Style::default();
+                    if let Some(bg) = cx.th.bg {
+                        base = base.bg(bg);
+                    }
+                    if let Some(fg) = cx.th.fg {
+                        base = base.fg(fg);
+                    }
+                    f.buffer_mut().set_style(at, base);
+                }
+                node(cx, c, f, at);
+            }
+        }
+        Kind::Button { label } => {
+            let v = bound(st, n).unwrap_or(&Value::Null);
+            let text: String = segments(label, v).into_iter().map(|g| g.text).collect();
+            let bs = if focused {
+                cx.look("button.focused", Style::default().fg(Color::Black).bg(cx.th.accent).add_modifier(Modifier::BOLD))
+            } else {
+                cx.look("button", Style::default().fg(cx.th.fg.unwrap_or(Color::White)).bg(cx.th.panel))
+            };
+            let w = (text.chars().count() as u16 + 4).min(inner.width);
+            let x = match align {
+                Alignment::Center => inner.x + (inner.width - w) / 2,
+                Alignment::Right => inner.right() - w,
+                Alignment::Left => inner.x,
+            };
+            let r = Rect::new(x, inner.y + inner.height.saturating_sub(1) / 2, w, 1.min(inner.height));
+            f.buffer_mut().set_style(r, bs);
+            f.buffer_mut().set_stringn(r.x + 2, r.y, &text, w.saturating_sub(4) as usize, bs);
         }
         Kind::Text { text } if n.scale.is_some_and(|k| k > 1) && st.text_sizing => {
             // Larger text: the terminal draws it over `scale` rows; the cells under it stay blank.
@@ -864,6 +981,11 @@ fn node(cx: &mut Cx, n: &Node, f: &mut Frame, area: Rect) {
             }
             let rule = Rect::new(inner.x, inner.y + 1, inner.width, 1);
             f.buffer_mut().set_string(rule.x, rule.y, "─".repeat(inner.width as usize), cx.look("border", Style::default().fg(cx.th.border)));
+            // The active tab's label underlined on the rule.
+            if let Some(h) = cx.hits.iter().rev().find(|h| h.id == id && h.tab == Some(shown) && !id.is_empty()) {
+                let u = cx.look("tabs.underline", Style::default().fg(cx.th.accent));
+                f.buffer_mut().set_string(h.rect.x, rule.y, "━".repeat(h.rect.width as usize), u);
+            }
             if let Some(c) = children.get(shown) {
                 let body = Rect::new(inner.x, inner.y + 2, inner.width, inner.height.saturating_sub(2));
                 node(cx, c, f, body);

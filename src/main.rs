@@ -98,6 +98,16 @@ enum Cmd {
     Screen,
     /// Move, click or scroll the mouse on the running screen: `move|click|up|down X Y`.
     Mouse { kind: String, x: u16, y: u16 },
+    /// Show a message in the running screen's corner for a while.
+    Toast {
+        text: String,
+        /// A theme token or colour for its edge: `pos`, `warn`, `neg`.
+        #[arg(long)]
+        tone: Option<String>,
+        /// How long it shows, in milliseconds (default 3000).
+        #[arg(long)]
+        ms: Option<u64>,
+    },
     /// Replace the running screen's layers with a JSON array from a file (`-` reads stdin).
     Layers { file: PathBuf },
     /// Render a UI file to text without a terminal.
@@ -202,6 +212,7 @@ fn main() -> Result<()> {
             print!("{}", r["screen"].as_str().unwrap_or_default());
             return Ok(());
         }
+        Cmd::Toast { text, tone, ms } => runtime::send(&socket, json!({"op": "toast", "text": text, "tone": tone, "ms": ms}))?,
         Cmd::Mouse { kind, x, y } => runtime::send(&socket, json!({"op": "mouse", "kind": kind, "x": x, "y": y}))?,
         Cmd::Layers { file } => {
             let raw = if file.as_os_str() == "-" { std::io::read_to_string(std::io::stdin())? } else { std::fs::read_to_string(&file)? };
