@@ -179,6 +179,25 @@ On the `store-theme-prototype` branch, merged into `main` on 11 October: about 4
 - **Demo windows are part of the work.** WezTerm opened at 80×19 by default, and zsh doesn't
   word-split `$VARS` in `env`. Launch with an explicit size and set the socket inline.
 
+## After the merge: putting it in people's hands
+
+Shipping the showcase as a one-liner taught a few things the build didn't:
+
+- **`curl | sh` hides the terminal.** The script's input is the pipe, and the generic `/dev/tty`
+  isn't enough on macOS: kqueue can't wait on it, so the screen hung blank on its first read.
+  The script hands over the terminal's own device (`ps -o tty=`), and fictty refuses a
+  `/dev/tty` input on macOS with a sentence instead of spinning.
+- **Whatever a script prints before a full-screen app is gone.** A "paste this in a second
+  terminal" line was wiped at once. Anything a person needs while the screen runs has to be on
+  the screen: the Agent screen's commands are a list you click to copy.
+- **A screen can't be selected from while it has the mouse.** Hence a `copy` action through the
+  terminal (OSC 52), and `$self`, so the copied line reaches this screen from any terminal.
+- **A demo link has to mean one thing forever.** Each post's demo is a frozen script pinned to
+  a commit, with its own folder, store and socket, so later work can't change it and two demos
+  never collide.
+- **Test it the way a reader runs it.** Every one of these bugs passed a direct run and failed
+  through a pipe in a fresh terminal; `scripts/try-test.py` does the latter.
+
 ## Open questions
 
 - **Do people want this in the terminal?** No tool trial answers it. Put the showcase beside a

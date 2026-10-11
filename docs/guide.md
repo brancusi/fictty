@@ -1,7 +1,8 @@
 # The guide
 
 Everything the prototype does today, with the demos and the numbers. The [README](../README.md)
-is the short version.
+is the short version. To see it first: `curl -fsSL https://fictty.com/try.sh | sh` runs the
+showcase in your terminal (it fetches and builds fictty into `~/.fictty`; delete that to undo).
 
 ## The model in one picture
 

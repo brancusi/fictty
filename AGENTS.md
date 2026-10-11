@@ -35,10 +35,16 @@ These come first; every review checks them.
 - `src/gfx.rs`: pixels: the kitty graphics protocol, rasterising, SVG (resvg), caching
 - `src/runtime.rs`: the terminal, the event queue, data sources, the socket, `upgrade`
 - `src/main.rs`: the CLI, one subcommand per socket operation
-- `examples/`: UIs and their feeds. `stress/` and `finance/` are standalone; `thc/` and
-  `pixels/` need Thought Control installed (they move to that repo, see the plan)
+- `examples/`: UIs and their feeds. `showcase/` is the demo the one-liners run; `stress/` and
+  `finance/` are standalone; `thc/` and `pixels/` need Thought Control installed (they move to
+  that repo, see the plan)
 - `docs/`: the guide, the plan, design proposals, the identity explorations, the blog
-- `web/`: fictty.com, an Astro site that renders the docs and the blog
+- `web/`: fictty.com, an Astro site that renders the docs and the blog. `web/public/try.sh` is the
+  one-liner; `web/public/try/<post>.sh` are frozen per-post copies, never edited by hand
+- `scripts/`: `preflight.sh` (before commits and pushes), `freeze-demo.sh` and `try-test.py`
+  (pinned demos and testing them like a reader), `blog-tokens.py` (a post's Tokens panel)
+- `.claude/skills/`: `blog-post` and `ship`, how milestones are written and published
+- `.github/workflows/release.yml`: binaries for a version tag
 
 ## Build, test, run
 

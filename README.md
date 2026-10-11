@@ -7,7 +7,8 @@ never through the model.
 ![The fictty wordmark: letters built from overlapping panes of tinted glass](docs/design/identity/glass-wordmark.jpg)
 
 > **Status: prototype.** It works and it's fast, but the format will change. The plan is in
-> [docs/PLAN.md](docs/PLAN.md). The story so far is on the Thought Control dev blog:
+> [docs/PLAN.md](docs/PLAN.md). Milestones are on [the fictty blog](https://fictty.com/blog/); the
+> start of the story is on the Thought Control dev blog:
 > [the experiment](https://thoughtcontrol.app/blog/a-ui-is-one-value/),
 > [the landscape](https://thoughtcontrol.app/blog/mapping-the-landscape/) and
 > [why it's its own project](https://thoughtcontrol.app/blog/fictty/).

@@ -52,9 +52,13 @@ One line a reader can paste that runs **exactly this build** and **shows off wha
    ```sh
    scripts/try-test.py web/public/try/<post-slug>.sh --expect Showcase --key enter --expect "New note" \
      --second "fictty get --stats >/dev/null" --second "TOUR_PAUSE=0.2 fictty-tour >/dev/null 2>&1"
+   scripts/try-test.py web/public/try/<post-slug>.sh --expect Showcase \
+     --key down,down,down,down,enter --expect "click to copy"     # the Agent screen's copy list
    ```
 
-   Add an `--expect`/`--key` pair that reaches each new feature on screen.
+   Add an `--expect`/`--key` pair that reaches each new feature on screen (`--key` takes several
+   keys, comma-separated). Anything a reader needs while the screen runs must be on the screen:
+   whatever the script prints before it starts is wiped at once.
 4. Commit the frozen script with the demo line in the commit message, so the commit carries it:
 
    ```
@@ -73,7 +77,7 @@ One line a reader can paste that runs **exactly this build** and **shows off wha
 
 ## 3 · The latest demo on the landing page
 
-The landing page's demo link, above the fold, is the global one: `https://fictty.com/try.sh`, which
+The landing page's demo link, in the hero, is the global one: `https://fictty.com/try.sh`, which
 runs `main` as it is, not a pinned commit. It should show a good range of fictty, so the showcase
 on `main` is the one to keep growing: new features join it (step 2.1), old ones stay.
 

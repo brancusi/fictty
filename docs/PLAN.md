@@ -12,7 +12,8 @@ fictty stays a runtime on ratatui. json-render, OpenTUI and the ratatui ecosyste
 first; none has the loop an outside agent needs (push, patch, read back, answer in place), so we
 build that and borrow formats and components from them. The store-and-theme prototype works: a
 notes app, a ledger, a live market and a gallery, all JSON over one store and three themes
-(`examples/showcase/`). It was merged into `main` on 11 October.
+(`examples/showcase/`). It was merged into `main` on 11 October, and anyone can run it in one
+line (`curl -fsSL https://fictty.com/try.sh | sh`) from the top of fictty.com.
 
 The order below follows what the prototype showed: first land it, then close the agent loop
 (`watch`, rebased text edits), then make records addressable, then layout and the kit.
@@ -42,6 +43,18 @@ here with its history.
 - [x] `accept: "number"` inputs; `$log` with clock times and refused writes; `$store`; `$theme`
 - [x] The showcase: notes, a ledger with a helper process, a live market, a gallery, an agent's log
 
+### Shipping it (2026-10-11)
+
+- [x] fictty.com pages for [state-and-theme](design/state-and-theme.md) and
+      [prototype-notes](design/prototype-notes.md); the first milestone post, with screenshots
+- [x] Demos in one line: `try.sh` (the latest, on the landing page) and a frozen copy per post,
+      pinned to its commit (`scripts/freeze-demo.sh`), tested like a reader runs them
+      (`scripts/try-test.py`); a demo link component (name, date, version, copy)
+- [x] A `copy` action (OSC 52) and `$self`: the showcase's Agent screen hands out commands that
+      reach it from any terminal
+- [x] A Tokens panel on posts (`scripts/blog-tokens.py`), and the `blog-post` and `ship` skills
+- [x] A release workflow that builds macOS and Linux binaries on a version tag
+
 ## 1 · Land the prototype (now)
 
 - [x] Review and merge `store-theme-prototype` into `main`
@@ -50,10 +63,13 @@ here with its history.
 - [ ] An escape for `<` in template markup
 - [ ] Problem checks only for nodes whose bind or data changed, to win back the 13% of flat-out
       push speed they cost
-- [ ] fictty.com pages for [state-and-theme](design/state-and-theme.md) and
-      [prototype-notes](design/prototype-notes.md), as designed pages
+- [ ] Tag the first release (`v0.1.0`), so the one-liners download a binary instead of needing
+      Rust; check the Intel macOS runner (`macos-13`) still exists
+- [ ] Say when a copy didn't reach the clipboard (tmux, or a terminal that refuses OSC 52); today
+      the screen says "copied" either way
 - [ ] A pull request to json-render for its Tab focus bug (one line in the Ink renderer)
 - [ ] Record the showcase (and the tour) for the site's front page
+- [ ] The phosphor theme's heat colours: the market's watchlist is unreadable in it
 - [ ] Close the Thought Control draft PR that carried the prototype, and drop `crates/scene` there
 - [ ] Move the Thought Control examples (`examples/thc/`, the Today screens in `examples/pixels/`)
       to the Thought Control repo as a consumer; the showcase replaces them here
