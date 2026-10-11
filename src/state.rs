@@ -853,13 +853,16 @@ fn apply(st: &mut State, msg: Msg) -> Vec<Effect> {
                     return vec![];
                 }
                 if matches!(key.as_str(), "tab" | "s-tab") {
-                    indent(st, &id, key == "tab");
+                    let moved = indent(st, &id, key == "tab");
+                    renumber(st, &id, &moved);
                     return vec![];
                 }
                 if key == "enter" && continue_list(st, &id) {
+                    renumber(st, &id, &[]);
                     return vec![];
                 }
                 let fx = type_into(st, &id, &key);
+                renumber(st, &id, &[]);
                 return editor_effects(st, fx);
             }
             // Chords: a key binding of several keys (`"p h"`) waits for the rest of them.
@@ -1167,10 +1170,10 @@ fn type_into(st: &mut State, id: &str, key: &str) -> Vec<caretline::Effect> {
 /// out, with `inward` false, as far as two spaces go); elsewhere Tab types two spaces, unless the
 /// editor indents lines only (`indent-lines`). One edit
 /// by the person, one undo step, every caret carried along.
-fn indent(st: &mut State, id: &str, inward: bool) {
-    let Some((key, view)) = field_view(st, id) else { return };
+fn indent(st: &mut State, id: &str, inward: bool) -> Vec<usize> {
+    let Some((key, view)) = field_view(st, id) else { return vec![] };
     let r = view.selection.primary();
-    let Some(Entry { body: Body::Text { doc }, .. }) = st.store.get(&key) else { return };
+    let Some(Entry { body: Body::Text { doc }, .. }) = st.store.get(&key) else { return vec![] };
     let text = &doc.text;
     let (lo, hi) = (r.anchor.min(r.head).min(text.len_chars()), r.anchor.max(r.head).min(text.len_chars()));
     let first = text.char_to_line(lo);
@@ -1201,13 +1204,39 @@ fn indent(st: &mut State, id: &str, inward: bool) {
             })
             .collect()
     };
+    let moved = if lo == hi && changes.first().is_some_and(|c| c.0 == lo && !c.2.is_empty() && !lines_only && inward && !listy(&line(first))) {
+        vec![]
+    } else {
+        (first..=last).collect()
+    };
     edit_lines(st, id, changes);
+    moved
+}
+
+/// Keep an editor's ordered lists in number after an edit (when it asks for it, with `ordered`),
+/// as part of the same undo step. `moved` lines take the style of their new level.
+fn renumber(st: &mut State, id: &str, moved: &[usize]) {
+    let Some(f) = tree!(st).find(id).and_then(|n| n.field()) else { return };
+    if f.ordered.is_empty() || f.readonly {
+        return;
+    }
+    let styles: Vec<crate::lists::Style> = f.ordered.iter().filter_map(|s| crate::lists::Style::parse(s)).collect();
+    let Some((key, _)) = field_view(st, id) else { return };
+    let Some(Entry { body: Body::Text { doc }, .. }) = st.store.get(&key) else { return };
+    let changes = crate::lists::renumber(&doc.text.to_string(), &styles, moved);
+    edit_lines_with(st, id, changes, true);
 }
 
 /// Edits to the start of lines (an indent, a task's box) by the person, as one undo step, with
 /// editor `id`'s carets and selections moving with their text: one at a line's start stays with
 /// that line's text, not in front of what was added.
 fn edit_lines(st: &mut State, id: &str, changes: Vec<(usize, usize, String)>) {
+    edit_lines_with(st, id, changes, false);
+}
+
+/// `edit_lines`; with `join`, the edit joins the undo step before it (a renumbering that follows
+/// what the person typed).
+fn edit_lines_with(st: &mut State, id: &str, changes: Vec<(usize, usize, String)>, join: bool) {
     if changes.is_empty() {
         return;
     }
@@ -1227,7 +1256,7 @@ fn edit_lines(st: &mut State, id: &str, changes: Vec<(usize, usize, String)>) {
     };
     let now_ms = st.now_ms;
     on_doc(st, id, caretline::Msg::Tick { now_ms }, "person");
-    on_doc(st, id, caretline::Msg::Edit { changes: changes.clone(), join: false }, "person");
+    on_doc(st, id, caretline::Msg::Edit { changes: changes.clone(), join }, "person");
     if let Some(v) = st.local.get_mut(id).and_then(|l| l.editors.get_mut(&key)) {
         v.selection = before.transform(|mut r| {
             r.anchor = shift(r.anchor);
@@ -1265,12 +1294,15 @@ fn continue_list(st: &mut State, id: &str) -> bool {
     let (marker, next) = if let Some(b) = ["- ", "* ", "+ "].iter().find(|b| rest.starts_with(**b)) {
         (b.len(), b.to_string())
     } else {
+        let Some(it) = crate::lists::item(line) else { return false };
+        let width = it.end - it.start + 1;
         let d = rest.chars().take_while(char::is_ascii_digit).count();
-        if d == 0 || !rest[d..].starts_with(". ") {
-            return false;
-        }
-        let n: u64 = rest[..d].parse().unwrap_or(0);
-        (d + 2, format!("{}. ", n + 1))
+        let next = match rest[..d].parse::<u64>() {
+            Ok(n) if d > 0 => format!("{}{} ", n + 1, &rest[d..d + 1]),
+            // A letter or roman numeral: the same marker, for renumbering to count on.
+            _ => format!("{} ", it.text),
+        };
+        (width, next)
     };
     let tasky = rest[marker..].starts_with("[ ] ") || rest[marker..].starts_with("[x] ") || rest[marker..].starts_with("[X] ");
     let prefix = indent + marker + if tasky { 4 } else { 0 };
@@ -1662,6 +1694,19 @@ fn act(st: &mut State, a: Action) -> Vec<Effect> {
             }
             st.local.entry(of).or_default().want = Some(key);
             settle(st);
+            vec![]
+        }
+        Action::ListStyle { list_style } => {
+            let Some(id) = st.focus.clone().filter(|f| tree!(st).find(f).is_some_and(|n| n.field().is_some())) else { return vec![] };
+            if list_style != "next" {
+                st.status = Some(format!("list_style: {list_style:?} isn't known (only \"next\")"));
+                return vec![];
+            }
+            let Some((line, _)) = caret_place(st, &id) else { return vec![] };
+            let Some((key, _)) = field_view(st, &id) else { return vec![] };
+            let Some(Entry { body: Body::Text { doc }, .. }) = st.store.get(&key) else { return vec![] };
+            let changes = crate::lists::cycle_style(&doc.text.to_string(), line);
+            edit_lines(st, &id, changes);
             vec![]
         }
         Action::ShowTab { tab, of } => {
@@ -2720,7 +2765,7 @@ mod tests {
         // The editor back, with a different seed: the note wins over the seed.
         let mut again = note();
         if let Some(c) = again.root.children_mut() {
-            c[0].kind = Kind::Editor { text: "a new seed".into(), doc: None, placeholder: None, syntax: None, readonly: false, tab: None, tasks: None, caret: None, links: vec![] };
+            c[0].kind = Kind::Editor { text: "a new seed".into(), doc: None, placeholder: None, syntax: None, readonly: false, tab: None, tasks: None, caret: None, links: vec![], ordered: vec![] };
         }
         update(&mut st, Msg::Push { ui: again });
         assert_eq!(text_of(&st, "note"), "hi!");

@@ -405,6 +405,12 @@ pub enum Kind {
         /// Links take the theme part `md.link`.
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         links: Vec<LinkSpec>,
+        /// Ordered lists kept in number, with a marker style per depth for a new level:
+        /// `["1.", "a.", "i."]`. After every edit, each list's items are renumbered in its own
+        /// style (numbers, letters, roman); Tab and Shift-Tab move an item to the next depth's
+        /// style. A `{"list_style": "next"}` key changes one list's style.
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        ordered: Vec<String>,
     },
     /// A one-line field (caretline, single-line): an editor whose text never holds a line
     /// break. Enter runs the node's `keys.enter`, so a form submits with a store action.
@@ -668,6 +674,8 @@ pub struct Field<'a> {
     pub caret_end: bool,
     /// Spans that act on a click.
     pub links: &'a [LinkSpec],
+    /// Ordered lists kept in number, with these marker styles by depth.
+    pub ordered: &'a [String],
 }
 
 /// A kind of link in an editor's text and what a click on one does (see `Kind::Editor`).
@@ -790,6 +798,9 @@ pub enum Action {
         #[serde(rename = "in")]
         of: String,
     },
+    /// Change the style of the list at the focused editor's caret, all its siblings at once:
+    /// `next` goes number → letter → roman → bullet.
+    ListStyle { list_style: String },
     /// Show tab `tab` of the tabs node `of`, and move the focus into it.
     ShowTab { tab: usize, of: String },
     Theme { theme: String },
@@ -922,7 +933,7 @@ impl Node {
     /// An editor or an input: the text component's settings.
     pub fn field(&self) -> Option<Field<'_>> {
         match &self.kind {
-            Kind::Editor { text, doc, placeholder, syntax, readonly, tab, tasks, caret, links } => Some(Field {
+            Kind::Editor { text, doc, placeholder, syntax, readonly, tab, tasks, caret, links, ordered } => Some(Field {
                 seed: text,
                 doc: doc.as_deref(),
                 placeholder: placeholder.as_deref(),
@@ -935,6 +946,7 @@ impl Node {
                 task_cycle: tasks.as_deref() == Some("cycle"),
                 caret_end: caret.as_deref() == Some("end"),
                 links,
+                ordered,
             }),
             Kind::Input { text, placeholder, accept } => Some(Field {
                 seed: text,
@@ -949,6 +961,7 @@ impl Node {
                 task_cycle: false,
                 caret_end: false,
                 links: &[],
+                ordered: &[],
             }),
             _ => None,
         }

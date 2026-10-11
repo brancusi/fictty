@@ -162,7 +162,10 @@ document with its undo history), each with a revision (`rev`) and who wrote it l
   "s-click": action}`, with `{$match}` the page, tag or address; a key reads the link at the
   caret as `{$link}`; links take the theme part `md.link`.
   `"caret": "end"` starts the caret at the end of an entry the editor shows for the first time.
-  Enter in a list item starts the next one (`- `, `2. `, an open
+  `"ordered": ["1.", "a.", "i."]` keeps ordered lists in number after every edit (numbers,
+  letters, roman), each list in its own style; an item moved to a level of its own by Tab takes
+  that depth's style, and `{"list_style": "next"}` changes one list's style (number, letter,
+  roman, bullet). Enter in a list item starts the next one (`- `, `2. `, an open
   `[ ] ` after a task, at the same indent, the rest of the line going with it); Enter on an empty
   item outdents it, or ends the list. `"readonly": true` shows a text to
   read, scroll, select and copy, never change. `"tab": "indent"` keeps Tab and Shift-Tab to

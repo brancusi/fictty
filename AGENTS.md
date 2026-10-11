@@ -35,6 +35,7 @@ These come first; every review checks them.
 - `src/gfx.rs`: pixels: the kitty graphics protocol, rasterising, SVG (resvg), caching
 - `src/runtime.rs`: the terminal, the event queue, data sources, the socket, `upgrade`; `App`
   (how a screen starts, for the binary and for apps that embed fictty) and `Headless`
+- `src/lists.rs`: Markdown lists as text: renumbering, styles by depth (pure, text to edits)
 - `src/host.rs`: `Host`, what an embedding app provides (sources, actions, kept store entries),
   and the `Notifier` it talks back with
 - `src/main.rs`: the CLI, one subcommand per socket operation

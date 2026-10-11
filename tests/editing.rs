@@ -367,3 +367,29 @@ fn esc_drops_a_selection_even_where_the_editor_binds_esc() {
     s.keys(&["esc"]);
     assert_eq!(s.state().focus.as_deref(), Some("after"), "now it runs");
 }
+
+/// Ordered lists kept in number, with a style per depth (Thought Control's ordered lists).
+#[test]
+fn ordered_lists_renumber_and_take_their_depths_style() {
+    let opts = || json!({"syntax": "markdown", "tab": "indent-lines", "ordered": ["1.", "a.", "i."],
+                         "keys": {"a-l": {"list_style": "next"}}});
+    let check = |from: &str, keys: &[&str], to: &str| {
+        let mut s = editor_with(from, opts());
+        s.keys(keys);
+        assert_eq!(shown(&mut s), to, "{from} then {keys:?}");
+        s.keys(&["d-z"]);
+        assert_eq!(parse(&shown(&mut s)).0, parse(from).0, "{from}: one undo");
+    };
+    // Enter continues, and the items after it count on.
+    check("1. a▮", &["enter"], "1. a\n2. ▮");
+    check("1. one\n2. two▮\n3. three", &["enter"], "1. one\n2. two\n3. ▮\n4. three");
+    check("a. one▮", &["enter"], "a. one\nb. ▮");
+    check("i. one\nii. two▮", &["enter"], "i. one\nii. two\niii. ▮");
+    // Deleting an item renumbers the rest.
+    check("1. one\n⟦2. two\n▮⟧3. three", &["bs"], "1. one\n▮2. three");
+    // Tab takes the next depth's style, numbered among its new siblings; Shift-Tab goes back.
+    check("1. one\n2. tw▮o\n3. three", &["tab"], "1. one\n  a. tw▮o\n2. three");
+    check("1. one\n  a. tw▮o\n2. three", &["s-tab"], "1. one\n2. tw▮o\n3. three");
+    // A key changes one list's style, every sibling at once.
+    check("1. one\n2. tw▮o\n  a. sub", &["a-l"], "a. one\nb. tw▮o\n  a. sub");
+}

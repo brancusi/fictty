@@ -11,6 +11,7 @@
 
 pub mod gfx;
 pub mod host;
+pub mod lists;
 pub mod model;
 pub mod runtime;
 pub mod setup;
