@@ -190,6 +190,10 @@ struct Driver {
     host: Arc<dyn Host>,
     /// What a headless screen put on the clipboard, oldest first.
     copied: Vec<String>,
+    /// Each hosted entry's revision as the host has it (loaded or saved), and when one that
+    /// differs last changed.
+    kept: BTreeMap<String, u64>,
+    changed: BTreeMap<String, (u64, Instant)>,
 }
 
 impl Drop for Driver {
@@ -203,13 +207,18 @@ impl Drop for Driver {
 
 impl Driver {
     fn new(tx: Sender<Event>, blocking: bool, host: Arc<dyn Host>) -> Driver {
-        Driver { tx, in_flight: BTreeSet::new(), last_fetch: BTreeMap::new(), streams: BTreeMap::new(), quit: false, blocking, upgrade: None, started: Instant::now(), host, copied: Vec::new() }
+        Driver { tx, in_flight: BTreeSet::new(), last_fetch: BTreeMap::new(), streams: BTreeMap::new(), quit: false, blocking, upgrade: None, started: Instant::now(), host, copied: Vec::new(), kept: BTreeMap::new(), changed: BTreeMap::new() }
     }
 
     fn apply(&mut self, st: &mut State, msg: Msg) {
         if let Msg::Data { name, .. } = &msg {
             self.in_flight.remove(name);
         }
+        // What the host just gave is what it has: nothing to save back.
+        let loaded = match &msg {
+            Msg::Loaded { key, result: Ok(_) } => Some(key.clone()),
+            _ => None,
+        };
         // Messages carry the time they arrived (an editor groups typing into undo steps by it; a
         // toast lasts from then). Headless renders keep the clock still, so they come out the
         // same every time.
@@ -256,6 +265,18 @@ impl Driver {
                         });
                     }
                 }
+                Effect::Read(key) => {
+                    if self.blocking {
+                        let result = self.host.load(&key);
+                        queue.extend(update(st, Msg::Loaded { key, result }));
+                    } else {
+                        let (tx, host) = (self.tx.clone(), self.host.clone());
+                        std::thread::spawn(move || {
+                            let result = host.load(&key);
+                            let _ = tx.send(Event::Msg(Msg::Loaded { key, result }));
+                        });
+                    }
+                }
                 Effect::Run(argv) => {
                     if self.blocking {
                         let result = exec(&argv);
@@ -269,7 +290,58 @@ impl Driver {
                 }
             }
         }
+        if let Some(key) = loaded
+            && let Some(e) = st.store.get(&key)
+        {
+            self.kept.insert(key, e.rev);
+        }
         self.reap(st);
+    }
+
+    /// Save hosted entries that changed and have been still for `settle` (a headless screen
+    /// passes zero and saves at once).
+    fn keep(&mut self, st: &mut State, settle: Duration) {
+        if st.hosted.is_empty() {
+            return;
+        }
+        let mut failed = Vec::new();
+        for (key, e) in st.store.iter().filter(|(k, _)| crate::state::hosted(st, k)) {
+            if self.kept.get(key) == Some(&e.rev) {
+                self.changed.remove(key);
+                continue;
+            }
+            let since = match self.changed.get(key) {
+                Some((rev, t)) if *rev == e.rev => *t,
+                _ => {
+                    self.changed.insert(key.clone(), (e.rev, Instant::now()));
+                    Instant::now()
+                }
+            };
+            if since.elapsed() < settle {
+                continue;
+            }
+            let value = match &e.body {
+                crate::store::Body::Text { doc } => Value::String(doc.text.to_string()),
+                crate::store::Body::Value { value } => value.clone(),
+            };
+            self.kept.insert(key.clone(), e.rev);
+            self.changed.remove(key);
+            if self.blocking {
+                if let Err(err) = self.host.save(key, &value) {
+                    failed.push(format!("saving {key}: {err}"));
+                }
+            } else {
+                let (tx, host, key) = (self.tx.clone(), self.host.clone(), key.clone());
+                std::thread::spawn(move || {
+                    if let Err(err) = host.save(&key, &value) {
+                        let _ = tx.send(Event::Msg(Msg::Toast { text: format!("saving {key}: {err}"), tone: Some("neg".into()), ms: Some(6000) }));
+                    }
+                });
+            }
+        }
+        if let Some(why) = failed.pop() {
+            st.status = Some(why);
+        }
     }
 
     /// Start a stream source unless it's already running from the same definition.
@@ -425,7 +497,9 @@ fn load_store(path: &Path) -> Result<BTreeMap<String, crate::store::Entry>> {
 /// The store to its file: written beside it, then renamed over it, so a crash never leaves half.
 fn save_store(path: &Path, st: &State) -> Result<()> {
     let tmp = path.with_extension("json.tmp");
-    std::fs::write(&tmp, serde_json::to_vec_pretty(&st.store)?)?;
+    // The host keeps its own entries.
+    let mine: BTreeMap<&String, &crate::store::Entry> = st.store.iter().filter(|(k, _)| !crate::state::hosted(st, k)).collect();
+    std::fs::write(&tmp, serde_json::to_vec_pretty(&mine)?)?;
     std::fs::rename(&tmp, path)?;
     Ok(())
 }
@@ -538,6 +612,7 @@ impl App {
         if let (None, Some(p)) = (&self.restore, &self.store) {
             st.store = load_store(p)?;
         }
+        st.hosted = self.host.keys();
         if !self.themes.is_empty() || self.theme.is_some() {
             update(&mut st, Msg::Theme { add: self.themes.clone(), choose: self.theme.clone().filter(|_| self.restore.is_none()) });
         }
@@ -726,7 +801,8 @@ impl App {
                 let n = apply_batch(batch, &mut d, &mut st, &hits, &mut screens, &mut drag);
                 window.msgs += n;
                 dirty |= n > 0;
-                if let Some(p) = store.as_deref().filter(|_| st.store_writes != saved_writes) {
+                d.keep(&mut st, Duration::from_millis(500));
+            if let Some(p) = store.as_deref().filter(|_| st.store_writes != saved_writes) {
                     match save_store(p, &st) {
                         Ok(()) => saved_writes = st.store_writes,
                         Err(e) => st.status = Some(format!("saving the store: {e:#}")),
@@ -1070,6 +1146,7 @@ impl Headless {
     pub fn msg(&mut self, msg: Msg) -> &mut Headless {
         self.drain();
         self.d.apply(&mut self.st, msg);
+        self.d.keep(&mut self.st, Duration::ZERO);
         self
     }
 
@@ -1099,6 +1176,7 @@ impl Headless {
     fn drain(&mut self) {
         while let Ok(m) = self.notes.try_recv() {
             self.d.apply(&mut self.st, m);
+            self.d.keep(&mut self.st, Duration::ZERO);
         }
     }
 

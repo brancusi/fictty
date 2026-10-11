@@ -29,6 +29,25 @@ pub trait Host: Send + Sync + 'static {
         let _ = args;
         Err(format!("this screen has no host action {name:?}"))
     }
+
+    /// The store keys the host keeps, by prefix (`["page/"]`): pages in a vault, records in a
+    /// database. The screen loads one with `load` when something first shows it, and saves it
+    /// with `save` once it has changed and settled (half a second without a change). While the
+    /// screen runs the store is the truth; the host is where it lasts.
+    fn keys(&self) -> Vec<String> {
+        Vec::new()
+    }
+
+    /// A kept entry's value: a string for text an editor shows, any JSON otherwise.
+    fn load(&self, key: &str) -> Result<Value, String> {
+        Err(format!("the host can't load {key:?}"))
+    }
+
+    /// Keep an entry's new value (text as a string). Errors show on the status line.
+    fn save(&self, key: &str, value: &Value) -> Result<(), String> {
+        let _ = value;
+        Err(format!("the host can't save {key:?}"))
+    }
 }
 
 /// A host that serves nothing: a standalone screen's.
@@ -50,6 +69,12 @@ impl Notifier {
     /// Host source `name` changed: every source on screen that reads it fetches again.
     pub fn changed(&self, name: &str) {
         self.msg(Msg::Changed { host: name.into() });
+    }
+
+    /// A kept entry changed outside the screen (the file was edited): load it again. Text comes
+    /// in as an edit, so the person's carets and undo carry on.
+    pub fn reload(&self, key: &str) {
+        self.msg(Msg::Reload { key: key.into() });
     }
 
     /// Write a store entry, as `by` (shown in the store and in `$log`).

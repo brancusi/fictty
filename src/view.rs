@@ -724,6 +724,19 @@ fn node(cx: &mut Cx, n: &Node, f: &mut Frame, area: Rect) {
                 _ => None,
             });
             let Some((doc, view)) = shown else {
+                // A hosted entry on its way, or one that couldn't load.
+                let key = crate::state::doc_key(st, n);
+                match key.as_ref().and_then(|k| st.loading.get(k).map(|l| (k, l))) {
+                    Some((k, Some(why))) => {
+                        let p = Paragraph::new(format!("{k}: {why}")).style(Style::default().fg(cx.th.neg));
+                        return f.render_widget(p.wrap(Wrap { trim: true }), inner);
+                    }
+                    Some((k, None)) => {
+                        let g = spin(cx);
+                        return f.render_widget(Paragraph::new(format!("{g} {k}…")).style(Style::default().fg(cx.th.dim)), inner);
+                    }
+                    None => {}
+                }
                 let e = field.placeholder.unwrap_or("Nothing to show");
                 return f.render_widget(Paragraph::new(e).style(cx.look("empty", Style::default().fg(cx.th.dim))), inner);
             };

@@ -69,6 +69,14 @@ pub struct State {
     /// selects a word, a triple the line).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub clicks: Option<Clicks>,
+    /// Store keys the host keeps (by prefix: `page/`): loaded from it when something on screen
+    /// first needs them, never seeded, and saved back to it after they change.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub hosted: Vec<String>,
+    /// Hosted entries asked for and not here yet, with why one failed to load (a failed one
+    /// isn't asked for again until the host says it changed).
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub loading: BTreeMap<String, Option<String>>,
 }
 
 /// A run of clicks on one cell of an editor (see `State::clicks`).
@@ -183,6 +191,11 @@ pub enum Msg {
     Drag { id: String, col: u16, row: u16 },
     /// Text pasted into the terminal (bracketed paste): into the focused editor or input.
     Paste { text: String },
+    /// A hosted store entry from the host: a string is text, anything else a value. When the
+    /// entry is already here (the host says it changed), it's written as an edit by `host`.
+    Loaded { key: String, result: Result<Value, String> },
+    /// A hosted entry changed at the host: load it again.
+    Reload { key: String },
     /// Animation time.
     Tick { now_ms: u64 },
     /// Move a node's view state from outside: a list's or table's `selected` row, a tabs
@@ -250,6 +263,8 @@ pub enum Effect {
     Reply(Value),
     /// A host action, its args filled.
     Host { name: String, args: Value },
+    /// Load a hosted store entry from the host (it comes back as `Msg::Loaded`).
+    Read(String),
 }
 
 pub fn update(st: &mut State, msg: Msg) -> Vec<Effect> {
@@ -264,6 +279,8 @@ pub fn update(st: &mut State, msg: Msg) -> Vec<Effect> {
     }
     // A selection, a write or a new row can point an editor at an entry it hasn't shown yet.
     fields(st);
+    let mut fx = fx;
+    fx.extend(wanted(st));
     if checks {
         st.problems = problems(st);
     }
@@ -403,6 +420,46 @@ fn apply(st: &mut State, msg: Msg) -> Vec<Effect> {
             }
             let fx = on_doc(st, &id, caretline::Msg::Drag { col, row }, "person");
             editor_effects(st, fx)
+        }
+        Msg::Loaded { key, result } => {
+            let value = match result {
+                Ok(v) => v,
+                Err(e) => {
+                    st.loading.insert(key, Some(e));
+                    return vec![];
+                }
+            };
+            st.loading.remove(&key);
+            match (st.store.contains_key(&key), value) {
+                (false, v) => {
+                    st.store.insert(key.clone(), Entry::value(v, "host"));
+                    st.store_writes += 1;
+                    fields(st);
+                }
+                (true, v) => {
+                    let same = match (&st.store[&key].body, &v) {
+                        (Body::Text { doc }, Value::String(t)) => doc.text == t.as_str(),
+                        (Body::Value { value }, v) => value == v,
+                        _ => false,
+                    };
+                    if !same && let Err(e) = write_entry(st, &key, Write::Put { value: v }, None, "host") {
+                        st.status = Some(format!("{key}: {e}"));
+                    }
+                }
+            }
+            settle(st);
+            vec![]
+        }
+        Msg::Reload { key } => {
+            if !hosted(st, &key) {
+                return vec![];
+            }
+            // A page that failed is asked for again; one never asked for waits until it shows.
+            let failed = st.loading.get(&key).is_some_and(Option::is_some);
+            if failed {
+                st.loading.insert(key.clone(), None);
+            }
+            if st.store.contains_key(&key) || failed { vec![Effect::Read(key)] } else { vec![] }
         }
         Msg::Paste { text } => {
             let Some(id) = st.focus.clone().filter(|f| st.ui.root.find(f).is_some_and(|n| n.field().is_some())) else { return vec![] };
@@ -1376,6 +1433,34 @@ fn settle(st: &mut State) {
     }
 }
 
+/// Whether the host keeps this store key.
+pub fn hosted(st: &State, key: &str) -> bool {
+    st.hosted.iter().any(|p| key.starts_with(p.as_str()))
+}
+
+/// Hosted entries something on screen needs (an editor's text, a node's bind) that aren't here
+/// and haven't been asked for: ask the host for them.
+fn wanted(st: &mut State) -> Vec<Effect> {
+    if st.hosted.is_empty() {
+        return vec![];
+    }
+    let mut all = Vec::new();
+    st.ui.root.walk_shown(&|n| tab_of(st, n), &|n| shown(st, n), &mut all);
+    let mut keys: Vec<String> = Vec::new();
+    for n in all {
+        let key = match (n.field(), n.bind.as_deref()) {
+            (Some(_), _) => doc_key(st, n),
+            (None, Some(b)) if !b.starts_with('@') => Some(split_bind(b).0.to_string()),
+            _ => None,
+        };
+        if let Some(k) = key.filter(|k| hosted(st, k) && !st.store.contains_key(k) && !st.loading.contains_key(k) && !keys.contains(k)) {
+            keys.push(k);
+        }
+    }
+    st.loading.extend(keys.iter().map(|k| (k.clone(), None)));
+    keys.into_iter().map(Effect::Read).collect()
+}
+
 /// Every editor and input shows a text entry in the store: its seed when the entry is new, or a
 /// string an agent put there before. Its view of each entry is its own, by id.
 fn fields(st: &mut State) {
@@ -1403,6 +1488,8 @@ fn fields(st: &mut State) {
             e
         };
         match st.store.get(&key).map(|e| &e.body) {
+            // The host's: it comes from the host, never from a seed.
+            None if hosted(st, &key) => continue,
             None => {
                 st.store.insert(key.clone(), fresh(&seed));
                 st.store_writes += 1;

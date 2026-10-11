@@ -96,3 +96,74 @@ fn a_screen_without_a_host_says_so() {
     let mut screen = App::new(ui()).headless(60, 6).unwrap();
     assert!(screen.screen().contains("today: this screen has no host source \"today\""));
 }
+
+/// A vault: pages the host keeps, which the screen edits.
+#[derive(Clone, Default)]
+struct Vault {
+    pages: Arc<Mutex<std::collections::BTreeMap<String, String>>>,
+    loads: Arc<Mutex<Vec<String>>>,
+    notifier: Arc<Mutex<Option<Notifier>>>,
+}
+
+impl Host for Vault {
+    fn start(&self, notifier: Notifier) {
+        *self.notifier.lock().unwrap() = Some(notifier);
+    }
+    fn keys(&self) -> Vec<String> {
+        vec!["page/".into()]
+    }
+    fn load(&self, key: &str) -> Result<Value, String> {
+        self.loads.lock().unwrap().push(key.into());
+        let name = key.strip_prefix("page/").unwrap();
+        self.pages.lock().unwrap().get(name).cloned().map(Value::String).ok_or_else(|| format!("no page {name}"))
+    }
+    fn save(&self, key: &str, value: &Value) -> Result<(), String> {
+        let name = key.strip_prefix("page/").unwrap().to_string();
+        self.pages.lock().unwrap().insert(name, value.as_str().unwrap().into());
+        Ok(())
+    }
+}
+
+fn pages_ui() -> fictty::model::Ui {
+    serde_json::from_value(json!({
+        "root": {"type": "row", "children": [
+            {"type": "list", "id": "list", "size": 12, "item": "{name}", "items": [{"name": "home"}, {"name": "ideas"}, {"name": "gone"}]},
+            {"type": "editor", "id": "page", "bind": "@list", "doc": "page/{name}", "text": "never a seed"}
+        ]}
+    }))
+    .unwrap()
+}
+
+#[test]
+fn hosted_entries_load_when_shown_and_save_when_changed() {
+    let vault = Vault::default();
+    vault.pages.lock().unwrap().insert("home".into(), "# Home".into());
+    vault.pages.lock().unwrap().insert("ideas".into(), "- fly".into());
+    let mut screen = App::new(pages_ui()).host(vault.clone()).headless(50, 6).unwrap();
+    assert!(screen.screen().contains("# Home"));
+    assert_eq!(*vault.loads.lock().unwrap(), vec!["page/home".to_string()], "only what shows loads");
+
+    // Typing saves back (a headless screen saves at once; a running one after half a second).
+    screen.keys(&["tab", "c-end", "!"]);
+    assert_eq!(vault.pages.lock().unwrap()["home"], "# Home!");
+
+    // The next page loads when selected; the first stays in the store.
+    screen.keys(&["tab", "j"]);
+    assert!(screen.screen().contains("- fly"));
+    assert_eq!(vault.loads.lock().unwrap().len(), 2);
+
+    // The file changes on disk: the host says so, and the text comes in as an edit.
+    vault.pages.lock().unwrap().insert("ideas".into(), "- fly\n- swim".into());
+    vault.notifier.lock().unwrap().as_ref().unwrap().reload("page/ideas");
+    assert!(screen.screen().contains("- swim"));
+    assert_eq!(screen.state().store["page/ideas"].by, "host");
+    assert_eq!(vault.pages.lock().unwrap()["ideas"], "- fly\n- swim", "nothing saved back");
+
+    // A page the host can't load says why, once.
+    screen.keys(&["j"]);
+    let text = screen.screen();
+    assert!(text.contains("page/gone: no page gone"), "{text}");
+    assert!(!text.contains("never a seed"), "{text}");
+    screen.keys(&["k", "j"]);
+    assert_eq!(vault.loads.lock().unwrap().iter().filter(|k| *k == "page/gone").count(), 1);
+}
