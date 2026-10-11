@@ -1908,8 +1908,8 @@ mod tests {
             link: Style::default().fg(Color::Magenta),
             links: vec!["wiki".into()],
         };
-        assert_eq!(md_style(&md, "see [[Home]] now", 6, base), md.link, "a link");
         let base = Style::default();
+        assert_eq!(md_style(&md, "see [[Home]] now", 6, base), md.link, "a link");
         assert_eq!(md_style(&md, "- [x] shipped", 3, base), md.task, "the box");
         assert_eq!(md_style(&md, "- [x] shipped", 7, base), md.done, "a ticked task's text");
         assert_eq!(md_style(&md, "- [ ] to do", 7, base), base);
