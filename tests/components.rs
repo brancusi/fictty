@@ -351,3 +351,67 @@ fn a_tree_takes_a_mark_and_a_leaf_glyph_like_a_list() {
     let mut s = screen(ui, 20, 3);
     assert!(s.screen().starts_with("▌▾ A\n   B"), "{}", s.screen());
 }
+
+#[test]
+fn templates_fit_fields_escape_brackets_and_take_tabs_from_values() {
+    let ui = json!({"root": {"type": "col", "children": [
+        {"type": "text", "size": 1, "text": "a << b <b>bold</>"},
+        {"type": "text", "size": 1, "bind": "kv", "text": "{k:6}|{v:>4}|{long:5}|"},
+        {"type": "text", "size": 1, "bind": "kv", "text": "{row|markup}"}
+    ]}, "data": {"kv": {"value": {"k": "ab", "v": "7", "long": "abcdefgh", "row": "left\tright"}}}});
+    let mut s = screen(ui, 20, 4);
+    let text = s.screen();
+    let lines: Vec<&str> = text.lines().collect();
+    assert_eq!(lines[0], "a < b bold");
+    assert_eq!(lines[1], "ab    |   7|abcd…|");
+    assert_eq!(lines[2], format!("left{}right", " ".repeat(11)));
+}
+
+#[test]
+fn a_markup_tag_can_name_a_theme_part() {
+    let themes: std::collections::BTreeMap<String, fictty::model::ThemeSpec> =
+        serde_json::from_value(json!({"t": {"parts": {"link": "#ff0000+u"}}})).unwrap();
+    let ui: fictty::model::Ui = serde_json::from_value(json!({"root": {"type": "text", "text": "see <link>the docs</>"}})).unwrap();
+    let mut s = App::new(ui).themes(themes).headless(30, 2).unwrap();
+    let ansi = s.ansi();
+    assert!(ansi.contains("\u{1b}[0;4;38;2;255;0;0mt"), "{ansi:?}");
+}
+
+#[test]
+fn chords_wait_for_their_last_key() {
+    let ui = json!({"root": {"type": "list", "id": "l", "items": ["a"]},
+                    "keys": {"p h": {"put": "prio", "value": "high"}, "p l": {"put": "prio", "value": "low"}, "x": {"put": "prio", "value": "x"}},
+                    "store": {"prio": ""}});
+    let mut s = screen(ui, 20, 3);
+    s.keys(&["p"]);
+    assert_eq!(s.state().chord.as_deref(), Some("p"));
+    assert_eq!(s.state().data["$keys"], fictty::state::Slot::Ready { value: json!({"pending": "p", "next": ["h", "l"]}) });
+    s.keys(&["h"]);
+    assert_eq!(entry(&mut s, "prio")["value"], "high");
+    // A key that finishes no chord drops it, and does nothing itself.
+    s.keys(&["p", "x"]);
+    assert_eq!(entry(&mut s, "prio")["value"], "high");
+    assert!(s.state().chord.is_none());
+    s.keys(&["x"]);
+    assert_eq!(entry(&mut s, "prio")["value"], "x");
+}
+
+#[test]
+fn tab_titles_are_templates_with_a_lead_and_a_trail() {
+    let ui = json!({"root": {"type": "tabs", "id": "t", "bind": "counts", "tabs": ["Inbox {inbox}", "Done"], "lead": "<b>thc</>", "trail": "Sat 11",
+                              "children": [{"type": "text", "text": "one"}, {"type": "text", "text": "two"}]},
+                    "data": {"counts": {"value": {"inbox": 4}}}});
+    let mut s = screen(ui, 40, 3);
+    let first = s.screen().lines().next().unwrap().to_string();
+    assert_eq!(first, format!("thc  Inbox 4   Done{}Sat 11", " ".repeat(15)));
+}
+
+#[test]
+fn min_and_max_bound_a_share() {
+    let ui = json!({"root": {"type": "row", "children": [
+        {"type": "text", "text": "L", "size": "60%", "max": 10, "border": true},
+        {"type": "text", "text": "R", "border": true}]}});
+    let mut s = screen(ui, 60, 3);
+    let top = s.screen().lines().next().unwrap().to_string();
+    assert!(top.starts_with("╭────────╮╭"), "{top}");
+}

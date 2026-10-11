@@ -188,6 +188,11 @@ pub struct Node {
     /// While shown, focus stays inside this node and what's behind it dims: a dialog.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub modal: bool,
+    /// Bounds, in cells, on the node's share of its row or column: `"size": "60%", "max": 96`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub min: Option<u16>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max: Option<u16>,
     #[serde(flatten)]
     pub kind: Kind,
 }
@@ -229,6 +234,8 @@ impl Default for Node {
             when: None,
             float: None,
             modal: false,
+            min: None,
+            max: None,
             kind: Kind::Text { text: String::new() },
         }
     }
@@ -377,8 +384,17 @@ pub enum Kind {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         accept: Option<String>,
     },
-    /// One child at a time, picked by a row of tab titles (click one, or ←/→ when focused).
-    Tabs { tabs: Vec<String>, children: Vec<Node> },
+    /// One child at a time, picked by a row of tab titles (click one, or ←/→ when focused). The
+    /// titles are templates over the node's bound value (`"Inbox {inbox}"`), and the row can
+    /// start with `lead` and end with `trail` (templates too: a name, a date).
+    Tabs {
+        tabs: Vec<String>,
+        children: Vec<Node>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        lead: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        trail: Option<String>,
+    },
     /// Lines drawn in pixels (anti-aliased, a gradient under each) where the terminal draws
     /// images; a braille chart where it doesn't.
     Plot {
@@ -917,6 +933,15 @@ pub fn segments(template: &str, v: &Value) -> Vec<Seg> {
             Some((p, f)) => (p, Some(f)),
             None => (inner, None),
         };
+        // `{path:11}` fits the result to 11 cells; `{path:>11}` right-aligns it.
+        let (path, width) = match path.rsplit_once(':') {
+            Some((p, w)) => match w.strip_prefix('>').unwrap_or(w).parse::<usize>() {
+                Ok(n) => (p, Some((n, w.starts_with('>')))),
+                Err(_) => (path, None),
+            },
+            None => (path, None),
+        };
+        let start = out.len();
         let value = scalar(lookup(v, path));
         match filter {
             None => {
@@ -946,6 +971,10 @@ pub fn segments(template: &str, v: &Value) -> Vec<Seg> {
                 markup_in(&picked, base.as_deref(), &mut out);
             }
         }
+        if let Some((n, right)) = width {
+            let mine = out.split_off(start);
+            out.extend(fit(mine, n, right));
+        }
     }
     out.retain(|s| !s.text.is_empty() || s.tab || s.fill.is_some());
     out
@@ -971,19 +1000,21 @@ fn markup(text: &str, cur: &mut Option<String>, out: &mut Vec<Seg>) {
 fn markup_with(text: &str, cur: &mut Option<String>, base: Option<&str>, out: &mut Vec<Seg>) {
     let mut rest = text;
     loop {
+        // `<<` is a literal `<`.
+        if let Some(i) = rest.find("<<").filter(|i| rest.find('<') == Some(*i)) {
+            plain(&rest[..i], cur, out);
+            push(out, "<", cur.clone(), None);
+            rest = &rest[i + 2..];
+            continue;
+        }
         let tag = rest.find('<').and_then(|i| {
             let j = rest[i..].find('>')?;
             let spec = &rest[i + 1..i + j];
-            let ok = spec == "/" || (!spec.is_empty() && spec.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '+' | '-' | '#' | '_' | '=')));
+            let ok = spec == "/" || (!spec.is_empty() && spec.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '+' | '-' | '#' | '_' | '=' | '.')));
             ok.then_some((i, j, spec))
         });
         let upto = tag.map(|(i, ..)| i).unwrap_or(rest.len());
-        for (k, part) in rest[..upto].split('\t').enumerate() {
-            if k > 0 {
-                out.push(Seg { tab: true, ..Seg::default() });
-            }
-            push(out, part, cur.clone(), None);
-        }
+        plain(&rest[..upto], cur, out);
         let Some((i, j, spec)) = tag else { break };
         *cur = match (spec, base) {
             ("/", _) => base.map(str::to_string),
@@ -993,6 +1024,52 @@ fn markup_with(text: &str, cur: &mut Option<String>, base: Option<&str>, out: &m
         };
         rest = &rest[i + j + 1..];
     }
+}
+
+/// Text without tags in the current style; a tab splits the line.
+fn plain(text: &str, cur: &Option<String>, out: &mut Vec<Seg>) {
+    for (k, part) in text.split('\t').enumerate() {
+        if k > 0 {
+            out.push(Seg { tab: true, ..Seg::default() });
+        }
+        push(out, part, cur.clone(), None);
+    }
+}
+
+/// A placeholder's runs fitted to `width` cells: cut with an ellipsis, or padded with spaces on
+/// the right (on the left with `right`).
+fn fit(segs: Vec<Seg>, width: usize, right: bool) -> Vec<Seg> {
+    let cells = |t: &str| ratatui::text::Span::raw(t).width();
+    let total: usize = segs.iter().map(|s| cells(&s.text)).sum();
+    let style = segs.first().and_then(|s| s.style.clone());
+    if total <= width {
+        let pad = Seg { text: " ".repeat(width - total), style, ..Seg::default() };
+        return if right { std::iter::once(pad).chain(segs).collect() } else { segs.into_iter().chain(std::iter::once(pad)).collect() };
+    }
+    let mut out = Vec::new();
+    let mut room = width.saturating_sub(1);
+    for mut s in segs {
+        if room == 0 {
+            break;
+        }
+        let mut kept = String::new();
+        for c in s.text.chars() {
+            let w = cells(c.encode_utf8(&mut [0; 4]));
+            if w > room {
+                room = 0;
+                break;
+            }
+            room -= w;
+            kept.push(c);
+        }
+        s.text = kept;
+        out.push(s);
+    }
+    if width > 0 {
+        let style = out.last().and_then(|s| s.style.clone()).or(style);
+        out.push(Seg { text: "…".into(), style, ..Seg::default() });
+    }
+    out
 }
 
 /// Whether a template line shows: it has no placeholders, or at least one fills to something.

@@ -81,6 +81,10 @@ pub struct State {
     /// store): what it was last fetched with. When they come out different, it's fetched again.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub args: BTreeMap<String, Value>,
+    /// The keys of a chord typed so far (`p` of `p h`), waiting for the rest. Bindable as
+    /// `$keys` (`pending`, and `next`: the keys that would finish or continue it).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub chord: Option<String>,
 }
 
 /// A run of clicks on one cell of an editor (see `State::clicks`).
@@ -613,6 +617,26 @@ fn apply(st: &mut State, msg: Msg) -> Vec<Effect> {
                 let fx = type_into(st, &id, &key);
                 return editor_effects(st, fx);
             }
+            // Chords: a key binding of several keys (`"p h"`) waits for the rest of them.
+            let pending = st.chord.take();
+            let seq = match &pending {
+                Some(c) => format!("{c} {key}"),
+                None => key.clone(),
+            };
+            let next = chord_next(st, &seq);
+            if !next.is_empty() {
+                st.chord = Some(seq.clone());
+                st.data.insert("$keys".into(), Slot::Ready { value: serde_json::json!({"pending": seq, "next": next}) });
+                return vec![];
+            }
+            st.data.insert("$keys".into(), Slot::Ready { value: serde_json::json!({"pending": null, "next": []}) });
+            if pending.is_some() {
+                // The chord is done, or it went nowhere (and the key with it).
+                return match chord_action(st, &seq) {
+                    Some(a) => act(st, a),
+                    None => vec![],
+                };
+            }
             match resolve(st, &key) {
                 Some(a) => act(st, a),
                 None => vec![],
@@ -1016,6 +1040,29 @@ fn editor_key(name: &str) -> Option<caretline::Key> {
         }
     };
     Some(caretline::Key { code, mods })
+}
+
+/// The keys that would continue the chord `seq` (`p` → `h`, `m`), from the focused node's keys and
+/// the UI's. Empty when `seq` starts none.
+fn chord_next(st: &State, seq: &str) -> Vec<String> {
+    let focused = st.focus.as_deref().and_then(|id| st.ui.root.find(id));
+    let prefix = format!("{seq} ");
+    let mut next: Vec<String> = focused
+        .map(|n| n.keys.keys())
+        .into_iter()
+        .flatten()
+        .chain(st.ui.keys.keys())
+        .filter_map(|k| k.strip_prefix(&prefix).and_then(|r| r.split(' ').next()).map(str::to_string))
+        .collect();
+    next.sort();
+    next.dedup();
+    next
+}
+
+/// The action a whole chord is bound to: the focused node's, then the UI's.
+fn chord_action(st: &State, seq: &str) -> Option<Action> {
+    let focused = st.focus.as_deref().and_then(|id| st.ui.root.find(id));
+    focused.and_then(|n| n.keys.get(seq)).or_else(|| st.ui.keys.get(seq)).cloned()
 }
 
 /// The action for a key: the focused node's own, then the UI's, then the defaults.

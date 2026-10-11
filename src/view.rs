@@ -166,8 +166,13 @@ impl Cx<'_> {
         }
     }
 
-    /// A style spec over `base`: `accent+b`, `muted`, `text+on-selection`, `#ff8800+u`.
+    /// A style spec over `base`: `accent+b`, `muted`, `text+on-selection`, `#ff8800+u`. A name
+    /// that's no colour but one of the theme's parts takes that part's style (`<link>`).
     fn spec(&self, spec: &str, base: Style) -> Style {
+        self.spec_at(spec, base, 0)
+    }
+
+    fn spec_at(&self, spec: &str, base: Style, depth: u8) -> Style {
         let mut st = base;
         for t in spec.split('+') {
             st = match t {
@@ -179,7 +184,11 @@ impl Cx<'_> {
                 "s" => st.add_modifier(Modifier::CROSSED_OUT),
                 t => match t.strip_prefix("on-") {
                     Some(c) => self.color(c).map_or(st, |c| st.bg(c)),
-                    None => self.color(t).map_or(st, |c| st.fg(c)),
+                    None => match (self.color(t), self.active.and_then(|a| a.parts.get(t))) {
+                        (Some(c), _) => st.fg(c),
+                        (None, Some(part)) if depth < 4 => self.spec_at(part, st, depth + 1),
+                        _ => st,
+                    },
                 },
             };
         }
@@ -618,7 +627,8 @@ fn node(cx: &mut Cx, n: &Node, f: &mut Frame, area: Rect) {
     match &n.kind {
         Kind::Col { children, gap } | Kind::Row { children, gap } => {
             let showing: Vec<&Node> = children.iter().filter(|c| shown(st, c)).collect();
-            let cs: Vec<Constraint> = showing.iter().map(|c| constraint(c.size.as_ref())).collect();
+            let along = if matches!(n.kind, Kind::Col { .. }) { inner.height } else { inner.width };
+            let cs: Vec<Constraint> = showing.iter().map(|c| bounded(constraint(c.size.as_ref()), c.min, c.max, along)).collect();
             let areas = match n.kind {
                 Kind::Col { .. } => Layout::vertical(cs).spacing(gap.unwrap_or(0)).split(inner),
                 _ => Layout::horizontal(cs).spacing(gap.unwrap_or(0)).split(inner),
@@ -708,7 +718,9 @@ fn node(cx: &mut Cx, n: &Node, f: &mut Frame, area: Rect) {
             // Lines with a tab or a fill are laid out by hand (no wrapping); the rest wrap.
             // Lines whose placeholders all came out empty are left out (optional details).
             let shown: Vec<&str> = text.split('\n').filter(|l| crate::model::shows(l, v)).collect();
-            if text.contains('\t') || text.contains("{*") {
+            // (A tab can come from a `|markup` value as well as the template.)
+            let hand = text.contains('\t') || text.contains("{*") || (text.contains("|markup") && shown.iter().any(|l| segments(l, v).iter().any(|g| g.tab)));
+            if hand {
                 for (k, l) in shown.iter().enumerate().take(inner.height as usize) {
                     let r = Rect::new(inner.x, inner.y + k as u16, inner.width, 1);
                     draw_parts(f.buffer_mut(), r, cx.parts(l, v, style), 0);
@@ -1004,13 +1016,31 @@ fn node(cx: &mut Cx, n: &Node, f: &mut Frame, area: Rect) {
             let at = Rect::new(inner.x, top, inner.width, 3.min(inner.height));
             f.render_widget(Paragraph::new(lines).alignment(align), at);
         }
-        Kind::Tabs { tabs, children } => {
+        Kind::Tabs { tabs, children, lead, trail } => {
             let shown = tab_of(st, n).min(children.len().saturating_sub(1));
+            let v = bound(st, n).unwrap_or(&Value::Null);
+            let bar = Rect { height: 1.min(inner.height), ..inner };
+            // The trail right-aligned, the lead first, the titles between.
+            let mut end = inner.right();
+            if let Some(t) = trail {
+                let parts = cx.parts(t, v, style);
+                let w = parts.iter().map(|p| if let Part::Text(s) = p { s.width() } else { 0 }).sum::<usize>() as u16;
+                draw_parts(f.buffer_mut(), bar, std::iter::once(Part::Tab).chain(parts).collect(), 0);
+                end = end.saturating_sub(w + 1);
+            }
             let mut x = inner.x;
+            if let Some(l) = lead {
+                let parts = cx.parts(l, v, style);
+                let w = parts.iter().map(|p| if let Part::Text(s) = p { s.width() } else { 0 }).sum::<usize>() as u16;
+                draw_parts(f.buffer_mut(), Rect { width: w.min(bar.width), ..bar }, parts, 0);
+                x += w + 1;
+            }
+            let mut active = None;
             for (k, t) in tabs.iter().enumerate() {
-                let label = format!(" {t} ");
-                let w = label.chars().count() as u16;
-                if x + w > inner.right() {
+                let title: String = segments(t, v).into_iter().map(|g| g.text).collect();
+                let label = format!(" {title} ");
+                let w = Span::raw(label.as_str()).width() as u16;
+                if x + w > end {
                     break;
                 }
                 let r = Rect::new(x, inner.y, w, 1);
@@ -1025,14 +1055,17 @@ fn node(cx: &mut Cx, n: &Node, f: &mut Frame, area: Rect) {
                 if !id.is_empty() {
                     cx.hits.push(Hit { rect: r, id: id.clone(), row: Some(1000 + k), tab: Some(k), text: false });
                 }
+                if k == shown {
+                    active = Some(r);
+                }
                 x += w + 1;
             }
             let rule = Rect::new(inner.x, inner.y + 1, inner.width, 1);
             f.buffer_mut().set_string(rule.x, rule.y, "─".repeat(inner.width as usize), cx.look("border", Style::default().fg(cx.th.border)));
             // The active tab's label underlined on the rule.
-            if let Some(h) = cx.hits.iter().rev().find(|h| h.id == id && h.tab == Some(shown) && !id.is_empty()) {
+            if let Some(r) = active {
                 let u = cx.look("tabs.underline", Style::default().fg(cx.th.accent));
-                f.buffer_mut().set_string(h.rect.x, rule.y, "━".repeat(h.rect.width as usize), u);
+                f.buffer_mut().set_string(r.x, rule.y, "━".repeat(r.width as usize), u);
             }
             if let Some(c) = children.get(shown) {
                 let body = Rect::new(inner.x, inner.y + 2, inner.width, inner.height.saturating_sub(2));
@@ -1334,6 +1367,24 @@ fn window(selected: Option<usize>, height: usize) -> (usize, Option<usize>) {
     let sel = selected.unwrap_or(0);
     let from = (sel + 1).saturating_sub(height.max(1));
     (from, selected.map(|s| s - from))
+}
+
+/// A child's share with its `min` and `max` (cells) applied, along `along` cells of its parent.
+fn bounded(c: Constraint, min: Option<u16>, max: Option<u16>, along: u16) -> Constraint {
+    if min.is_none() && max.is_none() {
+        return c;
+    }
+    let clamp = |n: u16| n.max(min.unwrap_or(0)).min(max.unwrap_or(u16::MAX));
+    match c {
+        Constraint::Length(n) => Constraint::Length(clamp(n)),
+        Constraint::Percentage(p) => Constraint::Length(clamp((along as u32 * p as u32 / 100) as u16)),
+        // A share of what's left can't be known here: the bound that matters wins.
+        _ => match (min, max) {
+            (_, Some(m)) => Constraint::Max(m),
+            (Some(m), None) => Constraint::Min(m),
+            (None, None) => c,
+        },
+    }
 }
 
 pub fn constraint(s: Option<&Size>) -> Constraint {
