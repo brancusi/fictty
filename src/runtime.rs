@@ -59,6 +59,9 @@ pub enum Request {
         selected: Option<usize>,
         #[serde(default)]
         tab: Option<usize>,
+        /// Select the row with this key, once it's there.
+        #[serde(default)]
+        key: Option<String>,
     },
     /// Replace the layers only (callouts, rings, spotlights).
     Layers { layers: Vec<crate::model::LayerSpec> },
@@ -199,6 +202,8 @@ struct Driver {
     /// Each hosted entry's revision as the host has it (loaded or saved), and when one that
     /// differs last changed.
     kept: BTreeMap<String, u64>,
+    /// The answer to the request being handled (a write's new revision, or why not).
+    reply: Option<Value>,
     changed: BTreeMap<String, (u64, Instant)>,
 }
 
@@ -213,7 +218,7 @@ impl Drop for Driver {
 
 impl Driver {
     fn new(tx: Sender<Event>, blocking: bool, host: Arc<dyn Host>) -> Driver {
-        Driver { tx, in_flight: BTreeSet::new(), again: BTreeSet::new(), last_fetch: BTreeMap::new(), streams: BTreeMap::new(), quit: false, blocking, upgrade: None, started: Instant::now(), host, copied: Vec::new(), kept: BTreeMap::new(), changed: BTreeMap::new() }
+        Driver { tx, in_flight: BTreeSet::new(), again: BTreeSet::new(), last_fetch: BTreeMap::new(), streams: BTreeMap::new(), quit: false, blocking, upgrade: None, started: Instant::now(), host, copied: Vec::new(), reply: None, kept: BTreeMap::new(), changed: BTreeMap::new() }
     }
 
     fn apply(&mut self, st: &mut State, msg: Msg) {
@@ -239,7 +244,7 @@ impl Driver {
         while let Some(fx) = queue.pop() {
             match fx {
                 Effect::Quit => self.quit = true,
-                Effect::Reply(_) => {}
+                Effect::Reply(r) => self.reply = Some(r),
                 // The terminal puts it on the clipboard (OSC 52); a headless render has none.
                 Effect::Copy(text) if !self.blocking => {
                     use base64::Engine;
@@ -447,8 +452,9 @@ impl Driver {
         // What changed the screen goes in `$log`, so a UI can show what its agent is doing.
         // A write is logged after it's tried, so a refused one shows as refused.
         let logged = activity(st, &req);
+        let started = self.started;
         let log = |st: &mut State, op: &str, what: String| {
-            update(st, Msg::Tick { now_ms: self.started.elapsed().as_millis() as u64 });
+            update(st, Msg::Tick { now_ms: started.elapsed().as_millis() as u64 });
             update(st, Msg::Activity { op: op.into(), what, at: clock() });
         };
         let is_write = matches!(req, Request::Write { .. });
@@ -466,11 +472,9 @@ impl Driver {
                 return st.store.get(&key).map_or_else(|| json!({"ok": false, "status": format!("no entry {key}")}), |e| e.read());
             }
             Request::Write { key, write, if_rev, by, for_ms } => {
-                let reply = update(st, Msg::Write { key, write, if_rev, by, for_ms }).into_iter().find_map(|fx| match fx {
-                    Effect::Reply(r) => Some(r),
-                    _ => None,
-                });
-                let mut reply = reply.unwrap_or_else(|| json!({"ok": false}));
+                // Through the driver, so what the write sets off (a refetch) happens too.
+                self.apply(st, Msg::Write { key, write, if_rev, by, for_ms });
+                let mut reply = self.reply.take().unwrap_or_else(|| json!({"ok": false}));
                 if let Some((op, what)) = logged {
                     match reply["ok"].as_bool() {
                         Some(true) => log(st, op, what),
@@ -482,7 +486,7 @@ impl Driver {
                 }
                 return reply;
             }
-            Request::Set { id, selected, tab } => Msg::Set { id, selected, tab },
+            Request::Set { id, selected, tab, key } => Msg::Set { id, selected, tab, key },
             Request::Theme { add, choose } => Msg::Theme { add, choose },
             Request::Layers { layers } => Msg::Layers { layers },
             Request::Toast { text, tone, ms } => Msg::Toast { text, tone, ms },
@@ -1174,6 +1178,18 @@ impl Headless {
         self
     }
 
+    /// A request as the control socket takes it (`{"op": "write", "key": …}`), answered as the
+    /// socket would answer it: an agent's view of the screen, without a socket.
+    pub fn request(&mut self, req: Value) -> Value {
+        self.drain();
+        let reply = match serde_json::from_value::<Request>(req) {
+            Ok(r) => self.d.request(&mut self.st, r),
+            Err(e) => json!({"ok": false, "status": format!("bad request: {e}")}),
+        };
+        self.d.keep(&mut self.st, Duration::ZERO);
+        reply
+    }
+
     /// What it has put on the clipboard so far, oldest first.
     pub fn copied(&self) -> &[String] {
         &self.d.copied
@@ -1245,10 +1261,11 @@ fn activity(st: &State, req: &Request) -> Option<(&'static str, String)> {
                 }
             }
         }
-        Request::Set { id, selected, tab } => {
-            let what = match (selected, tab) {
-                (Some(r), _) => format!("{id} row {r}"),
-                (_, Some(t)) => format!("{id} tab {t}"),
+        Request::Set { id, selected, tab, key } => {
+            let what = match (selected, tab, key) {
+                (Some(r), _, _) => format!("{id} row {r}"),
+                (_, Some(t), _) => format!("{id} tab {t}"),
+                (_, _, Some(k)) => format!("{id} row {k}"),
                 _ => id.clone(),
             };
             ("set", what)

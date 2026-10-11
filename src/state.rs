@@ -180,6 +180,10 @@ pub struct Local {
     /// How many rows it showed in the last frame (the view reports it), for the wheel.
     #[serde(default, skip_serializing_if = "is_zero")]
     pub rows: u16,
+    /// A row asked for by key (`Set { key }`, the `select` action) that isn't there yet: it's
+    /// selected when it comes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub want: Option<String>,
 }
 
 fn is_zero(n: &u16) -> bool {
@@ -252,14 +256,16 @@ pub enum Msg {
     Reload { key: String },
     /// Animation time.
     Tick { now_ms: u64 },
-    /// Move a node's view state from outside: a list's or table's `selected` row, a tabs
-    /// node's `tab`.
+    /// Move a node's view state from outside: a list's or table's `selected` row (by place, or
+    /// by its `key`: the row whose key that is, once it's there), a tabs node's `tab`.
     Set {
         id: String,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         selected: Option<usize>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         tab: Option<usize>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        key: Option<String>,
     },
     /// Write one store entry. With `if_rev`, refused unless the entry is still at that
     /// revision (someone else wrote in between). The answer comes back as `Effect::Reply`.
@@ -608,7 +614,7 @@ fn apply(st: &mut State, msg: Msg) -> Vec<Effect> {
             st.data.insert("$screen".into(), Slot::Ready { value: serde_json::json!({"width": width, "height": height}) });
             vec![]
         }
-        Msg::Set { id, selected, tab } => {
+        Msg::Set { id, selected, tab, key } => {
             if st.ui.root.find(&id).is_none() {
                 st.status = Some(format!("set: no node with id {id:?}"));
                 return vec![];
@@ -620,6 +626,9 @@ fn apply(st: &mut State, msg: Msg) -> Vec<Effect> {
             }
             if let Some(t) = tab {
                 local.tab = t;
+            }
+            if key.is_some() {
+                local.want = key;
             }
             settle(st);
             vec![]
@@ -1476,6 +1485,16 @@ fn act(st: &mut State, a: Action) -> Vec<Effect> {
             }
             vec![]
         }
+        Action::Select { select, of } => {
+            let key = crate::model::fill(&select, &action_context(st));
+            if st.ui.root.find(&of).is_none() {
+                st.status = Some(format!("select: no node {of}"));
+                return vec![];
+            }
+            st.local.entry(of).or_default().want = Some(key);
+            settle(st);
+            vec![]
+        }
         Action::ShowTab { tab, of } => {
             match st.ui.root.find(&of).map(|n| &n.kind) {
                 Some(Kind::Tabs { children, .. }) if tab < children.len() => {
@@ -1946,6 +1965,22 @@ fn settle(st: &mut State) {
     if !st.focus.as_ref().is_some_and(|f| order.contains(f)) {
         let tabs = |id: &String| st.ui.root.find(id).is_some_and(|n| matches!(n.kind, Kind::Tabs { .. }));
         st.focus = order.iter().find(|id| !tabs(id)).or(order.first()).cloned();
+    }
+    // A row asked for by key is selected once it's there.
+    let wanted: Vec<(String, usize)> = all
+        .iter()
+        .filter(|n| n.rows().is_some())
+        .filter_map(|n| {
+            let id = n.id.clone()?;
+            let want = st.local.get(&id)?.want.as_ref()?;
+            items(st, n).iter().position(|r| key_of(n, r).as_ref() == Some(want)).map(|k| (id, k))
+        })
+        .collect();
+    for (id, k) in wanted {
+        let l = st.local.entry(id).or_default();
+        l.selected = k;
+        l.top = None;
+        l.key = l.want.take();
     }
     // A selection follows its row's key, wherever the row is now.
     let moved: Vec<(String, usize)> = all
@@ -2705,9 +2740,9 @@ mod tests {
     fn set_moves_view_state() {
         let mut st = State::default();
         update(&mut st, Msg::Push { ui: note() });
-        update(&mut st, Msg::Set { id: "side".into(), selected: Some(1), tab: None });
+        update(&mut st, Msg::Set { id: "side".into(), selected: Some(1), tab: None, key: None });
         assert_eq!(selected(&st, "side"), 1);
-        update(&mut st, Msg::Set { id: "nope".into(), selected: Some(1), tab: None });
+        update(&mut st, Msg::Set { id: "nope".into(), selected: Some(1), tab: None, key: None });
         assert_eq!(st.status.as_deref(), Some("set: no node with id \"nope\""));
     }
 

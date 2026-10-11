@@ -104,7 +104,8 @@ fictty theme paper                                        # choose a loaded them
   right-aligned), maps (`{done|true=☑;*=☐}`), and a tab right-aligns the rest of a line.
 - **Actions** on keys: `quit`, `up`, `down`, `top`, `bottom`, `focus_next`, `focus_prev`,
   `refresh`, `{"run": [argv with {field} of the selected row]}`, `{"load": "{file}"}`,
-  `{"focus": "id"}`, `{"theme": "next"}`, `{"copy": "text"}` (onto the system clipboard, through
+  `{"focus": "id"}`, `{"select": "{store.k}", "in": "list"}` (a row by its key, now or once it
+  arrives), `{"theme": "next"}`, `{"copy": "text"}` (onto the system clipboard, through
   the terminal's OSC 52), `{"toast": "Saved", "tone": "pos"}`, `{"host": "name", "args": {…}}`,
   and store actions: `append`, `put`, `remove` (the selected row, or with `where` every row that
   matches), `toggle` (a true/false field of the selected row: a checkbox), `do`. A node's `click`

@@ -639,3 +639,20 @@ fn keys_type_into_a_field_a_key_just_showed() {
     s.keys(&["/", "m", "q", "4"]);
     assert!(s.screen().starts_with("mq4"), "{}", s.screen());
 }
+
+#[test]
+fn a_row_can_be_selected_by_key_before_it_arrives() {
+    let ui = json!({"root": {"type": "list", "id": "l", "bind": "rows", "item": "{id}"},
+                    "store": {"rows": [{"id": "a"}, {"id": "b"}], "pick": "d"},
+                    "keys": {"s": {"select": "{store.pick}", "in": "l"}}});
+    let mut s = screen(ui, 20, 6);
+    s.msg(Msg::Set { id: "l".into(), selected: None, tab: None, key: Some("b".into()) });
+    assert_eq!(s.state().local["l"].selected, 1);
+    // Asked for before it's there: selected when it comes.
+    s.keys(&["s"]);
+    assert_eq!(s.state().local["l"].selected, 1, "d isn't there yet");
+    let rows = json!([{"id": "c"}, {"id": "a"}, {"id": "b"}, {"id": "d"}]);
+    s.msg(Msg::Write { key: "rows".into(), write: serde_json::from_value(json!({"write": "put", "value": rows})).unwrap(), if_rev: None, by: "agent".into(), for_ms: None });
+    assert_eq!(s.state().local["l"].selected, 3);
+    assert!(s.state().local["l"].want.is_none());
+}

@@ -716,6 +716,13 @@ pub enum Action {
     /// Move the focus to a node: an id, a template (`"{store.from}"`), or `$prev`, wherever
     /// it was before it last moved.
     Focus { focus: String },
+    /// Select the row of list or tree `in` whose key is `select` (a template), now or as soon
+    /// as it arrives.
+    Select {
+        select: String,
+        #[serde(rename = "in")]
+        of: String,
+    },
     /// Show tab `tab` of the tabs node `of`, and move the focus into it.
     ShowTab { tab: usize, of: String },
     Theme { theme: String },

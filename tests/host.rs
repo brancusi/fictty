@@ -227,3 +227,19 @@ fn an_expiry_refills_the_args_that_read_it() {
     assert_eq!(host.asked.lock().unwrap().last().unwrap()["q"], json!({}));
     assert!(s.screen().contains("({})"), "{}", s.screen());
 }
+
+#[test]
+fn a_write_over_the_socket_refills_the_args_that_read_it() {
+    let ui: fictty::model::Ui = serde_json::from_value(json!({
+        "root": {"type": "text", "bind": "detail", "text": "{about}"},
+        "data": {"detail": {"host": "detail", "args": {"id": "x", "q": "{store.aside}"}}},
+        "store": {"aside": "none"}
+    }))
+    .unwrap();
+    let host = Detail::default();
+    let mut s = App::new(ui).host(host.clone()).headless(60, 3).unwrap();
+    let reply = s.request(json!({"op": "write", "write": "put", "key": "aside", "value": "page/7", "by": "agent"}));
+    assert_eq!(reply["ok"], true, "{reply}");
+    assert_eq!(host.asked.lock().unwrap().last().unwrap()["q"], "page/7", "no key needed");
+    assert!(s.screen().contains("(\"page/7\")"));
+}
