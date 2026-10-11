@@ -145,3 +145,25 @@ img, svg, canvas { display: block; max-width: 100%; }
 .foot .panes .line:first-child { background: linear-gradient(90deg, transparent, var(--line-strong)); }
 .foot .panes .line:last-child { background: linear-gradient(270deg, transparent, var(--line-strong)); }
 .foot .panes svg { width: 172px; height: auto; overflow: visible; }
+
+/* ---------- the demo link (src/lib/demo-link.mjs): name, date, the one line, copy ---------- */
+.demo-link { display: grid; gap: 8px; max-width: 680px; margin: 1.6em 0; padding: 12px 14px; border: 1px solid color-mix(in srgb, var(--glass-cyan) 45%, var(--line)); border-radius: 8px; background: color-mix(in srgb, var(--glass-cyan) 6%, var(--raised)); text-align: left; font: 400 13px/1.45 var(--mono); }
+.demo-link .dl-head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; }
+.demo-link .dl-label { font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink); display: inline-flex; align-items: center; gap: 7px; }
+.demo-link .dl-label::before { content: ""; width: 0; height: 0; border-left: 8px solid var(--glass-cyan); border-top: 5px solid transparent; border-bottom: 5px solid transparent; filter: drop-shadow(0 0 calc(6px * var(--glow)) var(--glass-cyan)); }
+.demo-link .dl-name { color: var(--ink); font-weight: 500; }
+.demo-link .dl-date { color: var(--ink-3); }
+.demo-link .dl-tag { color: var(--ink-3); border: 1px solid var(--line); border-radius: 999px; padding: 1px 8px; font-size: 11.5px; }
+.demo-link .dl-tag a { color: var(--ink-2); }
+.demo-link .dl-latest { color: var(--ink); border-color: color-mix(in srgb, var(--glass-cyan) 60%, var(--line)); }
+.demo-link .dl-cmd { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 12px; padding: 7px 7px 7px 12px; border: 1px solid var(--line); border-radius: 6px; background: var(--sunken); }
+.demo-link .dl-cmd code { white-space: normal; overflow-wrap: anywhere; font: inherit; background: none; border: 0; padding: 0; color: var(--ink); }
+.demo-link .dl-cmd code::-webkit-scrollbar { display: none; }
+.demo-link .dl-cmd .d { color: var(--ink-3); user-select: none; }
+.demo-link .dl-cmd button { border: 0; background: var(--raised); border-radius: 5px; padding: 7px 11px; cursor: pointer; font: 500 12px/1 var(--mono); color: var(--ink-2); }
+.demo-link .dl-cmd button:hover { color: var(--ink); }
+.demo-link .dl-foot { color: var(--ink-3); font-size: 12px; margin: 0; }
+.demo-link .dl-foot code { font: inherit; color: var(--ink-2); background: none; border: 0; padding: 0; }
+/* compact: no footnote, tighter (the landing page, above the fold) */
+.demo-link.dl-compact { gap: 6px; padding: 9px 10px 10px 14px; margin: 0; }
+.demo-link.dl-compact .dl-cmd { padding: 4px 4px 4px 10px; }

@@ -2,6 +2,7 @@
 import Base from '../layouts/Base.astro';
 import Wordmark from '../components/Wordmark.astro';
 import Install from '../components/Install.astro';
+import DemoLink from '../components/DemoLink.astro';
 import Texture from '../components/Texture.astro';
 import Divider from '../components/Divider.astro';
 import LivePanes from '../components/LivePanes.astro';
@@ -48,6 +49,7 @@ const BLOCKS: [string, string, string, string, boolean?][] = [
 
     <div class="site-in">
       <section class="hero" aria-labelledby="hero-h">
+        <DemoLink name="The fictty showcase" script="try.sh" latest compact />
         <div class="hero-art">
           <canvas id="heroCanvas" role="img" aria-label="Twenty panes of tinted glass that assemble into the fictty wordmark, then come apart into a row of tubes and regroup as a terminal screen. Click to step through."></canvas>
           <noscript><Wordmark class="hero-static" id="hero-ns" /></noscript>
@@ -176,6 +178,7 @@ const BLOCKS: [string, string, string, string, boolean?][] = [
   .hero-art { position: relative; aspect-ratio: 40 / 15; }
   .hero-art canvas { position: absolute; left: -7.5%; top: -20%; width: 115%; height: 140%; cursor: pointer; }
   .hero-art :global(.hero-static) { width: 72%; margin: 0 auto; }
+  .hero :global(.demo-link) { margin: 0 auto; width: min(100%, 680px); }
   .hero h1 { font-size: clamp(32px, 5.4vw, 60px); line-height: 1.04; letter-spacing: -0.028em; max-width: 17ch; font-weight: 500; }
   .sub { font-size: clamp(16px, 1.6vw, 19px); color: var(--ink-2); max-width: 58ch; }
   .states { display: inline-flex; gap: 2px; border: 1px solid var(--line); border-radius: 999px; padding: 3px; background: color-mix(in srgb, var(--raised) 70%, transparent); margin-top: calc(var(--m) * -0.5); }

@@ -4,6 +4,7 @@
 // and turns dialogue (paragraphs that open with **Aram:** or **Claude:**) into speaker turns.
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { demoHtml, demoProps } from './demo-link.mjs';
 
 const REPO = path.resolve(fileURLToPath(new URL('../../../', import.meta.url)));
 const GH = 'https://github.com/brancusi/fictty';
@@ -155,6 +156,8 @@ export default function rehypeLinks() {
   return (tree, file) => {
     const dir = file.path ? path.dirname(file.path) : path.join(REPO, 'docs');
     const walk = (node, parent) => {
+      // a demo link placeholder becomes the demo link (src/lib/demo-link.mjs)
+      if (node.type === 'raw' && /^\s*<div class="demo-link"[^>]*><\/div>\s*$/.test(node.value)) node.value = demoHtml(demoProps(node.value));
       if (node.type === 'element') {
         if (node.tagName === 'a' && node.properties?.href) {
           const after = rewrite(String(node.properties.href), dir);
