@@ -32,6 +32,10 @@ pub struct Ui {
     /// (placed by caretline-layers).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub layers: Vec<LayerSpec>,
+    /// Where the focus goes when this UI is pushed (a node id), instead of staying where it was
+    /// or going to the first node that takes it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub focus: Option<String>,
     /// `false` hides the runtime's own status line (hints and the fps meter), so the UI owns every
     /// row. The meter is still bindable as `$stats`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -100,6 +104,9 @@ pub struct LayerSpec {
     /// Who placed it; drawn in the border (`◆ analyst`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub by: Option<String>,
+    /// Shown only while this holds, as a node's `when`: a hint that goes once it's been taken.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub when: Option<String>,
 }
 
 /// How a layer looks: colours by name or `#rrggbb`, and the border.
@@ -171,7 +178,8 @@ pub struct Node {
     pub pad: Option<Pad>,
     /// Shown only while this holds: a bind that's set (`"dialog"`; not empty, false, 0 or null),
     /// not set (`"!dialog"`), or compared with a value (`"mode=edit"`, `"$screen.width>=120"`;
-    /// `=`, `!=`, `<`, `<=`, `>`, `>=`). A hidden node takes no room and no focus.
+    /// `=`, `!=`, `<`, `<=`, `>`, `>=`); several joined by ` & ` must all hold. A hidden node
+    /// takes no room and no focus.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub when: Option<String>,
     /// In a `stack`: where the node floats over the ones before it, instead of filling it.
@@ -634,7 +642,7 @@ pub fn number_done(t: &str) -> bool {
 /// Store actions write the store, as the person: `append` adds the filled `value` to an array
 /// entry, `put` writes one (a string into a text entry replaces its text, undoably), `remove`
 /// takes the focused list's selected row out of the array entry it shows, `do` runs several in
-/// order. Templates in `value` read `{field}` from the selected row, `{store.key}` from the store
+/// order (`remove` with `where` takes the rows that match instead). Templates in `value` read `{field}` from the selected row, `{store.key}` from the store
 /// and `{$id}`, a fresh id; a string that is one placeholder takes the value with its type.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(untagged)]
@@ -646,7 +654,13 @@ pub enum Action {
     Theme { theme: String },
     Append { append: String, value: Value },
     Put { put: String, value: Value },
-    Remove { remove: String },
+    /// With `where` (a template, filled like `value`), every row of the array entry whose fields
+    /// match all of it, wherever the focus is: `{"remove": "files", "where": {"id": "{store.doomed}"}}`.
+    Remove {
+        remove: String,
+        #[serde(default, rename = "where", skip_serializing_if = "Option::is_none")]
+        matching: Option<Value>,
+    },
     /// Flip a true-or-false field of the focused list's or tree's selected row, in the store entry
     /// it shows (a missing field becomes true): a checkbox.
     Toggle { toggle: String },

@@ -271,10 +271,15 @@ pub fn update(st: &mut State, msg: Msg) -> Vec<Effect> {
     let checks = matches!(msg, Msg::Push { .. } | Msg::Patch { .. } | Msg::Data { .. } | Msg::Write { .. } | Msg::Theme { .. } | Msg::Key { .. });
     let writes = st.store_writes;
     let quiet = matches!(msg, Msg::Tick { .. } | Msg::Hover { .. } | Msg::Stats { .. } | Msg::Activity { .. } | Msg::Caps { .. } | Msg::Size { .. });
+    // A source's new value changes only the rows of the nodes that read it.
+    let only = match &msg {
+        Msg::Data { name, .. } => Some(name.clone()),
+        _ => None,
+    };
     let fx = apply(st, msg);
     // Rows a tree or a filter shows can change with anything but the quiet messages; when they
     // do, selections are kept inside them again.
-    if !quiet && derive_rows(st) {
+    if !quiet && derive_rows(st, only.as_deref()) {
         settle(st);
     }
     // A selection, a write or a new row can point an editor at an entry it hasn't shown yet.
@@ -303,6 +308,9 @@ fn apply(st: &mut State, msg: Msg) -> Vec<Effect> {
                     st.store.insert(k.clone(), Entry::value(v.clone(), "seed"));
                     st.store_writes += 1;
                 }
+            }
+            if let Some(f) = st.ui.focus.clone() {
+                st.focus = Some(f);
             }
             settle(st);
             // Sources can change with the UI; fetch them all again.
@@ -340,6 +348,10 @@ fn apply(st: &mut State, msg: Msg) -> Vec<Effect> {
         }
         Msg::Ran { argv, result } => {
             st.status = result.err().map(|e| format!("{}: {e}", argv.join(" ")));
+            // A failure shows even where the UI hides the status line.
+            if let Some(why) = st.status.clone() {
+                toast(st, why, Some("neg".into()), Some(6000));
+            }
             refresh(st)
         }
         Msg::Changed { host } => st.ui.data.iter().filter(|(_, s)| s.host.as_deref() == Some(&host)).map(|(k, _)| Effect::Fetch(k.clone())).collect(),
@@ -348,6 +360,7 @@ fn apply(st: &mut State, msg: Msg) -> Vec<Effect> {
                 Ok(_) => log(st, "host".into(), name, at),
                 Err(e) => {
                     st.status = Some(format!("{name}: {e}"));
+                    toast(st, format!("{name}: {e}"), Some("neg".into()), Some(6000));
                     log(st, "refused".into(), format!("{name} ({e})"), at);
                 }
             }
@@ -999,6 +1012,10 @@ fn resolve(st: &State, key: &str) -> Option<Action> {
     if let Some(n) = focused.filter(|n| matches!(n.kind, Kind::Button { .. }) && matches!(key, "enter" | "space")) {
         return n.click.clone();
     }
+    // Esc leaves a text field (one with nothing selected; see `editing`).
+    if key == "esc" && focused.is_some_and(|n| n.field().is_some()) {
+        return Some(Action::Named("leave".into()));
+    }
     // A tree folds where a list would switch tabs.
     if focused.is_some_and(|n| matches!(n.kind, Kind::Tree { .. })) {
         match key {
@@ -1082,7 +1099,25 @@ fn act(st: &mut State, a: Action) -> Vec<Effect> {
             let args = fill_value(&args, &action_context(st));
             vec![Effect::Host { name: host, args }]
         }
-        Action::Remove { remove } => {
+        Action::Remove { remove, matching: Some(want) } => {
+            let want = fill_value(&want, &action_context(st));
+            let Some(Body::Value { value: Value::Array(rows) }) = st.store.get_mut(&remove).map(|e| &mut e.body) else {
+                st.status = Some(format!("remove: {remove} isn't a list"));
+                return vec![];
+            };
+            let fits = |r: &Value| match (&want, r) {
+                (Value::Object(w), Value::Object(r)) => w.iter().all(|(k, v)| r.get(k) == Some(v)),
+                (w, r) => w == r,
+            };
+            let before = rows.len();
+            rows.retain(|r| !fits(r));
+            if rows.len() != before {
+                wrote(st, &remove, "person");
+                settle(st);
+            }
+            vec![]
+        }
+        Action::Remove { remove, matching: None } => {
             let target = row_target(st).filter(|(key, _)| *key == remove);
             let Some((key, ptr)) = target else {
                 st.status = Some(format!("remove: the focused list doesn't show a row of {remove}"));
@@ -1154,6 +1189,7 @@ fn act(st: &mut State, a: Action) -> Vec<Effect> {
             "fold" => fold(st, Fold::Toggle),
             "collapse" => fold(st, Fold::Close),
             "expand" => fold(st, Fold::Open),
+            "leave" => leave(st),
             "focus_next" => cycle(st, 1),
             "focus_prev" => cycle(st, -1),
             other => {
@@ -1311,16 +1347,28 @@ fn flatten(rows: &[Value], at: &str, depth: usize, t: &TreeCx, out: &mut Vec<Val
 }
 
 /// Work out `State::rows`: each tree's shown rows, and each filtered list's or table's matches.
-/// True when they changed.
-fn derive_rows(st: &mut State) -> bool {
+/// With `only`, just the nodes that read that source (by their bind or their filter). True when
+/// any changed.
+fn derive_rows(st: &mut State, only: Option<&str>) -> bool {
+    let mut old = std::mem::take(&mut st.rows);
     let mut all = Vec::new();
     st.ui.root.walk(&mut all);
     let mut out = BTreeMap::new();
+    let mut changed = false;
+    let reads = |n: &Node, name: &str| [n.bind.as_deref(), n.filter()].into_iter().flatten().any(|b| split_bind(b).0 == name);
     for n in all {
         let Some(id) = &n.id else { continue };
+        if let Some(name) = only
+            && !reads(n, name)
+        {
+            if let Some(rows) = old.remove(id) {
+                out.insert(id.clone(), rows);
+            }
+            continue;
+        }
         let query = n.filter().map(|f| query_text(st, f)).unwrap_or_default();
         let terms: Vec<String> = query.split_whitespace().map(str::to_lowercase).collect();
-        match &n.kind {
+        let rows = match &n.kind {
             Kind::Tree { nest, key, open, .. } => {
                 let t = TreeCx {
                     nest: nest.as_deref().unwrap_or("children"),
@@ -1331,20 +1379,23 @@ fn derive_rows(st: &mut State) -> bool {
                 };
                 let mut rows = Vec::new();
                 flatten(raw_items(st, n), "", 0, &t, &mut rows);
-                out.insert(id.clone(), rows);
+                Some(rows)
             }
             _ if !terms.is_empty() => {
-                let rows = raw_items(st, n).iter().enumerate().filter(|(_, r)| row_matches(r, &terms, None)).map(|(i, r)| shown_row(r, None, format!("/{i}"))).collect();
-                out.insert(id.clone(), rows);
+                Some(raw_items(st, n).iter().enumerate().filter(|(_, r)| row_matches(r, &terms, None)).map(|(i, r)| shown_row(r, None, format!("/{i}"))).collect())
             }
-            _ => {}
+            _ => None,
+        };
+        let before = old.remove(id);
+        changed |= before != rows;
+        if let Some(rows) = rows {
+            out.insert(id.clone(), rows);
         }
     }
-    if st.rows == out {
-        return false;
-    }
+    // Nodes that went (or stopped filtering) change the rows too.
+    changed |= !old.is_empty();
     st.rows = out;
-    true
+    changed
 }
 
 /// Show the next or previous child of the focused tabs node.
@@ -1357,6 +1408,18 @@ fn switch(st: &mut State, dir: isize) -> Vec<Effect> {
     let local = st.local.entry(id).or_default();
     local.tab = ((local.tab as isize + dir).rem_euclid(n.max(1))) as usize;
     settle(st);
+    vec![]
+}
+
+/// Move the focus out of a text field: to the next node that takes focus and isn't one, so plain
+/// keys reach the screen again. Stays put when there's none.
+fn leave(st: &mut State) -> Vec<Effect> {
+    let ids = focus_order(st);
+    let at = st.focus.as_ref().and_then(|f| ids.iter().position(|i| i == f)).unwrap_or(0);
+    let next = (1..ids.len()).map(|k| &ids[(at + k) % ids.len()]).find(|id| st.ui.root.find(id).is_some_and(|n| n.field().is_none()));
+    if let Some(id) = next.cloned() {
+        st.focus = Some(id);
+    }
     vec![]
 }
 
@@ -1604,6 +1667,10 @@ pub fn shown(st: &State, n: &Node) -> bool {
 
 /// A `when` condition against the state.
 pub fn holds(st: &State, cond: &str) -> bool {
+    // Several conditions, all of which must hold: `"!trash & !confirm"`.
+    if cond.contains(" & ") {
+        return cond.split(" & ").all(|c| holds(st, c));
+    }
     let cond = cond.trim();
     if let Some(rest) = cond.strip_prefix('!') {
         return !holds(st, rest);

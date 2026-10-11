@@ -309,9 +309,10 @@ pub fn draw(st: &State, f: &mut Frame) -> Out {
     Out { hits: cx.hits, pics: cx.pics, scaled: cx.scaled, sizes: cx.sizes, wake: cx.wake }
 }
 
-/// The toasts, newest at the bottom, in the body's bottom-right corner.
+/// The toasts, newest at the bottom, in the body's bottom-right corner, a row up from its edge (a
+/// UI's own footer often sits there).
 fn toasts(cx: &mut Cx, buf: &mut Buffer, body: Rect) {
-    let mut bottom = body.bottom();
+    let mut bottom = body.bottom().saturating_sub(1);
     for t in cx.st.toasts.iter().rev() {
         cx.wake = Some(cx.wake.map_or(t.until, |w| w.min(t.until)));
         let w = (t.text.chars().count() as u16 + 4).min(body.width.saturating_sub(2)).max(5);
@@ -1458,7 +1459,7 @@ impl cl::Renderer for Callout {
 
 /// The layers this frame shows: the UI's, plus the tip of whatever row the mouse is over.
 fn specs(st: &State) -> Vec<LayerSpec> {
-    let mut out = st.ui.layers.clone();
+    let mut out: Vec<LayerSpec> = st.ui.layers.iter().filter(|l| l.when.as_deref().is_none_or(|w| crate::state::holds(st, w))).cloned().collect();
     if let Some(h) = &st.hover
         && let Some(row) = h.row.filter(|r| *r < 1000)
         && let Some(n) = st.ui.root.find(&h.id)

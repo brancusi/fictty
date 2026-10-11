@@ -206,7 +206,7 @@ fn an_editor_ticks_markdown_tasks() {
     s.keys(&["c-t"]);
     assert!(text(&mut s, "page").contains("- [ ] water"));
     // A click on a box ticks it (row 2, the box at column 3).
-    s.msg(Msg::Point { id: "page".into(), col: 3, row: 2 });
+    s.msg(Msg::Point { id: "page".into(), col: 3, row: 2, extend: false });
     assert!(text(&mut s, "page").contains("- [ ] call the bank"));
     // Not a task: Ctrl-T does what the editor does with it, and the text keeps its tasks.
     s.keys(&["down", "c-t"]);
@@ -247,4 +247,49 @@ fn a_long_list_shows_a_scroll_bar_and_keeps_its_rows_clear_of_it() {
     s.keys(&["G"]);
     let frame = s.screen();
     assert!(frame.lines().nth(4).unwrap().ends_with('┃'), "the thumb at the bottom: {frame}");
+}
+
+#[test]
+fn remove_where_takes_matching_rows_from_anywhere() {
+    let ui = json!({
+        "root": {"type": "col", "children": [
+            {"type": "list", "id": "l", "bind": "files", "item": "{name}"},
+            {"type": "button", "id": "b", "label": "Delete b.txt", "click": {"remove": "files", "where": {"name": "{store.doomed}"}}}
+        ]},
+        "store": {"files": [{"name": "a.txt"}, {"name": "b.txt"}, {"name": "c.txt"}], "doomed": "b.txt"},
+        "focus": "b"
+    });
+    let mut s = screen(ui, 30, 6);
+    assert_eq!(s.state().focus.as_deref(), Some("b"), "the UI's focus");
+    s.keys(&["enter"]);
+    let names: Vec<String> = entry(&mut s, "files")["value"].as_array().unwrap().iter().map(|f| f["name"].as_str().unwrap().to_string()).collect();
+    assert_eq!(names, ["a.txt", "c.txt"]);
+}
+
+#[test]
+fn esc_leaves_a_field_for_the_next_thing_that_takes_keys() {
+    let ui = json!({"root": {"type": "col", "children": [
+        {"type": "input", "id": "q", "size": 1},
+        {"type": "list", "id": "l", "items": ["a", "b"]}
+    ]}, "keys": {"n": {"toast": "next"}}});
+    let mut s = screen(ui, 30, 6);
+    assert_eq!(s.state().focus.as_deref(), Some("q"));
+    s.keys(&["n"]);
+    assert!(s.state().toasts.is_empty(), "n types in the field");
+    s.keys(&["esc", "n"]);
+    assert_eq!(s.state().focus.as_deref(), Some("l"));
+    assert_eq!(s.state().toasts.len(), 1, "now n is the screen's");
+}
+
+#[test]
+fn a_layer_shows_while_its_when_holds() {
+    let ui = json!({
+        "root": {"type": "list", "id": "l", "items": ["a"], "keys": {"x": {"put": "done", "value": true}}},
+        "layers": [{"on": "l", "title": "Hint", "text": "press x", "when": "!done & !never"}],
+        "store": {"done": false}
+    });
+    let mut s = screen(ui, 40, 10);
+    assert!(s.screen().contains("press x"));
+    s.keys(&["x"]);
+    assert!(!s.screen().contains("press x"));
 }
