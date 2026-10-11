@@ -334,6 +334,13 @@ fn apply(st: &mut State, msg: Msg) -> Vec<Effect> {
             if st.ui.root.find(&id).is_some_and(|n| n.field().is_some()) {
                 st.focus = Some(id.clone());
                 on_doc(st, &id, caretline::Msg::Click { col, row, extend: false }, "person");
+                // A click on a task's box ticks it.
+                if let Some((line, at)) = caret_place(st, &id)
+                    && let Some((b, _)) = task_line(st, &id, line)
+                    && (b.saturating_sub(1)..=b + 1).contains(&at)
+                {
+                    toggle_task(st, &id, line);
+                }
             }
             vec![]
         }
@@ -434,6 +441,14 @@ fn apply(st: &mut State, msg: Msg) -> Vec<Effect> {
             vec![]
         }
         Msg::Key { key } => {
+            if key == "c-t"
+                && let Some(id) = editing(st, &key)
+                && let Some((line, _)) = caret_place(st, &id)
+                && task_line(st, &id, line).is_some()
+            {
+                toggle_task(st, &id, line);
+                return vec![];
+            }
             if let Some(why) = not_a_number(st, &key) {
                 st.status = Some(why);
                 return vec![];
@@ -591,6 +606,42 @@ fn type_into(st: &mut State, id: &str, key: &str) {
     let now_ms = st.now_ms;
     on_doc(st, id, caretline::Msg::Tick { now_ms }, "person");
     on_doc(st, id, msg, "person");
+}
+
+/// Where editor `id`'s caret is: its line, and its column in that line.
+fn caret_place(st: &State, id: &str) -> Option<(usize, usize)> {
+    let (key, view) = field_view(st, id)?;
+    let Body::Text { doc } = &st.store.get(&key)?.body else { return None };
+    let at = view.caret().min(doc.text.len_chars());
+    let line = doc.text.char_to_line(at);
+    Some((line, at - doc.text.line_to_char(line)))
+}
+
+/// Line `line` of a Markdown editor's text, when it's a task item: its box's column and whether
+/// it's ticked. Never for a read-only editor.
+fn task_line(st: &State, id: &str, line: usize) -> Option<(usize, bool)> {
+    let f = st.ui.root.find(id)?.field()?;
+    if !f.markdown || f.readonly {
+        return None;
+    }
+    let (key, _) = field_view(st, id)?;
+    let Body::Text { doc } = &st.store.get(&key)?.body else { return None };
+    if line >= doc.text.len_lines() {
+        return None;
+    }
+    crate::model::task_box(&doc.text.line(line).to_string())
+}
+
+/// Tick or untick the task on line `line` of editor `id`: an edit by the person, one undo step.
+fn toggle_task(st: &mut State, id: &str, line: usize) {
+    let Some((b, done)) = task_line(st, id, line) else { return };
+    let Some((key, _)) = field_view(st, id) else { return };
+    let Some(Entry { body: Body::Text { doc }, .. }) = st.store.get(&key) else { return };
+    let at = doc.text.line_to_char(line) + b;
+    let mark = if done { " " } else { "x" };
+    let now_ms = st.now_ms;
+    on_doc(st, id, caretline::Msg::Tick { now_ms }, "person");
+    on_doc(st, id, caretline::Msg::Edit { changes: vec![(at, at + 1, mark.to_string())], join: false }, "person");
 }
 
 /// The store entry an editor or input shows: its `doc` template over the bound value, else its
@@ -1266,11 +1317,13 @@ fn fields(st: &mut State) {
             Some(Body::Text { .. }) => {}
         }
         let Some(Entry { body: Body::Text { doc }, .. }) = st.store.get(&key) else { continue };
+        let readonly = st.ui.root.find(&id).and_then(|n| n.field()).is_some_and(|f| f.readonly);
         let view = st.local.entry(id).or_default().editors.entry(key).or_insert_with(|| {
             let mut v = caretline::View::new(caretline::Viewport { width: 1, height: 1 });
             v.config.status_bar = false;
             v
         });
+        view.read_only = readonly;
         view.fit(doc);
     }
 }
@@ -1580,7 +1633,7 @@ mod tests {
         // The editor back, with a different seed: the note wins over the seed.
         let mut again = note();
         if let Some(c) = again.root.children_mut() {
-            c[0].kind = Kind::Editor { text: "a new seed".into(), doc: None, placeholder: None, syntax: None };
+            c[0].kind = Kind::Editor { text: "a new seed".into(), doc: None, placeholder: None, syntax: None, readonly: false };
         }
         update(&mut st, Msg::Push { ui: again });
         assert_eq!(text_of(&st, "note"), "hi!");

@@ -368,9 +368,14 @@ pub enum Kind {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         placeholder: Option<String>,
         /// `markdown` styles headings, list markers, quotes and inline code (theme parts
-        /// `md.heading`, `md.bullet`, `md.quote`, `md.code`). The text stays plain.
+        /// `md.heading`, `md.bullet`, `md.quote`, `md.code`), and task items (`- [ ]`, `- [x]`:
+        /// `md.task`, `md.done`), which Ctrl-T or a click on the box ticks. The text stays plain.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         syntax: Option<String>,
+        /// Shows the text without changing it: the carets move, select and copy, the wheel and
+        /// the keys scroll. A long text or a log to read.
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        readonly: bool,
     },
     /// A one-line field (caretline, single-line): an editor whose text never holds a line
     /// break. Enter runs the node's `keys.enter`, so a form submits with a store action.
@@ -565,6 +570,36 @@ pub struct Field<'a> {
     pub markdown: bool,
     /// Numbers only (`accept: "number"`).
     pub number: bool,
+    /// Read only.
+    pub readonly: bool,
+}
+
+/// Where a Markdown task item's box is in a line: the column of the char inside `[ ]`, and whether
+/// it's ticked. `- [ ] buy milk` gives `(3, false)`; any list marker (`-`, `*`, `+`, `1.`) works.
+pub fn task_box(line: &str) -> Option<(usize, bool)> {
+    let chars: Vec<char> = line.chars().collect();
+    let mut i = chars.iter().take_while(|c| **c == ' ' || **c == '\t').count();
+    match chars.get(i)? {
+        '-' | '*' | '+' => i += 1,
+        c if c.is_ascii_digit() => {
+            while chars.get(i).is_some_and(char::is_ascii_digit) {
+                i += 1;
+            }
+            if chars.get(i) != Some(&'.') {
+                return None;
+            }
+            i += 1;
+        }
+        _ => return None,
+    }
+    if chars.get(i) != Some(&' ') || chars.get(i + 1) != Some(&'[') || chars.get(i + 3) != Some(&']') {
+        return None;
+    }
+    match chars.get(i + 2)? {
+        ' ' => Some((i + 2, false)),
+        'x' | 'X' => Some((i + 2, true)),
+        _ => None,
+    }
 }
 
 /// Text that is a number, or the start of one ("", "-", "12.").
@@ -701,13 +736,14 @@ impl Node {
     /// An editor or an input: the text component's settings.
     pub fn field(&self) -> Option<Field<'_>> {
         match &self.kind {
-            Kind::Editor { text, doc, placeholder, syntax } => Some(Field {
+            Kind::Editor { text, doc, placeholder, syntax, readonly } => Some(Field {
                 seed: text,
                 doc: doc.as_deref(),
                 placeholder: placeholder.as_deref(),
                 line: false,
                 markdown: syntax.as_deref() == Some("markdown"),
                 number: false,
+                readonly: *readonly,
             }),
             Kind::Input { text, placeholder, accept } => Some(Field {
                 seed: text,
@@ -716,6 +752,7 @@ impl Node {
                 line: true,
                 markdown: false,
                 number: accept.as_deref() == Some("number"),
+                readonly: false,
             }),
             _ => None,
         }

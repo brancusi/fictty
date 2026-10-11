@@ -380,6 +380,8 @@ struct Markdown {
     bullet: Style,
     quote: Style,
     code: Style,
+    task: Style,
+    done: Style,
 }
 
 /// A text cell's Markdown style: its line's kind (a heading, a quote), the list marker at the
@@ -392,6 +394,15 @@ fn md_style(md: &Markdown, line: &str, col: usize, base: Style) -> Style {
     }
     if t.starts_with("> ") || t == ">" {
         return md.quote;
+    }
+    // A task: its box, and the rest of a ticked one done.
+    if let Some((b, ticked)) = crate::model::task_box(line) {
+        if col + 1 >= b && col <= b + 1 {
+            return md.task;
+        }
+        if ticked && col > b + 1 {
+            return md.done;
+        }
     }
     let marker = if t.starts_with("- ") || t.starts_with("* ") || t.starts_with("+ ") {
         Some(1)
@@ -707,6 +718,8 @@ fn node(cx: &mut Cx, n: &Node, f: &mut Frame, area: Rect) {
                     bullet: cx.look("md.bullet", style.fg(cx.th.accent)),
                     quote: cx.look("md.quote", style.fg(cx.th.dim).add_modifier(Modifier::ITALIC)),
                     code: cx.look("md.code", style.fg(cx.th.pos)),
+                    task: cx.look("md.task", style.fg(cx.th.accent).add_modifier(Modifier::BOLD)),
+                    done: cx.look("md.done", style.fg(cx.th.dim).add_modifier(Modifier::CROSSED_OUT)),
                 }),
             };
             // An input is one row, in the middle of what it's given.

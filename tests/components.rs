@@ -190,3 +190,37 @@ fn gaps_space_out_a_row() {
     let mut s = screen(ui, 20, 2);
     assert!(s.screen().starts_with("A   B"));
 }
+
+fn text(s: &mut fictty::Headless, key: &str) -> String {
+    s.state().store[key].read()["text"].as_str().unwrap().to_string()
+}
+
+#[test]
+fn an_editor_ticks_markdown_tasks() {
+    let ui = json!({"root": {"type": "editor", "id": "page", "syntax": "markdown",
+                              "text": "# Today\n- [ ] water the plants\n- [x] call the bank\nplain"}});
+    let mut s = screen(ui, 40, 6);
+    // The caret starts at the top; down a line and tick it.
+    s.keys(&["down", "c-t"]);
+    assert_eq!(text(&mut s, "page"), "# Today\n- [x] water the plants\n- [x] call the bank\nplain");
+    s.keys(&["c-t"]);
+    assert!(text(&mut s, "page").contains("- [ ] water"));
+    // A click on a box ticks it (row 2, the box at column 3).
+    s.msg(Msg::Point { id: "page".into(), col: 3, row: 2 });
+    assert!(text(&mut s, "page").contains("- [ ] call the bank"));
+    // Not a task: Ctrl-T does what the editor does with it, and the text keeps its tasks.
+    s.keys(&["down", "c-t"]);
+    assert!(text(&mut s, "page").ends_with("plain"));
+}
+
+#[test]
+fn a_readonly_editor_scrolls_but_never_changes() {
+    let long: Vec<String> = (1..=40).map(|i| format!("line {i}")).collect();
+    let ui = json!({"root": {"type": "editor", "id": "log", "readonly": true, "text": long.join("\n")}});
+    let mut s = screen(ui, 30, 6);
+    s.keys(&["a", "b", "bs", "enter"]);
+    assert_eq!(text(&mut s, "log"), long.join("\n"));
+    s.keys(&["pgdn", "pgdn"]);
+    let frame = s.screen();
+    assert!(!frame.contains("line 1\n"), "{frame}");
+}
