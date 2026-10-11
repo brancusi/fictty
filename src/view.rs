@@ -1720,8 +1720,13 @@ mod tests {
             bullet: Style::default().fg(Color::Blue),
             quote: Style::default().fg(Color::Gray),
             code: Style::default().fg(Color::Green),
+            task: Style::default().fg(Color::Yellow),
+            done: Style::default().fg(Color::DarkGray),
         };
         let base = Style::default();
+        assert_eq!(md_style(&md, "- [x] shipped", 3, base), md.task, "the box");
+        assert_eq!(md_style(&md, "- [x] shipped", 7, base), md.done, "a ticked task's text");
+        assert_eq!(md_style(&md, "- [ ] to do", 7, base), base);
         assert_eq!(md_style(&md, "## Done", 4, base), md.heading);
         assert_eq!(md_style(&md, "  - item", 2, base), md.bullet, "the marker");
         assert_eq!(md_style(&md, "  - item", 4, base), base, "not the item");
