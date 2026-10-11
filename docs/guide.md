@@ -75,6 +75,12 @@ fictty theme paper                                        # choose a loaded them
   its folds by key, and gives templates `{$depth}`, `{$kids}` and `{$open}`; its `leaf` is the
   glyph for rows with nothing under them. A shown row carries `$ptr`, where it sits in the bound
   entry, so store actions reach it through a filter or deep in a tree.
+- **Repeating**: `{"type": "each", "bind": "open", "template": {…}}` draws the template once per
+  item of the bound array, top to bottom (`"row": true` side by side). In the template,
+  `{$item}` and `{$item.path}` are filled from the item (`"id": "panel-{$item.id}"`,
+  `"doc": "page/{$item.ref}"`, `"size": "{$item.h}"`); the template's own placeholders are left
+  for it. The expanded tree is what's drawn and focused (`tree` in `get --state`); a push or a
+  patch changes the template.
 - **Overlays**: a `stack` draws its children over each other, the last on top; one with
   `float` (`width`, `height`, `at` an edge or corner, `margin`) sits where it says, and a `modal`
   one dims what's behind it, swallows clicks there and keeps the focus; both cover what's under

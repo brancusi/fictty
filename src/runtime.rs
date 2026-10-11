@@ -1321,7 +1321,7 @@ fn resize_editors(d: &mut Driver, st: &mut State, sizes: Vec<(String, u16, u16)>
         // An editor's size, or the rows a list showed (for the wheel).
         let differs = match own {
             Some(o) => o != (width.max(1), height.max(1)),
-            None => st.local.get(&id).map(|l| l.rows) != Some(height) && st.ui.root.find(&id).is_some_and(|n| n.field().is_none()),
+            None => st.local.get(&id).map(|l| l.rows) != Some(height) && st.tree().find(&id).is_some_and(|n| n.field().is_none()),
         };
         if differs {
             d.apply(st, Msg::Size { id, width, height });

@@ -656,3 +656,27 @@ fn a_row_can_be_selected_by_key_before_it_arrives() {
     assert_eq!(s.state().local["l"].selected, 3);
     assert!(s.state().local["l"].want.is_none());
 }
+
+#[test]
+fn each_repeats_a_template_per_item() {
+    let ui = json!({
+        "root": {"type": "each", "id": "panels", "bind": "open", "template": {
+            "type": "editor", "id": "ed-{$item.id}", "title": "{$item.title}", "doc": "page/{$item.id}",
+            "text": "{$item.title} notes", "size": "{$item.h}"}},
+        "store": {"open": [{"id": "a", "title": "Alpha", "h": 4}, {"id": "b", "title": "Beta", "h": 4}]}
+    });
+    let mut s = screen(ui, 30, 12);
+    let frame = s.screen();
+    assert!(frame.contains("Alpha ") && frame.contains("Beta "), "{frame}");
+    assert!(frame.contains("Alpha notes") && frame.contains("Beta notes"), "{frame}");
+    assert_eq!(s.state().focus.as_deref(), Some("ed-a"));
+    s.keys(&["tab", "x"]);
+    assert_eq!(text(&mut s, "page/b"), "xBeta notes", "the second instance has the focus");
+    // The template's own placeholders are left for it: ui keeps the template as pushed.
+    assert_eq!(s.state().ui.root.kind_name(), "each");
+    // A new item, a new instance.
+    let open = json!([{"id": "a", "title": "Alpha", "h": 3}, {"id": "b", "title": "Beta", "h": 3}, {"id": "c", "title": "Gamma", "h": 3}]);
+    s.msg(Msg::Write { key: "open".into(), write: serde_json::from_value(json!({"write": "put", "value": open})).unwrap(), if_rev: None, by: "agent".into(), for_ms: None });
+    assert!(s.screen().contains("Gamma"), "{}", s.screen());
+    assert_eq!(s.state().focus.as_deref(), Some("ed-b"), "focus stays on its instance");
+}

@@ -303,7 +303,7 @@ pub fn draw(st: &State, f: &mut Frame) -> Out {
     f.buffer_mut().set_style(all, base);
     let bar = st.ui.status_bar.unwrap_or(true);
     let [body, status] = Layout::vertical([Constraint::Fill(1), Constraint::Length(bar as u16)]).areas(f.area());
-    node(&mut cx, &st.ui.root, f, body);
+    node(&mut cx, st.tree(), f, body);
     let shade = layers(&cx, f.buffer_mut(), body);
     cx.pics.extend(shade);
     if !cx.toasts_placed {
@@ -687,6 +687,8 @@ fn node(cx: &mut Cx, n: &Node, f: &mut Frame, area: Rect) {
                 node(cx, c, f, at);
             }
         }
+        // Expanded into a column or a row before drawing (`State::tree`).
+        Kind::Each { .. } => {}
         Kind::Toasts {} => {
             cx.toasts_placed = true;
             // While a toast shows, the node covers its whole area, whatever was drawn there.
@@ -1552,7 +1554,7 @@ fn specs(st: &State) -> Vec<LayerSpec> {
     let mut out: Vec<LayerSpec> = st.ui.layers.iter().filter(|l| l.when.as_deref().is_none_or(|w| crate::state::holds(st, w))).cloned().collect();
     if let Some(h) = &st.hover
         && let Some(row) = h.row.filter(|r| *r < 1000)
-        && let Some(n) = st.ui.root.find(&h.id)
+        && let Some(n) = st.tree().find(&h.id)
         && let Some(tip) = &n.tip
     {
         let rows = items(st, n);

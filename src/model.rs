@@ -262,6 +262,17 @@ pub enum Kind {
     Stack { children: Vec<Node> },
     /// A labelled control: Enter or Space while focused, or a click, runs its `click`.
     Button { label: String },
+    /// The `template` node once for each item of the bound array, top to bottom (side by side
+    /// with `row`), `gap` apart. In the template, `{$item}` and `{$item.path}` are filled from the
+    /// item (ids, binds, `doc`, `size`: `"id": "panel-{$item.id}"`); every other placeholder is
+    /// left for the node itself. An instance's share is its `size`, else an equal one.
+    Each {
+        template: Box<Node>,
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        row: bool,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        gap: Option<u16>,
+    },
     /// Where toasts show, newest first, a line each, instead of the screen's corner (a bar of
     /// the UI's own). Each takes the theme part `toast.<tone>`, else `toast`.
     Toasts {},
@@ -830,6 +841,7 @@ impl Node {
             Kind::Button { .. } => "button",
             Kind::Spinner { .. } => "spinner",
             Kind::Toasts { .. } => "toasts",
+            Kind::Each { .. } => "each",
             Kind::Text { .. } => "text",
             Kind::List { .. } => "list",
             Kind::Tree { .. } => "tree",
@@ -926,6 +938,42 @@ impl Node {
         }
         self.children_mut().is_some_and(|cs| cs.iter_mut().any(|c| c.replace(id, with)))
     }
+}
+
+/// A template node for one item of an `each`: every `{$item}` and `{$item.path}` in its strings
+/// filled from the item, the rest left as they are.
+pub fn instance(template: &Node, item: &Value) -> Node {
+    fn fill_item(s: &str, item: &Value) -> String {
+        let mut out = String::new();
+        let mut rest = s;
+        while let Some(i) = rest.find("{$item") {
+            let Some(j) = rest[i..].find('}') else { break };
+            let inner = &rest[i + 1..i + j];
+            let path = inner.strip_prefix("$item").unwrap_or("");
+            let path = path.strip_prefix('.').unwrap_or(path);
+            if !path.is_empty() && !inner["$item".len()..].starts_with('.') {
+                // `{$items}` or the like: not ours.
+                out.push_str(&rest[..i + j + 1]);
+            } else {
+                out.push_str(&rest[..i]);
+                out.push_str(&scalar(if path.is_empty() { Some(item) } else { lookup(item, path) }));
+            }
+            rest = &rest[i + j + 1..];
+        }
+        out.push_str(rest);
+        out
+    }
+    fn walk(v: &mut Value, item: &Value) {
+        match v {
+            Value::String(s) if s.contains("{$item") => *s = fill_item(s, item),
+            Value::Array(a) => a.iter_mut().for_each(|x| walk(x, item)),
+            Value::Object(m) => m.values_mut().for_each(|x| walk(x, item)),
+            _ => {}
+        }
+    }
+    let mut v = serde_json::to_value(template).unwrap_or_default();
+    walk(&mut v, item);
+    serde_json::from_value(v).unwrap_or_else(|_| template.clone())
 }
 
 /// One run of a filled template: text, its style (a spec like `accent+b`, from `<accent+b>`), the

@@ -95,6 +95,63 @@ pub struct State {
     /// Writes that last a while (`for_ms`): what goes, and when on the logical clock.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub expiring: Vec<Expiry>,
+    /// The UI's tree with every `each` expanded into its instances, when it has one: what the
+    /// view draws and focus, keys and binds look in (`tree()`). Worked out after each message;
+    /// a push or a patch changes `ui`, never this. Shown in `get --state`, never read back.
+    #[serde(default, skip_deserializing, skip_serializing_if = "Option::is_none")]
+    pub tree: Option<Node>,
+}
+
+/// `State::tree`, as a borrow of its fields alone, so the rest of the state can change beside it.
+macro_rules! tree {
+    ($st:expr) => {
+        $st.tree.as_ref().unwrap_or(&$st.ui.root)
+    };
+}
+
+impl State {
+    /// The tree on screen: the UI's, with each `each` expanded.
+    pub fn tree(&self) -> &Node {
+        self.tree.as_ref().unwrap_or(&self.ui.root)
+    }
+}
+
+/// Whether a node or any under it is an `each`.
+fn has_each(n: &Node) -> bool {
+    matches!(n.kind, Kind::Each { .. }) || n.children().iter().any(has_each)
+}
+
+/// `n` with every `each` under it expanded: a column (or row) of its template, once per item of
+/// its bound array.
+fn expand_node(st: &State, n: &Node) -> Node {
+    match &n.kind {
+        Kind::Each { template, row, gap } => {
+            let items = n.bind.as_deref().and_then(|b| value_of(st, b)).and_then(Value::as_array).cloned().unwrap_or_default();
+            let children: Vec<Node> = items.iter().map(|it| expand_node(st, &crate::model::instance(template, it))).collect();
+            let kind = if *row { Kind::Row { children, gap: *gap } } else { Kind::Col { children, gap: *gap } };
+            Node { kind, ..n.clone() }
+        }
+        _ if !has_each(n) => n.clone(),
+        _ => {
+            let mut out = n.clone();
+            if let Some(cs) = out.children_mut() {
+                for c in cs.iter_mut() {
+                    *c = expand_node(st, c);
+                }
+            }
+            out
+        }
+    }
+}
+
+/// Work out `State::tree`. True when it changed.
+fn expand(st: &mut State) -> bool {
+    let tree = has_each(&st.ui.root).then(|| expand_node(st, &st.ui.root));
+    if tree == st.tree {
+        return false;
+    }
+    st.tree = tree;
+    true
 }
 
 /// Part of the store that goes at `at` (ms): the entry `key` when `path` is empty, else the
@@ -347,6 +404,10 @@ pub fn update(st: &mut State, msg: Msg) -> Vec<Effect> {
     let fx = apply(st, msg);
     // A tick that took a lasting write away changed the store like any write.
     let quiet = quiet && st.store_writes == writes;
+    // The `each` nodes' instances follow their data.
+    if !quiet && expand(st) {
+        settle(st);
+    }
     if moves {
         remember(st);
     }
@@ -452,7 +513,7 @@ fn apply(st: &mut State, msg: Msg) -> Vec<Effect> {
             st.ui.data.iter().filter(|(_, s)| s.host.is_some()).map(|(k, _)| Effect::Fetch(k.clone())).collect()
         }
         Msg::Click { id, row, tab } => {
-            let Some(n) = st.ui.root.find(&id) else { return vec![] };
+            let Some(n) = tree!(st).find(&id) else { return vec![] };
             let click = n.click.clone();
             if n.focusable() {
                 st.focus = Some(id.clone());
@@ -476,7 +537,7 @@ fn apply(st: &mut State, msg: Msg) -> Vec<Effect> {
             vec![]
         }
         Msg::Point { id, col, row, extend } => {
-            if !st.ui.root.find(&id).is_some_and(|n| n.field().is_some()) {
+            if !tree!(st).find(&id).is_some_and(|n| n.field().is_some()) {
                 return vec![];
             }
             st.focus = Some(id.clone());
@@ -538,7 +599,7 @@ fn apply(st: &mut State, msg: Msg) -> Vec<Effect> {
                     st.typed_ahead = later;
                     let mut fx = Vec::new();
                     for (_, id, k) in now {
-                        if matches!(k.as_str(), "tab" | "s-tab") && st.ui.root.find(&id).and_then(|n| n.field()).is_some_and(|f| f.indents) {
+                        if matches!(k.as_str(), "tab" | "s-tab") && tree!(st).find(&id).and_then(|n| n.field()).is_some_and(|f| f.indents) {
                             indent(st, &id, k == "tab");
                         } else {
                             let e = type_into(st, &id, &k);
@@ -574,18 +635,18 @@ fn apply(st: &mut State, msg: Msg) -> Vec<Effect> {
             if st.store.contains_key(&key) || failed { vec![Effect::Read(key)] } else { vec![] }
         }
         Msg::Paste { text } => {
-            let Some(id) = st.focus.clone().filter(|f| st.ui.root.find(f).is_some_and(|n| n.field().is_some())) else { return vec![] };
+            let Some(id) = st.focus.clone().filter(|f| tree!(st).find(f).is_some_and(|n| n.field().is_some())) else { return vec![] };
             let now_ms = st.now_ms;
             on_doc(st, &id, caretline::Msg::Tick { now_ms }, "person");
             let fx = on_doc(st, &id, caretline::Msg::Paste { text: Some(text) }, "person");
             editor_effects(st, fx)
         }
-        Msg::Scroll { id, by } if st.ui.root.find(&id).is_some_and(|n| n.field().is_some()) => {
+        Msg::Scroll { id, by } if tree!(st).find(&id).is_some_and(|n| n.field().is_some()) => {
             on_doc(st, &id, caretline::Msg::Scroll { rows: by as i32 * 3 }, "person");
             vec![]
         }
         Msg::Scroll { id, by } => {
-            let Some(n) = st.ui.root.find(&id).filter(|n| n.focusable()) else { return vec![] };
+            let Some(n) = tree!(st).find(&id).filter(|n| n.focusable()) else { return vec![] };
             let len = items(st, n).len();
             let rows = st.local.get(&id).map(|l| l.rows).unwrap_or(0) as usize;
             st.focus = Some(id.clone());
@@ -615,7 +676,7 @@ fn apply(st: &mut State, msg: Msg) -> Vec<Effect> {
             vec![]
         }
         Msg::Set { id, selected, tab, key } => {
-            if st.ui.root.find(&id).is_none() {
+            if tree!(st).find(&id).is_none() {
                 st.status = Some(format!("set: no node with id {id:?}"));
                 return vec![];
             }
@@ -666,7 +727,7 @@ fn apply(st: &mut State, msg: Msg) -> Vec<Effect> {
             vec![]
         }
         Msg::Size { id, width, height } => {
-            if st.ui.root.find(&id).is_some_and(|n| n.field().is_some()) {
+            if tree!(st).find(&id).is_some_and(|n| n.field().is_some()) {
                 on_doc(st, &id, caretline::Msg::resize(width.max(1), height.max(1)), "person");
             } else {
                 st.local.entry(id).or_default().rows = height;
@@ -702,7 +763,7 @@ fn apply(st: &mut State, msg: Msg) -> Vec<Effect> {
         Msg::Key { key } => {
             if key == "c-t"
                 && let Some(id) = editing(st, &key)
-                && st.ui.root.find(&id).and_then(|n| n.field()).is_some_and(|f| f.markdown && !f.readonly)
+                && tree!(st).find(&id).and_then(|n| n.field()).is_some_and(|f| f.markdown && !f.readonly)
             {
                 tasks_key(st, &id);
                 return vec![];
@@ -713,7 +774,7 @@ fn apply(st: &mut State, msg: Msg) -> Vec<Effect> {
             }
             if let Some(id) = editing(st, &key) {
                 // Text still on its way from the host: the key waits for it.
-                if let Some(k) = st.ui.root.find(&id).and_then(|n| doc_key(st, n)).filter(|k| st.loading.get(k) == Some(&None)) {
+                if let Some(k) = tree!(st).find(&id).and_then(|n| doc_key(st, n)).filter(|k| st.loading.get(k) == Some(&None)) {
                     st.typed_ahead.push((k, id, key));
                     return vec![];
                 }
@@ -940,7 +1001,7 @@ fn log(st: &mut State, op: String, what: String, at: String) {
 
 /// Why the focused number field's own `key` can't run yet: its text isn't a number.
 fn not_a_number(st: &State, key: &str) -> Option<String> {
-    let n = st.ui.root.find(st.focus.as_ref()?)?;
+    let n = tree!(st).find(st.focus.as_ref()?)?;
     if !n.field()?.number || !n.keys.contains_key(key) {
         return None;
     }
@@ -957,7 +1018,7 @@ fn not_a_number(st: &State, key: &str) -> Option<String> {
 /// and the node's own `keys`. Ctrl-C copies there; quitting is from outside.
 fn editing(st: &State, key: &str) -> Option<String> {
     let id = st.focus.as_ref()?;
-    let n = st.ui.root.find(id)?;
+    let n = tree!(st).find(id)?;
     // Esc leaves an editor, unless there's a selection to drop first.
     let leaves = match key {
         "tab" | "s-tab" => !n.field().is_some_and(|f| f.indents),
@@ -1018,7 +1079,7 @@ fn indent(st: &mut State, id: &str, inward: bool) {
             d > 0 && t[d..].starts_with(". ")
         }
     };
-    let lines_only = st.ui.root.find(id).and_then(|n| n.field()).is_some_and(|f| f.indent_lines);
+    let lines_only = tree!(st).find(id).and_then(|n| n.field()).is_some_and(|f| f.indent_lines);
     let changes: Vec<(usize, usize, String)> = if inward && lo == hi && !lines_only && !listy(&line(first)) {
         vec![(lo, lo, "  ".into())]
     } else if inward {
@@ -1074,7 +1135,7 @@ fn edit_lines(st: &mut State, id: &str, changes: Vec<(usize, usize, String)>) {
 /// empty item outdents it, or at the left edge ends the list. False when it isn't a list item
 /// (or there's a selection), for Enter to do what it always does.
 fn continue_list(st: &mut State, id: &str) -> bool {
-    let Some(f) = st.ui.root.find(id).and_then(|n| n.field()) else { return false };
+    let Some(f) = tree!(st).find(id).and_then(|n| n.field()) else { return false };
     if !f.markdown || f.readonly {
         return false;
     }
@@ -1136,7 +1197,7 @@ fn caret_place(st: &State, id: &str) -> Option<(usize, usize)> {
 /// Line `line` of a Markdown editor's text, when it's a task item: its box's column and whether
 /// it's ticked. Never for a read-only editor.
 fn task_line(st: &State, id: &str, line: usize) -> Option<(usize, bool)> {
-    let f = st.ui.root.find(id)?.field()?;
+    let f = tree!(st).find(id)?.field()?;
     if !f.markdown || f.readonly {
         return None;
     }
@@ -1153,7 +1214,7 @@ fn task_line(st: &State, id: &str, line: usize) -> Option<(usize, bool)> {
 /// or with `tasks: "cycle"` made plain text again. One edit by the person, carets kept on their
 /// text.
 fn tasks_key(st: &mut State, id: &str) {
-    let cycle = st.ui.root.find(id).and_then(|n| n.field()).is_some_and(|f| f.task_cycle);
+    let cycle = tree!(st).find(id).and_then(|n| n.field()).is_some_and(|f| f.task_cycle);
     let Some((key, view)) = field_view(st, id) else { return };
     let r = view.selection.primary();
     let Some(Entry { body: Body::Text { doc }, .. }) = st.store.get(&key) else { return };
@@ -1217,7 +1278,7 @@ pub fn doc_key(st: &State, n: &Node) -> Option<String> {
 
 /// The view editor `id` has of the entry it shows now.
 pub fn field_view<'a>(st: &'a State, id: &str) -> Option<(String, &'a caretline::View)> {
-    let key = doc_key(st, st.ui.root.find(id)?)?;
+    let key = doc_key(st, tree!(st).find(id)?)?;
     let v = st.local.get(id)?.editors.get(&key)?;
     Some((key, v))
 }
@@ -1226,7 +1287,7 @@ pub fn field_view<'a>(st: &'a State, id: &str) -> Option<(String, &'a caretline:
 /// `put_views`).
 fn take_views(st: &mut State, key: &str) -> Vec<(String, caretline::View)> {
     let mut all = Vec::new();
-    st.ui.root.walk(&mut all);
+    tree!(st).walk(&mut all);
     let ids: Vec<String> =
         all.iter().filter(|n| n.field().is_some() && doc_key(st, n).as_deref() == Some(key)).filter_map(|n| n.id.clone()).collect();
     ids.into_iter().filter_map(|id| Some((id.clone(), st.local.get_mut(&id)?.editors.remove(key)?))).collect()
@@ -1241,7 +1302,7 @@ fn put_views(st: &mut State, key: &str, views: Vec<(String, caretline::View)>) {
 /// A caretline message through editor `id`'s view of its text. Every other editor on the same
 /// text follows the change. A change of text is a store write, by `by`.
 fn on_doc(st: &mut State, id: &str, msg: caretline::Msg, by: &str) -> Vec<caretline::Effect> {
-    let Some(node) = st.ui.root.find(id) else { return vec![] };
+    let Some(node) = tree!(st).find(id) else { return vec![] };
     let number = node.field().is_some_and(|f| f.number);
     let Some(key) = doc_key(st, node) else { return vec![] };
     let mut fx = Vec::new();
@@ -1402,7 +1463,7 @@ fn editor_key(name: &str) -> Option<caretline::Key> {
 /// The keys that would continue the chord `seq` (`p` → `h`, `m`), from the focused node's keys and
 /// the UI's. Empty when `seq` starts none.
 fn chord_next(st: &State, seq: &str) -> Vec<String> {
-    let focused = st.focus.as_deref().and_then(|id| st.ui.root.find(id));
+    let focused = st.focus.as_deref().and_then(|id| tree!(st).find(id));
     let prefix = format!("{seq} ");
     let mut next: Vec<String> = focused
         .map(|n| n.keys.keys())
@@ -1418,13 +1479,13 @@ fn chord_next(st: &State, seq: &str) -> Vec<String> {
 
 /// The action a whole chord is bound to: the focused node's, then the UI's.
 fn chord_action(st: &State, seq: &str) -> Option<Action> {
-    let focused = st.focus.as_deref().and_then(|id| st.ui.root.find(id));
+    let focused = st.focus.as_deref().and_then(|id| tree!(st).find(id));
     focused.and_then(|n| n.keys.get(seq)).or_else(|| st.ui.keys.get(seq)).cloned()
 }
 
 /// The action for a key: the focused node's own, then the UI's, then the defaults.
 fn resolve(st: &State, key: &str) -> Option<Action> {
-    let focused = st.focus.as_deref().and_then(|id| st.ui.root.find(id));
+    let focused = st.focus.as_deref().and_then(|id| tree!(st).find(id));
     if let Some(a) = focused.and_then(|n| n.keys.get(key)) {
         return Some(a.clone());
     }
@@ -1487,7 +1548,7 @@ fn act(st: &mut State, a: Action) -> Vec<Effect> {
         }
         Action::Select { select, of } => {
             let key = crate::model::fill(&select, &action_context(st));
-            if st.ui.root.find(&of).is_none() {
+            if tree!(st).find(&of).is_none() {
                 st.status = Some(format!("select: no node {of}"));
                 return vec![];
             }
@@ -1496,7 +1557,7 @@ fn act(st: &mut State, a: Action) -> Vec<Effect> {
             vec![]
         }
         Action::ShowTab { tab, of } => {
-            match st.ui.root.find(&of).map(|n| &n.kind) {
+            match tree!(st).find(&of).map(|n| &n.kind) {
                 Some(Kind::Tabs { children, .. }) if tab < children.len() => {
                     st.local.entry(of.clone()).or_default().tab = tab;
                     settle(st);
@@ -1537,7 +1598,7 @@ fn act(st: &mut State, a: Action) -> Vec<Effect> {
                 // The person put it there: every editor showing it carries on after it.
                 Ok(()) if matches!(st.store.get(&put).map(|e| &e.body), Some(Body::Text { .. })) => {
                     let mut all = Vec::new();
-                    st.ui.root.walk(&mut all);
+                    tree!(st).walk(&mut all);
                     let ids: Vec<String> = all.iter().filter(|n| n.field().is_some() && doc_key(st, n).as_deref() == Some(put.as_str())).filter_map(|n| n.id.clone()).collect();
                     for id in ids {
                         use caretline::{By, Dir};
@@ -1674,7 +1735,7 @@ enum Fold {
 /// under it) goes to its parent; opening one that's open goes to its first child.
 fn fold(st: &mut State, how: Fold) -> Vec<Effect> {
     let Some(id) = st.focus.clone() else { return vec![] };
-    if !st.ui.root.find(&id).is_some_and(|n| matches!(n.kind, Kind::Tree { .. })) {
+    if !tree!(st).find(&id).is_some_and(|n| matches!(n.kind, Kind::Tree { .. })) {
         return vec![];
     }
     let rows = st.rows.get(&id).map(Vec::as_slice).unwrap_or(&[]);
@@ -1707,7 +1768,7 @@ fn fold(st: &mut State, how: Fold) -> Vec<Effect> {
 /// and a JSON Pointer to the row in that entry's value. None unless the node shows a store entry.
 fn row_target(st: &State) -> Option<(String, String)> {
     let id = st.focus.as_ref()?;
-    let n = st.ui.root.find(id)?;
+    let n = tree!(st).find(id)?;
     let bind = n.bind.as_deref().filter(|b| !b.starts_with('@'))?;
     let (key, path) = split_bind(bind);
     if !matches!(st.store.get(key)?.body, Body::Value { .. }) {
@@ -1815,7 +1876,7 @@ fn flatten(rows: &[Value], at: &str, depth: usize, t: &TreeCx, out: &mut Vec<Val
 fn derive_rows(st: &mut State, only: Option<&str>) -> bool {
     let mut old = std::mem::take(&mut st.rows);
     let mut all = Vec::new();
-    st.ui.root.walk(&mut all);
+    tree!(st).walk(&mut all);
     let mut out = BTreeMap::new();
     let mut changed = false;
     let reads = |n: &Node, name: &str| [n.bind.as_deref(), n.filter()].into_iter().flatten().any(|b| split_bind(b).0 == name);
@@ -1864,7 +1925,7 @@ fn derive_rows(st: &mut State, only: Option<&str>) -> bool {
 /// Move the focus into the shown child of tabs node `id` (its first node that takes focus), so
 /// keys go to what the person just chose to see.
 fn into_tab(st: &mut State, id: &str) {
-    let Some(n) = st.ui.root.find(id) else { return };
+    let Some(n) = tree!(st).find(id) else { return };
     let Kind::Tabs { children, .. } = &n.kind else { return };
     let Some(child) = children.get(tab_of(st, n).min(children.len().saturating_sub(1))) else { return };
     let mut inside = Vec::new();
@@ -1878,7 +1939,7 @@ fn into_tab(st: &mut State, id: &str) {
 /// Show the next or previous child of the focused tabs node.
 fn switch(st: &mut State, dir: isize) -> Vec<Effect> {
     let Some(id) = st.focus.clone() else { return vec![] };
-    let n = match st.ui.root.find(&id).map(|n| &n.kind) {
+    let n = match tree!(st).find(&id).map(|n| &n.kind) {
         Some(Kind::Tabs { children, .. }) => children.len() as isize,
         _ => return vec![],
     };
@@ -1893,7 +1954,7 @@ fn switch(st: &mut State, dir: isize) -> Vec<Effect> {
 fn leave(st: &mut State) -> Vec<Effect> {
     let ids = focus_order(st);
     let at = st.focus.as_ref().and_then(|f| ids.iter().position(|i| i == f)).unwrap_or(0);
-    let next = (1..ids.len()).map(|k| &ids[(at + k) % ids.len()]).find(|id| st.ui.root.find(id).is_some_and(|n| n.field().is_none()));
+    let next = (1..ids.len()).map(|k| &ids[(at + k) % ids.len()]).find(|id| tree!(st).find(id).is_some_and(|n| n.field().is_none()));
     if let Some(id) = next.cloned() {
         st.focus = Some(id);
     }
@@ -1913,7 +1974,7 @@ fn cycle(st: &mut State, dir: isize) -> Vec<Effect> {
 
 fn step(st: &mut State, f: impl Fn(usize, usize) -> usize) -> Vec<Effect> {
     let Some(id) = st.focus.clone() else { return vec![] };
-    let Some(n) = st.ui.root.find(&id) else { return vec![] };
+    let Some(n) = tree!(st).find(&id) else { return vec![] };
     let rows = items(st, n);
     let at = st.local.get(&id).map(|l| l.selected).unwrap_or(0);
     let mut to = f(at, rows.len());
@@ -1949,7 +2010,7 @@ fn refresh(st: &State) -> Vec<Effect> {
 fn settle(st: &mut State) {
     let order = focus_order(st);
     let mut all = Vec::new();
-    st.ui.root.walk(&mut all);
+    tree!(st).walk(&mut all);
     let ids: Vec<String> = all.iter().filter_map(|n| n.id.clone()).collect();
     st.local.retain(|k, _| ids.contains(k));
     // A tabs node's starting tab, until something picks another.
@@ -1963,7 +2024,7 @@ fn settle(st: &mut State) {
     // When the focus has to move (its node went or hid), the first node that takes it, past a
     // tab bar to the content when there is any.
     if !st.focus.as_ref().is_some_and(|f| order.contains(f)) {
-        let tabs = |id: &String| st.ui.root.find(id).is_some_and(|n| matches!(n.kind, Kind::Tabs { .. }));
+        let tabs = |id: &String| tree!(st).find(id).is_some_and(|n| matches!(n.kind, Kind::Tabs { .. }));
         st.focus = order.iter().find(|id| !tabs(id)).or(order.first()).cloned();
     }
     // A row asked for by key is selected once it's there.
@@ -2039,7 +2100,7 @@ fn key_of(n: &Node, r: &Value) -> Option<String> {
 /// Note each list's and tree's selected row's key, for `settle` to follow.
 fn remember(st: &mut State) {
     let mut all = Vec::new();
-    st.ui.root.walk(&mut all);
+    tree!(st).walk(&mut all);
     let keys: Vec<(String, Option<String>)> = all
         .iter()
         .filter(|n| n.focusable() && n.rows().is_some())
@@ -2135,7 +2196,7 @@ fn wanted(st: &mut State) -> Vec<Effect> {
         return vec![];
     }
     let mut all = Vec::new();
-    st.ui.root.walk_shown(&|n| tab_of(st, n), &|n| shown(st, n), &mut all);
+    tree!(st).walk_shown(&|n| tab_of(st, n), &|n| shown(st, n), &mut all);
     let mut keys: Vec<String> = Vec::new();
     for n in all {
         let key = match (n.field(), n.bind.as_deref()) {
@@ -2155,7 +2216,7 @@ fn wanted(st: &mut State) -> Vec<Effect> {
 /// string an agent put there before. Its view of each entry is its own, by id.
 fn fields(st: &mut State) {
     let mut all = Vec::new();
-    st.ui.root.walk(&mut all);
+    tree!(st).walk(&mut all);
     let found: Vec<(String, String, String, bool)> = all
         .iter()
         .filter_map(|n| {
@@ -2196,7 +2257,7 @@ fn fields(st: &mut State) {
             Some(Body::Text { .. }) => {}
         }
         let Some(Entry { body: Body::Text { doc }, .. }) = st.store.get(&key) else { continue };
-        let (readonly, at_end) = st.ui.root.find(&id).and_then(|n| n.field()).map_or((false, false), |f| (f.readonly, f.caret_end));
+        let (readonly, at_end) = tree!(st).find(&id).and_then(|n| n.field()).map_or((false, false), |f| (f.readonly, f.caret_end));
         let len = doc.text.len_chars();
         let view = st.local.entry(id).or_default().editors.entry(key).or_insert_with(|| {
             let mut v = caretline::View::new(caretline::Viewport { width: 1, height: 1 });
@@ -2238,7 +2299,7 @@ fn store_summary(st: &State) -> Value {
 /// What's wrong with the UI against the store, the sources and the theme (see `problems`).
 pub fn problems(st: &State) -> Vec<String> {
     let mut all = Vec::new();
-    st.ui.root.walk(&mut all);
+    tree!(st).walk(&mut all);
     let active = st.theme.as_ref().and_then(|t| st.themes.get(t));
     let mut out = Vec::new();
     let kind = |v: &Value| match v {
@@ -2287,7 +2348,7 @@ pub fn problems(st: &State) -> Vec<String> {
 /// node shows, only the ones inside it (the last one, if several show).
 pub fn focus_order(st: &State) -> Vec<String> {
     let mut all = Vec::new();
-    st.ui.root.walk_shown(&|n| tab_of(st, n), &|n| shown(st, n), &mut all);
+    tree!(st).walk_shown(&|n| tab_of(st, n), &|n| shown(st, n), &mut all);
     if let Some(m) = all.iter().rev().find(|n| n.modal) {
         let mut inside = Vec::new();
         m.walk_shown(&|n| tab_of(st, n), &|n| shown(st, n), &mut inside);
@@ -2365,7 +2426,7 @@ pub fn bound<'a>(st: &'a State, n: &Node) -> Option<&'a Value> {
 pub fn value_of<'a>(st: &'a State, bind: &str) -> Option<&'a Value> {
     let (source, path) = split_bind(bind);
     if let Some(id) = source.strip_prefix('@') {
-        let n = st.ui.root.find(id)?;
+        let n = tree!(st).find(id)?;
         return lookup(items(st, n).get(selected(st, id))?, path);
     }
     if let Some(e) = st.store.get(source) {
@@ -2417,7 +2478,7 @@ pub fn selected(st: &State, id: &str) -> usize {
 /// The focused list's selected row, for `run` templates.
 pub fn selected_item(st: &State) -> Option<Value> {
     let id = st.focus.as_ref()?;
-    let n = st.ui.root.find(id)?;
+    let n = tree!(st).find(id)?;
     items(st, n).get(selected(st, id)).cloned()
 }
 
@@ -2801,7 +2862,7 @@ mod tests {
                            "data": {"feed": {"value": null}}}));
         update(&mut st, Msg::Push { ui });
         update(&mut st, Msg::Data { name: "feed".into(), result: Ok(json!({"rows": {"all": [1, 2, 3]}})) });
-        assert_eq!(items(&st, st.ui.root.find("l").unwrap()).len(), 3);
+        assert_eq!(items(&st, tree!(st).find("l").unwrap()).len(), 3);
     }
 
     #[test]
@@ -2830,7 +2891,7 @@ mod tests {
             {"type": "text", "id": "d", "bind": "@l", "text": "{n}"}
         ]}}));
         update(&mut st, Msg::Push { ui });
-        let detail = |st: &State| crate::model::fill("{n}", bound(st, st.ui.root.find("d").unwrap()).unwrap());
+        let detail = |st: &State| crate::model::fill("{n}", bound(st, tree!(st).find("d").unwrap()).unwrap());
         assert_eq!(detail(&st), "a");
         update(&mut st, Msg::Key { key: "j".into() });
         assert_eq!(detail(&st), "b");
@@ -2842,7 +2903,7 @@ mod tests {
         update(&mut st, Msg::Push { ui: two_lists() });
         let node: Node = serde_json::from_value(json!({"type": "list", "id": "a", "items": ["only"]})).unwrap();
         update(&mut st, Msg::Patch { id: "a".into(), node });
-        assert_eq!(items(&st, st.ui.root.find("a").unwrap()), &[json!("only")]);
+        assert_eq!(items(&st, tree!(st).find("a").unwrap()), &[json!("only")]);
         update(&mut st, Msg::Patch { id: "zz".into(), node: Node::default() });
         assert!(st.status.unwrap().contains("zz"));
     }
