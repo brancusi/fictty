@@ -15,8 +15,8 @@
            {"title": "by", "value": "{by|person=<accent>person</>;seed=<d>seed</>;*=<amber>$</>}", "size": 8},
            {"title": "holds", "value": "<d>{holds}</>", "size": 17}
          ]},
-        {"type": "text", "title": "Try it from another terminal", "variant": "quiet", "size": 11, "pad": [2, 1],
-         "text": "<accent>fictty read note/standup</>\n<accent>echo '\"hi\"' | fictty put draft -</>\n<accent>fictty theme paper</>\n<accent>fictty get --state</>\n\nWrites take <b>--if-rev N</>: if anyone wrote since\nrevision N, the write is refused, with what's there."}
+        {"type": "text", "title": "Try it from another terminal", "variant": "quiet", "size": 14, "pad": [2, 1],
+         "text": "<d>Started from the one-liner? Paste this first:</>\n<accent>export PATH=\"$HOME/.fictty/bin:$PATH\"</>\n\n<accent>fictty read note/standup</>\n<accent>echo '\"hi\"' | fictty put draft -</>\n<accent>fictty theme paper</>\n<accent>fictty get --state</>\n\nWrites take <b>--if-rev N</>: if anyone wrote since\nrevision N, the write is refused, with what's there."}
       ]}
     ]},
     {"type": "text", "size": 1, "pad": 1,

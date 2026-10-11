@@ -35,6 +35,10 @@ One line fetches fictty into `~/.fictty`, builds it, and opens the showcase:
 curl -fsSL https://fictty.com/try.sh | sh
 ```
 
+It prints one line to paste into a second terminal (`export PATH="$HOME/.fictty/bin:$PATH"`); then
+`fictty-tour` has an agent drive the showcase, and `fictty read`, `put`, `theme` and the rest talk
+to it. `… | sh -s -- <tag or commit>` runs a given version, each in its own folder and store.
+
 From a checkout:
 
 ```sh

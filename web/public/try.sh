@@ -67,11 +67,20 @@ fi
 command -v python3 >/dev/null 2>&1 ||
   say "python3 isn't installed: the ledger's summary and the live market will stay empty."
 
-# The showcase keeps notes and ledger entries here, apart from every other version's.
+# The showcase keeps notes and ledger entries here, apart from every other version's, and
+# listens on a socket of its own, so it never collides with another screen.
 export FICTTY_SHOWCASE_STORE="$src.store.json"
+export FICTTY_SOCKET="${TMPDIR:-/tmp}/fictty-$(printf '%s' "$src" | cksum | cut -d' ' -f1).sock"
+
+# `fictty` and `fictty-tour` for a second terminal: this version, on this screen's socket.
+mkdir -p "$home/bin"
+printf '#!/bin/sh\nFICTTY_SOCKET="${FICTTY_SOCKET:-%s}" exec "%s" "$@"\n' "$FICTTY_SOCKET" "$bin" >"$home/bin/fictty"
+printf '#!/bin/sh\nFICTTY_SOCKET="${FICTTY_SOCKET:-%s}" exec "%s" "$@"\n' "$FICTTY_SOCKET" "$src/examples/showcase/tour.sh" >"$home/bin/fictty-tour"
+chmod +x "$home/bin/fictty" "$home/bin/fictty-tour"
+other="export PATH=\"$home/bin:\$PATH\""
 
 if [ "${FICTTY_NO_RUN:-}" = 1 ]; then
-  say "Ready. Run it with: FICTTY_SHOWCASE_STORE=$FICTTY_SHOWCASE_STORE $src/examples/showcase/play.sh"
+  say "Ready. Run it with: FICTTY_SOCKET=$FICTTY_SOCKET FICTTY_SHOWCASE_STORE=$FICTTY_SHOWCASE_STORE $src/examples/showcase/play.sh"
   exit 0
 fi
 [ -r /dev/tty ] || die "This needs a terminal to run in."
@@ -83,8 +92,9 @@ if size=$(stty size </dev/tty 2>/dev/null); then
   fi
 fi
 say "Starting the showcase: arrows and Enter to open a screen, t for the theme, Esc back, q to quit"
-say "Watch an agent drive it: run $src/examples/showcase/tour.sh in another terminal"
-sleep 2
+say "From a second terminal, paste:  $other"
+say "  then: fictty-tour (an agent drives it), or fictty read note/welcome, fictty theme paper"
+sleep 3
 # Hand the showcase the terminal's own device. Under `curl | sh` our input is the pipe, and the
 # generic /dev/tty won't do: macOS can't wait on it (kqueue), so the screen would hang on its
 # first read. ps names the real one (ttys003, pts/1).
