@@ -3,7 +3,7 @@
 #
 #   curl -fsSL https://fictty.com/try/a-kit-for-apps.sh | sh
 #
-# It runs fictty as it was at commit 93196b0220ce. Don't edit this file by hand: it's the
+# It runs fictty as it was at commit 2f5fd7392412. Don't edit this file by hand: it's the
 # post's demo. Regenerate it with scripts/freeze-demo.sh, with a note, if it must change.
 #
 # Try the fictty showcase in one line:
@@ -26,7 +26,7 @@
 # python3 runs the ledger's and the market's helpers. FICTTY_NO_RUN=1 sets up without running.
 set -eu
 
-ref="${1:-${FICTTY_REF:-93196b0220ce9366a575736fd14cb875257d4b6b}}"
+ref="${1:-${FICTTY_REF:-2f5fd73924123222daa1343495bcade1152652a4}}"
 repo=https://github.com/brancusi/fictty
 home="${FICTTY_HOME:-$HOME/.fictty}"
 
