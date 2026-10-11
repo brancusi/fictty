@@ -799,7 +799,10 @@ fn node(cx: &mut Cx, n: &Node, f: &mut Frame, area: Rect) {
             let per = look.lines.unwrap_or(1).max(1) as usize;
             let fit = (inner.height as usize / per).max(1);
             let sel = n.id.as_ref().map(|id| selected(st, id));
-            let (from, _) = window(sel, fit);
+            let from = crate::state::first_row(n.id.as_ref().and_then(|i| st.local.get(i)), rows.len(), fit);
+            if !id.is_empty() {
+                cx.sizes.push((id.clone(), inner.width, fit as u16));
+            }
             scrollbar(cx, f.buffer_mut(), Rect { height: (fit * per).min(inner.height as usize) as u16, ..inner }, from * per, rows.len() * per);
             let over = (rows.len() > fit) as u16;
             let guide = cx.look("tree.guide", style.fg(cx.th.dim));
@@ -885,7 +888,10 @@ fn node(cx: &mut Cx, n: &Node, f: &mut Frame, area: Rect) {
                 f.render_widget(Paragraph::new(c.title.clone()).style(head).alignment(al), a);
             }
             let sel = n.id.as_ref().map(|id| selected(st, id));
-            let (from, _) = window(sel, visible);
+            let from = crate::state::first_row(n.id.as_ref().and_then(|i| st.local.get(i)), rows.len(), visible);
+            if !id.is_empty() {
+                cx.sizes.push((id.clone(), inner.width, visible as u16));
+            }
             scrollbar(cx, f.buffer_mut(), Rect::new(inner.x, inner.y + 1, inner.width, visible as u16), from, rows.len());
             for (k, r) in rows.iter().enumerate().skip(from).take(visible) {
                 let y = inner.y + 1 + (k - from) as u16;
@@ -1365,12 +1371,6 @@ fn scrollbar(cx: &Cx, buf: &mut Buffer, r: Rect, from: usize, len: usize) {
         let on = y >= at && y < at + size;
         buf.set_string(x, r.y + y as u16, if on { "┃" } else { "│" }, if on { thumb } else { track });
     }
-}
-
-fn window(selected: Option<usize>, height: usize) -> (usize, Option<usize>) {
-    let sel = selected.unwrap_or(0);
-    let from = (sel + 1).saturating_sub(height.max(1));
-    (from, selected.map(|s| s - from))
 }
 
 /// A child's share with its `min` and `max` (cells) applied, along `along` cells of its parent.

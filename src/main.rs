@@ -98,6 +98,14 @@ enum Cmd {
     Screen,
     /// Move, click or scroll the mouse on the running screen: `move|click|up|down X Y`.
     Mouse { kind: String, x: u16, y: u16 },
+    /// Set a terminal up for fictty: `wezterm` installs a module that sends ⌘ keys (⌘Z, ⌘A, ⌘←)
+    /// to fictty screens, which WezTerm doesn't do by itself. Ghostty and kitty need nothing.
+    Setup {
+        terminal: String,
+        /// Print the module instead of installing it.
+        #[arg(long)]
+        print: bool,
+    },
     /// Show a message in the running screen's corner for a while.
     Toast {
         text: String,
@@ -210,6 +218,14 @@ fn main() -> Result<()> {
         Cmd::Screen => {
             let r = runtime::send(&socket, json!({"op": "screen"}))?;
             print!("{}", r["screen"].as_str().unwrap_or_default());
+            return Ok(());
+        }
+        Cmd::Setup { terminal, print } => {
+            match (terminal.as_str(), print) {
+                ("wezterm", true) => print!("{}", runtime::WEZTERM_LUA),
+                ("wezterm", false) => println!("{}", runtime::setup_wezterm()?),
+                (other, _) => anyhow::bail!("nothing to set up for {other:?}: wezterm needs it; Ghostty and kitty send ⌘ keys themselves"),
+            }
             return Ok(());
         }
         Cmd::Toast { text, tone, ms } => runtime::send(&socket, json!({"op": "toast", "text": text, "tone": tone, "ms": ms}))?,

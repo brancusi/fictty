@@ -146,7 +146,12 @@ document with its undo history), each with a revision (`rev`) and who wrote it l
   ⌥Del (⌥D). The screen turns on the kitty keyboard protocol where the terminal has it, so ⌘ keys
   arrive (as `d-`); copy and cut go to the system clipboard; a paste types. The mouse places the
   caret, Shift-click extends, a drag selects, a double click takes a word and a triple the line.
-  `tests/editing.rs` is the contract.
+  `tests/editing.rs` is the contract. WezTerm doesn't pass ⌘ to programs (⌘Z arrives as `z`, and
+  ⌘C copies without the program seeing it): `fictty setup wezterm` installs a small module that
+  sends those keys only to panes running a fictty screen (it says so with a terminal user var),
+  for any app built on fictty. Ghostty and kitty need nothing.
+- **The wheel** scrolls a list, tree or table three rows a notch and leaves the selection where it
+  is; a key that moves the selection out of view brings the view back to it.
 
 ## Themes
 

@@ -156,6 +156,28 @@ pub struct Local {
     /// on that row when rows come and go above it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub key: Option<String>,
+    /// The first row a list, tree or table shows, when the wheel has moved its view away from
+    /// following the selection; none while it follows.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub top: Option<usize>,
+    /// How many rows it showed in the last frame (the view reports it), for the wheel.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub rows: u16,
+}
+
+fn is_zero(n: &u16) -> bool {
+    *n == 0
+}
+
+/// The first row a list of `len` rows shows in `fit` rows: where the wheel left it, else where
+/// the selection is in view (at the bottom when it's further down).
+pub fn first_row(local: Option<&Local>, len: usize, fit: usize) -> usize {
+    let sel = local.map(|l| l.selected).unwrap_or(0);
+    let follow = (sel + 1).saturating_sub(fit.max(1));
+    match local.and_then(|l| l.top) {
+        Some(top) => top.min(len.saturating_sub(fit)),
+        None => follow,
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -517,12 +539,19 @@ fn apply(st: &mut State, msg: Msg) -> Vec<Effect> {
             vec![]
         }
         Msg::Scroll { id, by } => {
-            if st.ui.root.find(&id).is_some_and(Node::focusable) {
-                st.focus = Some(id);
-                step(st, |sel, len| sel.saturating_add_signed(by).min(len.saturating_sub(1)))
-            } else {
-                vec![]
+            let Some(n) = st.ui.root.find(&id).filter(|n| n.focusable()) else { return vec![] };
+            let len = items(st, n).len();
+            let rows = st.local.get(&id).map(|l| l.rows).unwrap_or(0) as usize;
+            st.focus = Some(id.clone());
+            if rows == 0 {
+                // Not drawn yet (or not a list): the wheel moves the selection.
+                return step(st, |sel, len| sel.saturating_add_signed(by).min(len.saturating_sub(1)));
             }
+            // The wheel scrolls the view three rows a notch; the selection stays where it is.
+            let from = first_row(st.local.get(&id), len, rows);
+            let top = from.saturating_add_signed(by * 3).min(len.saturating_sub(rows));
+            st.local.entry(id).or_default().top = Some(top);
+            vec![]
         }
         Msg::Tick { now_ms } => {
             st.now_ms = now_ms;
@@ -545,6 +574,7 @@ fn apply(st: &mut State, msg: Msg) -> Vec<Effect> {
             let local = st.local.entry(id).or_default();
             if let Some(r) = selected {
                 local.selected = r;
+                local.top = None;
             }
             if let Some(t) = tab {
                 local.tab = t;
@@ -579,7 +609,11 @@ fn apply(st: &mut State, msg: Msg) -> Vec<Effect> {
             vec![]
         }
         Msg::Size { id, width, height } => {
-            on_doc(st, &id, caretline::Msg::resize(width.max(1), height.max(1)), "person");
+            if st.ui.root.find(&id).is_some_and(|n| n.field().is_some()) {
+                on_doc(st, &id, caretline::Msg::resize(width.max(1), height.max(1)), "person");
+            } else {
+                st.local.entry(id).or_default().rows = height;
+            }
             vec![]
         }
         Msg::Layers { layers } => {
@@ -1554,7 +1588,15 @@ fn step(st: &mut State, f: impl Fn(usize, usize) -> usize) -> Vec<Effect> {
             }
         }
     }
-    st.local.entry(id).or_default().selected = to;
+    let local = st.local.entry(id).or_default();
+    local.selected = to;
+    // A view the wheel moved stays put while the selection is in it, and follows it again
+    // once it leaves.
+    if let Some(top) = local.top
+        && !(top..top + local.rows as usize).contains(&to)
+    {
+        local.top = None;
+    }
     vec![]
 }
 

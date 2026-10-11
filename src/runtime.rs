@@ -722,6 +722,9 @@ impl App {
             d.apply(&mut st, Msg::Screen { width: size.width, height: size.height });
         }
         let _ = ratatui::crossterm::execute!(std::io::stdout(), EnableMouseCapture, EnableBracketedPaste);
+        // Say a fictty screen runs here (a terminal user var, OSC 1337), so a terminal set up for
+        // it (`fictty setup wezterm`) sends ⌘ keys here and nowhere else. Others ignore it.
+        let _ = write!(std::io::stdout(), "\x1b]1337;SetUserVar=fictty=MQ==\x07");
         // Keys with every modifier told apart (⌘ as `d-`, Ctrl-Home, Shift-Enter), where the
         // terminal speaks the kitty keyboard protocol.
         let enhanced = ratatui::crossterm::terminal::supports_keyboard_enhancement().unwrap_or(false);
@@ -870,6 +873,7 @@ impl App {
             let _ = ratatui::crossterm::execute!(std::io::stdout(), ratatui::crossterm::event::PopKeyboardEnhancementFlags);
         }
         let _ = ratatui::crossterm::execute!(std::io::stdout(), DisableMouseCapture, DisableBracketedPaste);
+        let _ = write!(std::io::stdout(), "\x1b]1337;SetUserVar=fictty=\x07");
         ratatui::restore();
         let _ = std::fs::remove_file(&socket);
         res
@@ -1257,6 +1261,28 @@ fn refusal(reply: &Value) -> String {
     }
 }
 
+/// The WezTerm module that sends ⌘ keys to fictty screens (see `src/wezterm.lua`).
+pub const WEZTERM_LUA: &str = include_str!("wezterm.lua");
+
+/// Install the WezTerm module beside the person's wezterm.lua (`$XDG_CONFIG_HOME/wezterm`, else
+/// `~/.config/wezterm`), and say the one line their config needs. Returns what to tell them.
+pub fn setup_wezterm() -> Result<String> {
+    let base = std::env::var_os("XDG_CONFIG_HOME").map(PathBuf::from).or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".config")));
+    let dir = base.context("no HOME to find the WezTerm config in")?.join("wezterm");
+    std::fs::create_dir_all(&dir)?;
+    let file = dir.join("fictty.lua");
+    std::fs::write(&file, WEZTERM_LUA)?;
+    let config = [dir.join("wezterm.lua"), PathBuf::from(std::env::var_os("HOME").unwrap_or_default()).join(".wezterm.lua")];
+    let wired = config.iter().any(|c| std::fs::read_to_string(c).is_ok_and(|t| t.contains("require('fictty')") || t.contains("require 'fictty'") || t.contains("require(\"fictty\")")));
+    let mut out = format!("wrote {}\n", file.display());
+    if wired {
+        out.push_str("your wezterm.lua already applies it; WezTerm reloads it on save");
+    } else {
+        out.push_str("add this to your wezterm.lua, after the config is made and before it's returned:\n\n    require('fictty').apply(config)\n");
+    }
+    Ok(out)
+}
+
 /// macOS can't wait on input from the generic `/dev/tty` (kqueue refuses it), so a screen whose
 /// input is `/dev/tty` would spin on its first read. Say so instead; the terminal's own device
 /// (`/dev/ttys003`) works.
@@ -1282,13 +1308,18 @@ fn clock() -> String {
     format!("{:02}:{:02}:{:02}", tm.tm_hour, tm.tm_min, tm.tm_sec)
 }
 
-/// Tells each editor the size it was drawn at, where that differs from its own. True when any
-/// changed (the next frame should draw).
+/// Tells each editor the size it was drawn at, and each list how many rows it showed, where that
+/// differs from what they have. True when any changed (the next frame should draw).
 fn resize_editors(d: &mut Driver, st: &mut State, sizes: Vec<(String, u16, u16)>) -> bool {
     let mut changed = false;
     for (id, width, height) in sizes {
         let own = crate::state::field_view(st, &id).map(|(_, v)| (v.viewport.width, v.viewport.height));
-        if own.is_some_and(|o| o != (width.max(1), height.max(1))) {
+        // An editor's size, or the rows a list showed (for the wheel).
+        let differs = match own {
+            Some(o) => o != (width.max(1), height.max(1)),
+            None => st.local.get(&id).map(|l| l.rows) != Some(height) && st.ui.root.find(&id).is_some_and(|n| n.field().is_none()),
+        };
+        if differs {
             d.apply(st, Msg::Size { id, width, height });
             changed = true;
         }

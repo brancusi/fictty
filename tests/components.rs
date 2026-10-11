@@ -462,3 +462,21 @@ fn a_cut_meta_ends_in_an_ellipsis_too() {
     let line = s.screen().lines().next().unwrap().to_string();
     assert!(line.ends_with('…') && line.starts_with("Water the p…"), "{line:?}");
 }
+
+#[test]
+fn the_wheel_scrolls_a_list_and_leaves_the_selection() {
+    let rows: Vec<String> = (0..80).map(|i| format!("row {i}")).collect();
+    let ui = json!({"root": {"type": "list", "id": "l", "items": rows}});
+    let mut s = screen(ui, 30, 21);
+    s.screen();
+    for _ in 0..3 {
+        s.msg(Msg::Scroll { id: "l".into(), by: 1 });
+    }
+    let frame = s.screen();
+    assert_eq!(s.state().local["l"].selected, 0, "the selection stays");
+    assert!(frame.starts_with("  row 9 "), "three notches, three rows each: {frame}");
+    // A key moves the selection, and the view goes back to it once it's out of sight.
+    s.keys(&["j"]);
+    assert!(s.screen().starts_with("▸ row 1\n") || s.screen().contains("▸ row 1"), "{}", s.screen());
+    assert_eq!(s.state().local["l"].top, None);
+}
