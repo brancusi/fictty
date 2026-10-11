@@ -411,3 +411,17 @@ fn a_paste_renumbers_and_undo_goes_all_the_way_back() {
     }
     assert_eq!(parse(&shown(&mut s)).0, "- one\n1. a\n2. c");
 }
+
+#[test]
+fn a_put_of_the_whole_text_moves_only_what_changed() {
+    // Thought Control's reload: a host gave back the text with a list marker in front and a line
+    // end after it. Only those are new: the caret stays after what the person typed, not past
+    // the whole text.
+    let mut s = editor("[ ] 1▮");
+    s.request(json!({"op": "write", "key": "e", "write": "put", "value": "- [ ] 1\n"}));
+    assert_eq!(shown(&mut s), "- [ ] 1▮\n");
+    // A selection elsewhere keeps its words.
+    let mut s = editor("one ⟦two▮⟧ three");
+    s.request(json!({"op": "write", "key": "e", "write": "put", "value": "zero one two three four"}));
+    assert_eq!(shown(&mut s), "zero one ⟦two▮⟧ three four");
+}

@@ -133,6 +133,9 @@ run in process, at Headless speed.
       narrowing past a `when` on `$screen` left it there); a host reload of an entry with
       unsaved typing saves the typing first, so the host merges both; a headless reload no
       longer saves straight back what it loaded
+- [x] A put of a whole text changes only what differs (caretline's diff), so the caret stays
+      after what the person typed when a host's reload adds a marker or a line end around it;
+      `State::derive` works out the tree of a state read back from `get --state`
 
 ## 1 · Land the prototype (now)
 

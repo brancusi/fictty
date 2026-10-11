@@ -859,3 +859,21 @@ fn an_editor_and_a_preview_of_its_text_start_with_the_editors_text() {
     let mut s = App::new(serde_json::from_value(ui).unwrap()).headless(40, 4).unwrap();
     assert_eq!(s.request(json!({"op": "read", "key": "page"}))["text"], "Some text");
 }
+
+#[test]
+fn a_state_read_back_works_its_tree_out_again() {
+    // Thought Control's harness read `get --state` back into a State: its tree is left out, so
+    // the focus order had no `each` instances until it's worked out again.
+    let ui = json!({
+        "root": {"type": "each", "id": "panels", "bind": "open", "template": {"type": "list", "id": "l-{$item}", "items": ["x"]}},
+        "store": {"open": ["a", "b"]}
+    });
+    let mut s = App::new(serde_json::from_value(ui).unwrap()).headless(30, 8).unwrap();
+    let live = fictty::state::focus_order(s.state());
+    assert_eq!(live, ["l-a", "l-b"]);
+    let mut back: fictty::state::State = serde_json::from_value(s.request(json!({"op": "state"}))).unwrap();
+    assert!(fictty::state::focus_order(&back).is_empty(), "read back, the tree isn't there");
+    back.derive();
+    assert_eq!(fictty::state::focus_order(&back), live);
+}
+

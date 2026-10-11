@@ -128,6 +128,15 @@ impl State {
     pub fn tree(&self) -> &Node {
         self.tree.as_ref().unwrap_or(&self.ui.root)
     }
+
+    /// A state read back (`get --state`, a test's copy) has what it was, but not what's worked
+    /// out from it: the expanded tree and the rows trees and filters show. This works them out
+    /// again, so `tree()`, `focus_order` and binds read as they do on the live screen.
+    pub fn derive(&mut self) {
+        self.expanded_from = None;
+        expand(self);
+        derive_rows(self, None);
+    }
 }
 
 /// Whether a node or any under it is an `each`.
@@ -1568,11 +1577,12 @@ fn write_entry(st: &mut State, key: &str, write: Write, if_rev: Option<u64>, by:
             wrote(st, key, by);
         }
         Write::Put { value: Value::String(text) } => {
-            let len = match &st.store[key].body {
-                Body::Text { doc } => doc.text.len_chars(),
-                Body::Value { .. } => 0,
+            // Only what differs changes, so carets, selections and undo outside it stay put.
+            let changes = match &st.store[key].body {
+                Body::Text { doc } => caretline::diff::changes(&doc.text.to_string(), &text),
+                Body::Value { .. } => vec![(0, 0, text)],
             };
-            text_edit(st, key, vec![(0, len, text)], by)?;
+            text_edit(st, key, changes, by)?;
         }
         Write::Edit { changes } if is_text => text_edit(st, key, changes, by)?,
         Write::Put { .. } => return Err(format!("{key} is text: put a string, or send an edit")),

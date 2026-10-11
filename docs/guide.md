@@ -80,7 +80,8 @@ fictty theme paper                                        # choose a loaded them
   `{$item}` and `{$item.path}` are filled from the item (`"id": "panel-{$item.id}"`,
   `"doc": "page/{$item.ref}"`, `"size": "{$item.h}"`); the template's own placeholders are left
   for it. The expanded tree is what's drawn and focused (`tree` in `get --state`); a push or a
-  patch changes the template.
+  patch changes the template. A `State` read back from `get --state` leaves the tree out (it's
+  worked out, not kept): call `derive()` on it before `focus_order` or `tree()`.
 - **Overlays**: a `stack` draws its children over each other, the last on top; one with
   `float` (`width`, `height`, `at` an edge or corner, `margin`) sits where it says, and a `modal`
   one dims what's behind it and keeps the focus: while it shows, a click or the wheel anywhere
