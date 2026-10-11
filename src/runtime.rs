@@ -782,9 +782,10 @@ impl App {
                     let mut pics = Vec::new();
                     let mut scaled = Vec::new();
                     let mut sizes = Vec::new();
+                    let mut areas = Vec::new();
                     term.draw(|f| {
                         let out = view::draw(&st, f);
-                        (hits, pics, scaled, sizes, wake) = (out.hits, out.pics, out.scaled, out.sizes, out.wake);
+                        (hits, pics, scaled, sizes, wake, areas) = (out.hits, out.pics, out.scaled, out.sizes, out.wake, out.areas);
                         if !screens.is_empty() {
                             text = Some(buffer_text(f.buffer_mut()));
                         }
@@ -809,7 +810,7 @@ impl App {
                     }
                     window.frame(t.elapsed());
                     last_draw = Instant::now();
-                    dirty = resize_editors(&mut d, &mut st, sizes);
+                    dirty = resize_editors(&mut d, &mut st, sizes) | report_areas(&mut d, &mut st, areas);
                 }
                 // Sleep until the next frame is due (when there's something to draw) or a while.
                 let mut wait = if dirty || animating { budget.saturating_sub(last_draw.elapsed()) } else { Duration::from_millis(50) };
@@ -1222,10 +1223,13 @@ impl Headless {
 
     fn frame(&mut self) {
         self.drain();
-        let mut sizes = Vec::new();
+        let (mut sizes, mut areas) = (Vec::new(), Vec::new());
         let st = &self.st;
-        let _ = self.term.draw(|f| sizes = view::draw(st, f).sizes);
-        if resize_editors(&mut self.d, &mut self.st, sizes) {
+        let _ = self.term.draw(|f| {
+            let out = view::draw(st, f);
+            (sizes, areas) = (out.sizes, out.areas);
+        });
+        if resize_editors(&mut self.d, &mut self.st, sizes) | report_areas(&mut self.d, &mut self.st, areas) {
             let st = &self.st;
             let _ = self.term.draw(|f| {
                 view::draw(st, f);
@@ -1325,6 +1329,19 @@ fn resize_editors(d: &mut Driver, st: &mut State, sizes: Vec<(String, u16, u16)>
         };
         if differs {
             d.apply(st, Msg::Size { id, width, height });
+            changed = true;
+        }
+    }
+    changed
+}
+
+/// Tells the state the area each sized node was laid out in, where it differs from what it has.
+/// True when any changed.
+fn report_areas(d: &mut Driver, st: &mut State, areas: Vec<(String, u16, u16)>) -> bool {
+    let mut changed = false;
+    for (id, width, height) in areas {
+        if st.local.get(&id).and_then(|l| l.area) != Some((width, height)) {
+            d.apply(st, Msg::Area { id, width, height });
             changed = true;
         }
     }

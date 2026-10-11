@@ -241,6 +241,10 @@ pub struct Local {
     /// selected when it comes.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub want: Option<String>,
+    /// The size of the area its parent laid it out in, last frame, for a `when` that reads
+    /// `$width` or `$height` (the view reports it).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub area: Option<(u16, u16)>,
 }
 
 fn is_zero(n: &u16) -> bool {
@@ -353,6 +357,9 @@ pub enum Msg {
     Size { id: String, width: u16, height: u16 },
     /// Replace the layers only.
     Layers { layers: Vec<LayerSpec> },
+    /// The area a node's parent laid it out in, last frame (the view reports it, for `when`s
+    /// that read `$width` and `$height`).
+    Area { id: String, width: u16, height: u16 },
     /// Show a message in the corner for `ms` (default 3000), in a `tone`.
     Toast {
         text: String,
@@ -669,6 +676,11 @@ fn apply(st: &mut State, msg: Msg) -> Vec<Effect> {
         }
         Msg::Toast { text, tone, ms } => {
             toast(st, text, tone, ms);
+            vec![]
+        }
+        Msg::Area { id, width, height } => {
+            st.local.entry(id).or_default().area = Some((width, height));
+            settle(st);
             vec![]
         }
         Msg::Screen { width, height } => {
@@ -2359,21 +2371,47 @@ pub fn focus_order(st: &State) -> Vec<String> {
 
 /// Whether a node shows: its `when` holds (see `Node::when`).
 pub fn shown(st: &State, n: &Node) -> bool {
-    n.when.as_deref().is_none_or(|w| holds(st, w))
+    let area = n.id.as_ref().and_then(|id| st.local.get(id)).and_then(|l| l.area);
+    shown_in(st, n, area)
+}
+
+/// Whether a node shows when its parent lays it out in an area of `size` (for `$width`,
+/// `$height`). Not knowing the size yet, a node that asks for it shows.
+pub fn shown_in(st: &State, n: &Node, size: Option<(u16, u16)>) -> bool {
+    let Some(w) = n.when.as_deref() else { return true };
+    if size.is_none() && sized(w) {
+        return true;
+    }
+    holds_in(st, w, size)
+}
+
+/// Whether a condition reads the size it's laid out in.
+pub fn sized(cond: &str) -> bool {
+    cond.contains("$width") || cond.contains("$height")
 }
 
 /// A `when` condition against the state.
 pub fn holds(st: &State, cond: &str) -> bool {
+    holds_in(st, cond, None)
+}
+
+/// A `when` condition, with `$width` and `$height` the size of the area it's laid out in.
+pub fn holds_in(st: &State, cond: &str, size: Option<(u16, u16)>) -> bool {
     // Several conditions, all of which must hold: `"!trash & !confirm"`.
     if cond.contains(" & ") {
-        return cond.split(" & ").all(|c| holds(st, c));
+        return cond.split(" & ").all(|c| holds_in(st, c, size));
     }
     let cond = cond.trim();
     if let Some(rest) = cond.strip_prefix('!') {
-        return !holds(st, rest);
+        return !holds_in(st, rest, size);
     }
     let found = ["!=", ">=", "<=", "=", ">", "<"].iter().find_map(|op| cond.split_once(op).map(|(a, b)| (a.trim(), *op, b.trim())));
     let read = |bind: &str| -> Option<Value> {
+        match (bind, size) {
+            ("$width", Some((w, _))) => return Some(w.into()),
+            ("$height", Some((_, h))) => return Some(h.into()),
+            _ => {}
+        }
         match st.store.get(bind).map(|e| &e.body) {
             Some(Body::Text { doc }) => Some(Value::String(doc.text.to_string())),
             _ => value_of(st, bind).cloned(),

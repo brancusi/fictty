@@ -680,3 +680,26 @@ fn each_repeats_a_template_per_item() {
     assert!(s.screen().contains("Gamma"), "{}", s.screen());
     assert_eq!(s.state().focus.as_deref(), Some("ed-b"), "focus stays on its instance");
 }
+
+#[test]
+fn when_can_read_the_width_a_node_is_laid_out_in() {
+    let ui = json!({
+        "root": {"type": "row", "children": [
+            {"type": "text", "text": "SIDEBAR", "size": 50, "when": "aside"},
+            {"type": "col", "children": [
+                {"type": "list", "id": "wide", "items": ["WIDE TABLE"], "when": "$width>=60"},
+                {"type": "list", "id": "narrow", "items": ["NARROW LIST"], "when": "$width<60"}
+            ]}
+        ]},
+        "store": {"aside": true},
+        "keys": {"x": {"put": "aside", "value": false}}
+    });
+    let mut s = screen(ui, 100, 4);
+    let frame = s.screen();
+    assert!(frame.contains("NARROW LIST") && !frame.contains("WIDE"), "beside the sidebar: {frame}");
+    assert_eq!(s.state().focus.as_deref(), Some("narrow"), "focus goes where it shows");
+    s.keys(&["x"]);
+    let frame = s.screen();
+    assert!(frame.contains("WIDE TABLE") && !frame.contains("NARROW"), "alone: {frame}");
+    assert_eq!(s.state().focus.as_deref(), Some("wide"));
+}

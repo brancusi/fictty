@@ -3,7 +3,7 @@
 //! it places the UI's layers with caretline-layers over what it drew.
 
 use crate::model::{Float, Kind, LayerSpec, Look, Node, Seg, Size, Style as NodeStyle, ThemeSpec, Variant, fill, lookup, number, scalar, segments};
-use crate::state::{Slot, State, bound, field_view, items, selected, shown, split_bind, tab_of, value_of};
+use crate::state::{Slot, State, bound, field_view, items, selected, shown, shown_in, sized, split_bind, tab_of, value_of};
 use crate::gfx::{Pic, Placed, Rgb};
 use caretline_layers as cl;
 use ratatui::Frame;
@@ -54,6 +54,9 @@ struct Cx<'a> {
     wake: Option<u64>,
     /// A `toasts` node showed them, so the corner doesn't.
     toasts_placed: bool,
+    /// The node about to be drawn was already checked against its `when` by its row or column.
+    laid_out: bool,
+    areas: Vec<(String, u16, u16)>,
 }
 
 /// Text the terminal draws larger (OSC 66): its cell, the text, the scale and the style.
@@ -78,6 +81,9 @@ pub struct Out {
     /// When (on the logical clock) the frame changes by itself next: a toast going, a spinner
     /// turning. The runtime ticks and draws again then.
     pub wake: Option<u64>,
+    /// The area each node whose `when` reads `$width` or `$height` was laid out in: (id, width,
+    /// height). The runtime tells the state where it differs.
+    pub areas: Vec<(String, u16, u16)>,
 }
 
 impl Cx<'_> {
@@ -291,7 +297,7 @@ fn theme(st: &State, active: Option<&ThemeSpec>) -> Theme {
 /// Draw the whole screen; returns what's under each cell and the pictures to place.
 pub fn draw(st: &State, f: &mut Frame) -> Out {
     let act = active(st);
-    let mut cx = Cx { st, active: act, th: theme(st, act), hits: Vec::new(), anchors: cl::AnchorMap::new(), pics: Vec::new(), scaled: Vec::new(), sizes: Vec::new(), wake: None, toasts_placed: false };
+    let mut cx = Cx { st, active: act, th: theme(st, act), hits: Vec::new(), anchors: cl::AnchorMap::new(), pics: Vec::new(), scaled: Vec::new(), sizes: Vec::new(), wake: None, toasts_placed: false, laid_out: false, areas: Vec::new() };
     let mut base = Style::default();
     if let Some(bg) = cx.th.bg {
         base = base.bg(bg);
@@ -314,7 +320,7 @@ pub fn draw(st: &State, f: &mut Frame) -> Out {
         cx.wake = Some(cx.wake.map_or(at, |w| w.min(at)));
     }
     if !bar {
-        return Out { hits: cx.hits, pics: cx.pics, scaled: cx.scaled, sizes: cx.sizes, wake: cx.wake };
+        return Out { hits: cx.hits, pics: cx.pics, scaled: cx.scaled, sizes: cx.sizes, wake: cx.wake, areas: cx.areas };
     }
     let line = match st.status.as_ref().or(st.problems.first()) {
         Some(s) => Line::styled(s.clone(), cx.look("status.error", Style::default().fg(cx.th.neg))),
@@ -328,7 +334,7 @@ pub fn draw(st: &State, f: &mut Frame) -> Out {
     let [left, right] = Layout::horizontal([Constraint::Fill(1), Constraint::Length(meter.chars().count() as u16)]).areas(status);
     f.render_widget(Paragraph::new(line), left);
     f.render_widget(Paragraph::new(Line::styled(meter, Style::default().fg(Color::Yellow))), right);
-    Out { hits: cx.hits, pics: cx.pics, scaled: cx.scaled, sizes: cx.sizes, wake: cx.wake }
+    Out { hits: cx.hits, pics: cx.pics, scaled: cx.scaled, sizes: cx.sizes, wake: cx.wake, areas: cx.areas }
 }
 
 /// The toasts, newest at the bottom, in the body's bottom-right corner, a row up from its edge (a
@@ -548,7 +554,14 @@ fn border_type(edge: Option<&str>) -> BorderType {
 
 fn node(cx: &mut Cx, n: &Node, f: &mut Frame, area: Rect) {
     let st = cx.st;
-    if !shown(st, n) {
+    let laid_out = std::mem::take(&mut cx.laid_out);
+    if let (Some(id), Some(w)) = (&n.id, n.when.as_deref())
+        && sized(w)
+        && !laid_out
+    {
+        cx.areas.push((id.clone(), area.width, area.height));
+    }
+    if !laid_out && !shown_in(st, n, Some((area.width, area.height))) {
         return;
     }
     let focused = n.id.is_some() && n.id == st.focus;
@@ -647,7 +660,16 @@ fn node(cx: &mut Cx, n: &Node, f: &mut Frame, area: Rect) {
     let id = n.id.clone().unwrap_or_default();
     match &n.kind {
         Kind::Col { children, gap } | Kind::Row { children, gap } => {
-            let showing: Vec<&Node> = children.iter().filter(|c| shown(st, c)).collect();
+            // `$width` and `$height` in a child's `when` are this node's inner size.
+            let here = (inner.width, inner.height);
+            for c in children {
+                if let (Some(id), Some(w)) = (&c.id, c.when.as_deref())
+                    && sized(w)
+                {
+                    cx.areas.push((id.clone(), here.0, here.1));
+                }
+            }
+            let showing: Vec<&Node> = children.iter().filter(|c| shown_in(st, c, Some(here))).collect();
             let along = if matches!(n.kind, Kind::Col { .. }) { inner.height } else { inner.width };
             let cs: Vec<Constraint> = showing.iter().map(|c| bounded(constraint(c.size.as_ref()), c.min, c.max, along)).collect();
             let areas = match n.kind {
@@ -655,6 +677,7 @@ fn node(cx: &mut Cx, n: &Node, f: &mut Frame, area: Rect) {
                 _ => Layout::horizontal(cs).spacing(gap.unwrap_or(0)).split(inner),
             };
             for (c, a) in showing.into_iter().zip(areas.iter()) {
+                cx.laid_out = true;
                 node(cx, c, f, *a);
             }
         }

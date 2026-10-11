@@ -86,7 +86,9 @@ fictty theme paper                                        # choose a loaded them
   one dims what's behind it, swallows clicks there and keeps the focus; both cover what's under
   them. **`when`** shows a node only
   while a condition holds: a bind that's set (`"dialog"`), not set (`"!dialog"`), compared
-  (`"mode=edit"`, `"$screen.width>=120"`), or several joined by ` & `. A hidden node takes no
+  (`"mode=edit"`, `"$screen.width>=120"`), or several joined by ` & `. `$width` and `$height`
+  are the size of the area the node's parent lays it out in (a container query): a pane beside a
+  sidebar switches on its own width, not the screen's. A hidden node takes no
   room and no focus. Layers take `when` too. **Toasts** show for a while: the `toast` action,
   `fictty toast`, and failed commands and host actions. They sit in the corner, or wherever a
   `{"type": "toasts"}` node is (a line each, in a UI's own bar), styled by the theme part
