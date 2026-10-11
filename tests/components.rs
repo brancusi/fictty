@@ -848,3 +848,14 @@ fn a_key_at_the_end_of_a_long_paragraph_stays_quick() {
     let limit = if cfg!(debug_assertions) { 300 } else { 30 };
     assert!(each.as_millis() < limit, "{each:?} a key");
 }
+
+#[test]
+fn an_editor_and_a_preview_of_its_text_start_with_the_editors_text() {
+    // The preview comes first and names no text: the editor's seeds the entry.
+    let ui = json!({"root": {"type": "row", "children": [
+        {"type": "editor", "id": "preview", "doc": "page", "readonly": true},
+        {"type": "editor", "id": "body", "doc": "page", "text": "Some text"}
+    ]}});
+    let mut s = App::new(serde_json::from_value(ui).unwrap()).headless(40, 4).unwrap();
+    assert_eq!(s.request(json!({"op": "read", "key": "page"}))["text"], "Some text");
+}

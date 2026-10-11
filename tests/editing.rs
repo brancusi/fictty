@@ -392,6 +392,8 @@ fn ordered_lists_renumber_and_take_their_depths_style() {
     check("1. one\n  a. tw▮o\n2. three", &["s-tab"], "1. one\n2. tw▮o\n3. three");
     // A key changes one list's style, every sibling at once.
     check("1. one\n2. tw▮o\n  a. sub", &["a-l"], "a. one\nb. tw▮o\n  a. sub");
+    // Bullets after a numbered list, made numbers, carry it on (Thought Control's fuzzer).
+    check("1. a\n2. b\n- c▮\n- d", &["a-l"], "1. a\n2. b\n3. c▮\n4. d");
 }
 
 #[test]

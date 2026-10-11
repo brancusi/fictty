@@ -36,6 +36,9 @@ pub enum Act {
     Resize(u16, u16),
     /// The clock moved on by this many ms (toasts go, expiring writes lapse).
     Wait(u64),
+    /// Something from outside the person: what the app's handler (`Headless::on_host_act`)
+    /// does with this argument, an agent's write say.
+    Host(String),
 }
 
 impl fmt::Display for Act {
@@ -46,6 +49,7 @@ impl fmt::Display for Act {
             Act::Paste(t) => write!(f, "paste {}", Value::String(t.clone())),
             Act::Resize(w, h) => write!(f, "resize {w} {h}"),
             Act::Wait(ms) => write!(f, "wait {ms}"),
+            Act::Host(a) => write!(f, "host {}", Value::String(a.clone())),
         }
     }
 }
@@ -58,6 +62,7 @@ impl Act {
         Some(match verb {
             "key" => Act::Key(rest.trim().into()),
             "paste" => Act::Paste(serde_json::from_str(rest).ok()?),
+            "host" => Act::Host(serde_json::from_str(rest).ok()?),
             "resize" => match nums()?[..] {
                 [w, h] => Act::Resize(w, h),
                 _ => return None,
@@ -89,6 +94,9 @@ impl Act {
                 let now_ms = s.state().now_ms + ms;
                 s.msg(crate::state::Msg::Tick { now_ms });
             }
+            Act::Host(a) => {
+                s.host_act(a);
+            }
         }
     }
 }
@@ -106,11 +114,12 @@ pub fn parse_line(mut s: &str) -> Result<Vec<Act>, String> {
         if s.is_empty() {
             return Ok(out);
         }
-        let len = match s.strip_prefix("paste ") {
-            Some(rest) => {
-                let mut it = serde_json::Deserializer::from_str(rest).into_iter::<String>();
-                it.next().ok_or("a paste with no text")?.map_err(|e| format!("a paste's text: {e}"))?;
-                "paste ".len() + it.byte_offset()
+        let verb = ["paste ", "host "].into_iter().find(|v| s.starts_with(v));
+        let len = match verb {
+            Some(v) => {
+                let mut it = serde_json::Deserializer::from_str(&s[v.len()..]).into_iter::<String>();
+                it.next().ok_or("an act with no text")?.map_err(|e| format!("an act's text: {e}"))?;
+                v.len() + it.byte_offset()
             }
             None => s.find("; ").unwrap_or(s.len()),
         };
@@ -136,16 +145,26 @@ pub struct Config {
     pub combos: Vec<Vec<String>>,
     /// Texts a paste chooses from.
     pub pastes: Vec<String>,
+    /// Arguments a host act chooses from (`Act::Host`, run by the app's handler).
+    pub host_acts: Vec<String>,
     /// How often (out of 100) an act is the mouse, a paste, a resize or a wait; the rest are keys.
     pub mouse: u32,
     pub paste: u32,
     pub resize: u32,
     pub wait: u32,
+    /// How often (out of 100) an act is a host act, when there are any.
+    pub host: u32,
     /// Run each passing sequence again on a fresh screen, and compare the state and frame.
     pub replay: bool,
     /// Draw every frame through the crossterm backend into a terminal emulator too, and check
     /// that the emulator shows the frame (`Headless::terminal`).
     pub terminal: bool,
+    /// Applied to the state before two runs of a sequence are compared: masks what's meant to
+    /// differ (a random id, a timestamp from the host).
+    pub normalize: Option<fn(&mut Value)>,
+    /// What makes two failures of a property the same one, from the property and the message:
+    /// shrinking keeps to the class it started with. Unset, a property is one class.
+    pub class: Option<fn(&str, &str) -> String>,
 }
 
 impl Default for Config {
@@ -162,7 +181,7 @@ impl Default for Config {
             ["word", "two words", "line one\nline two", "- [ ] a task", "1. one\n2. two", "  indented", "émoji 🙂 wide 漢字", ""].map(String::from).into();
         // A long paragraph: work that grows with a line's length shows up as a slow act.
         pastes.push("Words with [[a link]], #a-tag, `code` and https://example.com in a long paragraph. ".repeat(20));
-        Config { seed: 1, runs: 64, steps: 60, budget: Duration::from_millis(250), keys, combos, pastes, mouse: 12, paste: 6, resize: 2, wait: 3, replay: true, terminal: true }
+        Config { seed: 1, runs: 64, steps: 60, budget: Duration::from_millis(250), keys, combos, pastes, host_acts: vec![], mouse: 12, paste: 6, resize: 2, wait: 3, host: 0, replay: true, terminal: true, normalize: None, class: None }
     }
 }
 
@@ -341,6 +360,8 @@ pub fn generate(cfg: &Config, seed: u64, size: (u16, u16)) -> Vec<Act> {
             out.push(Act::Resize(w, h));
         } else if roll < cfg.mouse + cfg.paste + cfg.resize + cfg.wait {
             out.push(Act::Wait([100, 1000, 5000][r.below(3) as usize]));
+        } else if roll < cfg.mouse + cfg.paste + cfg.resize + cfg.wait + cfg.host && !cfg.host_acts.is_empty() {
+            out.push(Act::Host(r.pick(&cfg.host_acts).expect("host acts").clone()));
         } else if r.below(10) == 0 && !cfg.combos.is_empty() {
             let c = r.pick(&cfg.combos).expect("combos");
             out.extend(c.iter().map(|k| Act::Key(k.clone())));
@@ -414,6 +435,9 @@ fn play(make: &dyn Fn() -> Headless, acts: &[Act], checks: &mut [Check], cfg: &C
     if let Some(o) = state.as_object_mut() {
         o.remove("stats");
     }
+    if let Some(n) = cfg.normalize {
+        n(&mut state);
+    }
     for c in checks.iter_mut() {
         let r = catch_unwind(AssertUnwindSafe(|| (c.end)(&mut s, &start)));
         match r {
@@ -466,7 +490,8 @@ pub fn replay(make: impl Fn() -> Headless, acts: &str, checks: &mut [Check], cfg
     }
 }
 
-/// The shortest sequence that still fails the same property: drop chunks of acts, halving the
+/// The shortest sequence that still fails the same way (the same property, and the same class
+/// when `Config::class` says): drop chunks of acts, halving the
 /// chunk size (ddmin), until no single act can go.
 fn shrink(make: &dyn Fn() -> Headless, mut acts: Vec<Act>, mut f: Fail, checks: &mut [Check], cfg: &Config, seed: u64) -> Failure {
     acts.truncate(f.at.min(acts.len()));
@@ -478,7 +503,7 @@ fn shrink(make: &dyn Fn() -> Headless, mut acts: Vec<Act>, mut f: Fail, checks: 
             let mut fewer = acts.clone();
             fewer.drain(i..(i + chunk).min(acts.len()));
             match trial(make, &fewer, checks, cfg) {
-                Some(g) if g.property == f.property => {
+                Some(g) if class(cfg, &g) == class(cfg, &f) => {
                     acts = fewer;
                     acts.truncate(g.at.min(acts.len()));
                     f = g;
@@ -495,6 +520,14 @@ fn shrink(make: &dyn Fn() -> Headless, mut acts: Vec<Act>, mut f: Fail, checks: 
         }
     }
     described(make, acts, f, checks, cfg, seed)
+}
+
+/// A failure's class, which shrinking keeps to.
+fn class(cfg: &Config, f: &Fail) -> String {
+    match cfg.class {
+        Some(c) => format!("{}: {}", f.property, c(&f.property, &f.message)),
+        None => f.property.clone(),
+    }
 }
 
 fn described(make: &dyn Fn() -> Headless, acts: Vec<Act>, f: Fail, checks: &mut [Check], cfg: &Config, seed: u64) -> Failure {
@@ -626,7 +659,11 @@ pub fn editing() -> Vec<Check> {
             if now.docs.get(key) == Some(was) {
                 continue;
             }
-            let Some(id) = now.shows.iter().find(|(_, k)| *k == key).map(|(id, _)| id.clone()) else { continue };
+            // An editor that can change it: a read-only one (a preview of the same text) has no
+            // undo of its own.
+            let tree = s.state().tree();
+            let editable = |id: &str| tree.find(id).and_then(|n| n.field()).is_some_and(|f| !f.readonly);
+            let Some(id) = now.shows.iter().find(|(id, k)| *k == key && editable(id)).map(|(id, _)| id.clone()) else { continue };
             s.msg(crate::state::Msg::Focus { id: id.clone() });
             if s.state().focus.as_deref() != Some(&id) {
                 continue;

@@ -581,6 +581,7 @@ fn apply(st: &mut State, msg: Msg) -> Vec<Effect> {
             fx.extend(release(st));
             fx
         }
+        Msg::Click { id, .. } | Msg::Point { id, .. } | Msg::Scroll { id, .. } if !reachable(st, &id) => vec![],
         Msg::Click { id, row, tab } => {
             let Some(n) = tree!(st).find(&id) else { return vec![] };
             let click = n.click.clone();
@@ -1248,6 +1249,12 @@ fn renumber(st: &mut State, id: &str, moved: &[usize]) {
     if f.ordered.is_empty() || f.readonly {
         return;
     }
+    renumber_lists(st, id, moved);
+}
+
+/// Every ordered list in editor `id` in number, as part of the undo step before it.
+fn renumber_lists(st: &mut State, id: &str, moved: &[usize]) {
+    let Some(f) = tree!(st).find(id).and_then(|n| n.field()) else { return };
     let styles: Vec<crate::lists::Style> = f.ordered.iter().filter_map(|s| crate::lists::Style::parse(s)).collect();
     let Some((key, _)) = field_view(st, id) else { return };
     let Some(Entry { body: Body::Text { doc }, .. }) = st.store.get(&key) else { return };
@@ -1748,6 +1755,9 @@ fn act(st: &mut State, a: Action) -> Vec<Effect> {
             let Some(Entry { body: Body::Text { doc }, .. }) = st.store.get(&key) else { return vec![] };
             let changes = crate::lists::cycle_style(&doc.text.to_string(), line);
             edit_lines(st, &id, changes);
+            // Bullets turned into numbers right after a numbered list carry it on (as Markdown
+            // reads them), so the numbers follow on from it.
+            renumber_lists(st, &id, &[]);
             vec![]
         }
         Action::ShowTab { tab, of } => {
@@ -2414,7 +2424,7 @@ fn wanted(st: &mut State) -> Vec<Effect> {
 fn fields(st: &mut State) {
     let mut all = Vec::new();
     tree!(st).walk(&mut all);
-    let found: Vec<(String, String, String, bool)> = all
+    let mut found: Vec<(String, String, String, bool)> = all
         .iter()
         .filter_map(|n| {
             let f = n.field()?;
@@ -2426,6 +2436,9 @@ fn fields(st: &mut State) {
             Some((n.id.clone()?, key, seed, f.line))
         })
         .collect();
+    // Of editors that show the same new entry, one with a seed seeds it (a preview beside the
+    // editor names no text of its own).
+    found.sort_by_key(|f| f.2.is_empty());
     for (id, key, seed, line) in found {
         let fresh = |text: &str| {
             let mut e = Entry::text(text, "seed");
@@ -2557,6 +2570,18 @@ pub fn focus_order(st: &State) -> Vec<String> {
         all = inside;
     }
     all.into_iter().filter(|n| n.focusable()).filter_map(|n| n.id.clone()).collect()
+}
+
+/// Whether the pointer reaches node `id`: it shows, and while a modal node shows, it's inside it.
+fn reachable(st: &State, id: &str) -> bool {
+    let mut all = Vec::new();
+    tree!(st).walk_shown(&|n| tab_of(st, n), &|n| shown(st, n), &mut all);
+    if let Some(m) = all.iter().rev().find(|n| n.modal) {
+        let mut inside = Vec::new();
+        m.walk_shown(&|n| tab_of(st, n), &|n| shown(st, n), &mut inside);
+        return inside.iter().any(|n| n.id.as_deref() == Some(id));
+    }
+    all.iter().any(|n| n.id.as_deref() == Some(id))
 }
 
 /// Whether a node shows: its `when` holds (see `Node::when`).
@@ -3172,6 +3197,29 @@ mod tests {
         assert_eq!(fx, vec![Effect::Run(vec!["echo".into(), "3".into()])]);
         update(&mut st, Msg::Scroll { id: "b".into(), by: -5 });
         assert_eq!(selected(&st, "b"), 0);
+    }
+
+    #[test]
+    fn a_click_outside_a_modal_goes_nowhere() {
+        // Thought Control's fuzzer: with the palette open, a click on the header above it took
+        // the focus out of the palette.
+        let mut st = State::default();
+        let ui = ui(json!({"root": {"type": "col", "children": [
+            {"type": "list", "id": "header", "items": ["a"], "click": {"toast": "clicked"}},
+            {"type": "stack", "children": [
+                {"type": "list", "id": "body", "items": [1, 2]},
+                {"type": "input", "id": "q", "modal": true, "when": "palette"}
+            ]}
+        ]}, "store": {"palette": true}, "focus": "q"}));
+        update(&mut st, Msg::Push { ui });
+        assert_eq!(st.focus.as_deref(), Some("q"));
+        for msg in [Msg::Click { id: "header".into(), row: Some(0), tab: None }, Msg::Scroll { id: "body".into(), by: 1 }] {
+            assert_eq!(update(&mut st, msg), vec![]);
+            assert_eq!(st.focus.as_deref(), Some("q"));
+        }
+        assert!(st.toasts.is_empty());
+        update(&mut st, Msg::Click { id: "q".into(), row: None, tab: None });
+        assert_eq!(st.focus.as_deref(), Some("q"));
     }
 
     #[test]

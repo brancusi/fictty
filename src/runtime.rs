@@ -471,10 +471,15 @@ impl Driver {
         // What changed the screen goes in `$log`, so a UI can show what its agent is doing.
         // A write is logged after it's tried, so a refused one shows as refused.
         let logged = activity(st, &req);
-        let started = self.started;
+        let (started, blocking) = (self.started, self.blocking);
+        // A headless screen's clock stands still, and its log has no wall-clock times, so the
+        // same requests leave the same state.
         let log = |st: &mut State, op: &str, what: String| {
-            update(st, Msg::Tick { now_ms: started.elapsed().as_millis() as u64 });
-            update(st, Msg::Activity { op: op.into(), what, at: clock() });
+            if !blocking {
+                update(st, Msg::Tick { now_ms: started.elapsed().as_millis() as u64 });
+            }
+            let at = if blocking { String::new() } else { clock() };
+            update(st, Msg::Activity { op: op.into(), what, at });
         };
         let is_write = matches!(req, Request::Write { .. });
         if let (Some((op, what)), false) = (&logged, is_write) {
@@ -701,6 +706,8 @@ impl App {
             drag: None,
             #[cfg(feature = "fuzz")]
             wire: None,
+            #[cfg(feature = "fuzz")]
+            host_act: None,
         };
         // One frame to learn each editor's size, so keys scroll it as they would on screen.
         h.frame();
@@ -1218,6 +1225,11 @@ pub struct Headless {
     /// as escapes from the crossterm backend, diffed against the frame before, into an emulator.
     #[cfg(feature = "fuzz")]
     wire: Option<Wire>,
+    /// What the app does for the fuzz driver's host acts (`fuzz::Act::Host`): an agent's write,
+    /// a file changing under a source.
+    #[cfg(feature = "fuzz")]
+    #[allow(clippy::type_complexity)]
+    host_act: Option<Box<dyn FnMut(&mut Headless, &str)>>,
 }
 
 /// A frame's way to a terminal: ratatui's crossterm backend writing escapes into a buffer, and
@@ -1399,6 +1411,22 @@ impl Headless {
         };
         self.d.keep(&mut self.st, Duration::ZERO);
         reply
+    }
+
+    /// What a host act (`fuzz::Act::Host`) does: the app's handler, given the act's argument.
+    #[cfg(feature = "fuzz")]
+    pub fn on_host_act(mut self, f: impl FnMut(&mut Headless, &str) + 'static) -> Headless {
+        self.host_act = Some(Box::new(f));
+        self
+    }
+
+    /// Run a host act through the handler `on_host_act` gave.
+    #[cfg(feature = "fuzz")]
+    pub fn host_act(&mut self, arg: &str) -> &mut Headless {
+        let mut f = self.host_act.take().expect("a host act, but no handler: Headless::on_host_act");
+        f(self, arg);
+        self.host_act = Some(f);
+        self
     }
 
     /// What it has put on the clipboard so far, oldest first.

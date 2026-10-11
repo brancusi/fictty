@@ -122,6 +122,15 @@ run in process, at Headless speed.
       answering the terminal's queries, keys encoded under the keyboard flags the app pushed (so
       crossterm's own decoder reads them), SGR mouse, bracketed paste, resize; random acts
       through it end where they end on a headless screen
+- [x] Thought Control's fuzz run (5,000 headless cases, 200 in a pty): bullets made numbers
+      after a numbered list carry it on; the undo check undoes in an editor, not a read-only
+      preview; a click or the wheel outside a showing modal goes nowhere; an editor beside a
+      preview of its text seeds it; dropping a `Sim` drains the pty so the child can exit; a
+      headless screen's clock stays still through agent requests (the same writes replay the same)
+- [x] Driver: host acts (`Act::Host`, the app's handler run inside the act), `Config::normalize`
+      before replay compares, `Config::class` so shrinking keeps to one failure
+- [ ] From the same run, waiting on a replay line: focus left on a node that's never shown (pty
+      only), and an agent's write during unsaved typing that the frame and state disagree on
 
 ## 1 · Land the prototype (now)
 

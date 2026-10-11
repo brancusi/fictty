@@ -47,6 +47,9 @@ pub struct Sim {
     tail: Vec<u8>,
     /// How long output must be still before a step counts as done.
     pub quiet: Duration,
+    /// What the app does for a host act (`fuzz::Act::Host`).
+    #[allow(clippy::type_complexity)]
+    host_act: Option<Box<dyn FnMut(&mut Sim, &str)>>,
 }
 
 impl Sim {
@@ -103,7 +106,7 @@ impl Sim {
             let fd = master.as_raw_fd();
             libc::fcntl(fd, libc::F_SETFL, libc::fcntl(fd, libc::F_GETFL) | libc::O_NONBLOCK);
         }
-        let mut s = Sim { child, master, vt: vt100::Parser::new(height, width, 0), socket, modes: Modes::default(), kitty, tail: Vec::new(), quiet: Duration::from_millis(30) };
+        let mut s = Sim { child, master, vt: vt100::Parser::new(height, width, 0), socket, modes: Modes::default(), kitty, tail: Vec::new(), quiet: Duration::from_millis(30), host_act: None };
         // Up once its socket answers.
         let start = Instant::now();
         loop {
@@ -375,6 +378,17 @@ impl Sim {
 impl Drop for Sim {
     fn drop(&mut self) {
         let _ = self.child.kill();
+        // A process exiting with output nobody has read waits for it to drain (macOS's tty close
+        // does), so read and drop what's there until it's gone.
+        let mut buf = [0u8; 65536];
+        let until = Instant::now() + Duration::from_secs(10);
+        while matches!(self.child.try_wait(), Ok(None)) && Instant::now() < until {
+            let mut fds = libc::pollfd { fd: self.master.as_raw_fd(), events: libc::POLLIN, revents: 0 };
+            // SAFETY: one valid pollfd.
+            if unsafe { libc::poll(&mut fds, 1, 10) } > 0 {
+                while matches!(self.master.read(&mut buf), Ok(n) if n > 0) {}
+            }
+        }
         let _ = self.child.wait();
         let _ = std::fs::remove_file(&self.socket);
     }
@@ -493,7 +507,23 @@ impl Sim {
             Act::Paste(t) => self.paste(t),
             Act::Resize(w, h) => self.resize(*w, *h),
             Act::Wait(_) => self,
+            Act::Host(arg) => self.host_act(arg),
         }
+    }
+
+    /// What a host act (`fuzz::Act::Host`) does here: the app's handler, given the act's argument.
+    pub fn on_host_act(mut self, f: impl FnMut(&mut Sim, &str) + 'static) -> Sim {
+        self.host_act = Some(Box::new(f));
+        self
+    }
+
+    /// Run a host act through the handler `on_host_act` gave, then wait for the screen to settle.
+    pub fn host_act(&mut self, arg: &str) -> &mut Sim {
+        let mut f = self.host_act.take().expect("a host act, but no handler: Sim::on_host_act");
+        f(self, arg);
+        self.host_act = Some(f);
+        self.settle();
+        self
     }
 }
 

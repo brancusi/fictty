@@ -54,6 +54,16 @@ fn editors_beside_lists_and_inputs() {
 }
 
 #[test]
+fn an_editor_beside_a_read_only_preview_of_its_text() {
+    // Undoing everything goes through the editor, not the preview (Thought Control's fuzzer: the
+    // check focused the preview, where undo does nothing).
+    fuzzed(json!({"root": {"type": "row", "children": [
+        {"type": "editor", "id": "a_preview", "doc": "page", "readonly": true},
+        {"type": "editor", "id": "body", "doc": "page", "text": "Some text\n- a list\n"}
+    ]}, "focus": "body"}), 60, 10);
+}
+
+#[test]
 fn a_failure_shrinks_and_prints_a_scenario() {
     // A property that fails once anything is typed: the shrunk sequence is one key.
     let mut checks = vec![fuzz::check("never typed", |s| match s.after.focused() {
@@ -95,4 +105,72 @@ fn every_chapter_of_the_tour() {
     }
 }
 
+#[test]
+fn host_acts_run_inside_the_step_and_replay() {
+    // An agent writes to the text the person is typing in: the app's handler runs inside the
+    // act, so the look after it already has the write.
+    let ui = json!({"root": {"type": "editor", "id": "e", "doc": "note", "text": "typed by a person"}, "focus": "e"});
+    let make = move || {
+        App::new(serde_json::from_value(ui.clone()).unwrap()).headless(40, 6).unwrap().on_host_act(|s, arg| {
+            let req = match arg {
+                "put" => json!({"op": "write", "key": "note", "write": "put", "value": "from an agent"}),
+                _ => json!({"op": "write", "key": "note", "write": "edit", "changes": [[0, 0, "agent: "]]}),
+            };
+            assert_eq!(s.request(req)["ok"], true, "{arg}");
+        })
+    };
+    let mut checks = fuzz::editing();
+    checks.push(fuzz::check("a put shows at once", |s| match (&s.act, s.after.editors.get("e")) {
+        (fuzz::Act::Host(a), Some((text, ..))) if a == "put" && text != "from an agent" => Err(format!("after the put: {text:?}")),
+        _ => Ok(()),
+    }));
+    let cfg = Config { host_acts: vec!["put".into(), "prepend".into()], host: 10, ..cfg() };
+    if let Err(f) = fuzz::run(&make, &mut checks, &cfg) {
+        panic!("{f}");
+    }
+    // A host act prints and parses back, its argument as JSON.
+    let acts = vec![fuzz::Act::Key("a".into()), fuzz::Act::Host("put; \"x\"".into())];
+    assert_eq!(fuzz::line(&acts), r#"key a; host "put; \"x\"""#);
+    assert_eq!(fuzz::parse_line(&fuzz::line(&acts)).unwrap(), acts);
+}
+
+#[test]
+fn a_shrink_keeps_to_its_failures_class() {
+    // One property, two ways to fail it: typing `a`, or typing `b`. With a class from the
+    // message, the shrunk sequence keeps to the way it first failed.
+    let mut checks = vec![fuzz::check("no letters", |s| match s.after.focused() {
+        Some((_, text, ..)) if text.contains('a') => Err("typed an a".into()),
+        Some((_, text, ..)) if text.contains('b') => Err("typed a b".into()),
+        _ => Ok(()),
+    })];
+    let ui = json!({"root": {"type": "editor", "id": "e", "text": ""}, "focus": "e"});
+    let base = Config { keys: vec!["a".into(), "b".into()], combos: vec![], mouse: 0, paste: 0, resize: 0, wait: 0, ..cfg() };
+    for seed in 0..20 {
+        let cfg = Config { seed, class: Some(|_, m| m.to_string()), ..base.clone() };
+        let f = fuzz::run(screen(ui.clone(), 20, 3), &mut checks, &cfg).unwrap_err();
+        let first = fuzz::generate(&cfg, seed.wrapping_mul(1_000_003), (20, 3));
+        let wanted = if first[0] == fuzz::Act::Key("a".into()) { "typed an a" } else { "typed a b" };
+        assert_eq!(f.message, wanted, "seed {seed}: {f}");
+    }
+}
+
+#[test]
+fn a_normalizer_masks_what_differs_between_runs() {
+    // A screen whose state differs from run to run (a host's random id) replays the same once
+    // the id is masked.
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static N: AtomicU64 = AtomicU64::new(0);
+    let ui = json!({"root": {"type": "editor", "id": "e", "text": "x"}, "focus": "e"});
+    let make = move || {
+        let mut s = App::new(serde_json::from_value(ui.clone()).unwrap()).headless(20, 3).unwrap();
+        let id = N.fetch_add(1, Ordering::Relaxed);
+        s.request(json!({"op": "write", "key": "session", "write": "put", "value": {"id": id}}));
+        s
+    };
+    let cfg = Config { runs: 2, steps: 3, keys: vec!["left".into()], combos: vec![], ..cfg() };
+    let f = fuzz::run(&make, &mut [], &cfg).unwrap_err();
+    assert_eq!(f.property, "replays the same");
+    let cfg = Config { normalize: Some(|st| st["store"]["session"] = json!("masked")), ..cfg };
+    fuzz::run(&make, &mut [], &cfg).unwrap();
+}
 

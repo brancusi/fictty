@@ -70,20 +70,31 @@ fn the_mouse_and_a_resize_arrive_as_a_terminal_sends_them() {
 #[test]
 fn random_acts_leave_the_real_screen_where_they_leave_a_headless_one() {
     // Through the pty, keys are bytes crossterm decodes; headless, they're names. The same acts
-    // must leave the same text and focus. Undo is left out: it groups typing by the time between
-    // keys, and a headless screen's clock stands still.
+    // must leave the same text and focus, with an agent's writes landing between keys. Undo is
+    // left out: it groups typing by the time between keys, and a headless screen's clock stands
+    // still.
     use fictty::fuzz::{self, Config};
     let ui = json!({"root": {"type": "col", "children": [
         {"type": "editor", "id": "e", "text": "# Title\nhello world, a line\n- one\n  - two\nwide 漢字 🙂\n"},
         {"type": "list", "id": "l", "items": ["one", "two", "three"]}
     ]}, "focus": "e"});
     let keys = Config::default().keys.into_iter().filter(|k| !k.ends_with("-z") && k != "c-t").collect();
-    let cfg = Config { keys, combos: vec![], steps: 30, wait: 0, resize: 0, ..Config::default() };
+    // An agent edits the text now and then, while the person types.
+    let host_acts = vec!["0".into(), "8".into(), "put".into()];
+    let cfg = Config { keys, combos: vec![], steps: 30, wait: 0, resize: 0, host_acts, host: 8, ..Config::default() };
+    let write = |arg: &str| match arg.parse::<usize>() {
+        Ok(at) => json!({"op": "write", "key": "e", "write": "edit", "changes": [[at, at, "AGENT"]]}),
+        Err(_) => json!({"op": "write", "key": "e", "write": "put", "value": "# Put\nby an agent\n"}),
+    };
     let runs = std::env::var("SIM_RUNS").ok().and_then(|v| v.parse().ok()).unwrap_or(3u64);
     for seed in 0..runs {
         let acts = fuzz::generate(&cfg, 100 + seed, (60, 12));
-        let mut h = fictty::App::new(serde_json::from_value(ui.clone()).unwrap()).headless(60, 12).unwrap();
-        let mut s = sim(&format!("diff{seed}"), ui.clone(), true);
+        let mut h = fictty::App::new(serde_json::from_value(ui.clone()).unwrap()).headless(60, 12).unwrap().on_host_act(move |h, a| {
+            h.request(write(a));
+        });
+        let mut s = sim(&format!("diff{seed}"), ui.clone(), true).on_host_act(move |s, a| {
+            s.request(write(a));
+        });
         for (i, a) in acts.iter().enumerate() {
             a.apply(&mut h);
             s.act(a);

@@ -83,8 +83,8 @@ fictty theme paper                                        # choose a loaded them
   patch changes the template.
 - **Overlays**: a `stack` draws its children over each other, the last on top; one with
   `float` (`width`, `height`, `at` an edge or corner, `margin`) sits where it says, and a `modal`
-  one dims what's behind it, swallows clicks there and keeps the focus; both cover what's under
-  them. **`when`** shows a node only
+  one dims what's behind it and keeps the focus: while it shows, a click or the wheel anywhere
+  outside it goes nowhere. Both cover what's under them. **`when`** shows a node only
   while a condition holds: a bind that's set (`"dialog"`), not set (`"!dialog"`), compared
   (`"mode=edit"`, `"$screen.width>=120"`), or several joined by ` & `. `$width` and `$height`
   are the size of the area the node's parent lays it out in (a container query): a pane beside a
@@ -237,7 +237,14 @@ fictty::App::new(ui)
   start); an app adds its own with `fuzz::check(name, |step| …)`. A failure shrinks to the
   fewest acts and prints them with the focused editor in the editing notation
   (`Hello ⟦wor▮⟧ld`), and `fuzz::replay(make, "key d-a; paste \"x\"", …)` runs a printed one
-  again. See `tests/fuzz.rs`, which fuzzes every chapter of the tour.
+  again. **Host acts** are what happens from outside the person, an agent's write say:
+  `Config { host_acts: vec!["write".into()], host: 5, .. }` mixes in `Act::Host("write")`
+  (printed `host "write"`), which runs the handler the screen was given
+  (`headless(…).on_host_act(|s, arg| …)`, `Sim::on_host_act` for a pty) inside the act, so the
+  look after it has what it did. `Config::normalize` masks what's meant to differ before two runs
+  of a sequence are compared (a random id), and `Config::class` (from the property and message)
+  keeps shrinking to the failure it started with. See `tests/fuzz.rs`, which fuzzes every chapter
+  of the tour.
 - **A real terminal, without one** (the `sim` feature): `fictty::sim::Sim::spawn(&["fictty",
   "run", "ui.json"], 80, 24)` runs any fictty screen in a pseudo-terminal with a vt100 emulator on
   the other end. Keys go in as the bytes a terminal sends (`keys(&["d-z"])` is `ESC[122;9u` once
