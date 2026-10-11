@@ -304,3 +304,27 @@ fn indent_lines() {
     s.keys(&["tab", "esc"]);
     assert_eq!(s.state().focus.as_deref(), Some("after"));
 }
+
+/// Ctrl-T in a Markdown editor makes lines tasks and ticks them (Thought Control's kind-change
+/// rules).
+#[test]
+fn ctrl_t_makes_tasks() {
+    let md = || json!({"syntax": "markdown"});
+    let check = |from: &str, more: serde_json::Value, to: &str| {
+        let mut s = editor_with(from, more);
+        s.keys(&["c-t"]);
+        assert_eq!(shown(&mut s), to, "{from}");
+        s.keys(&["d-z"]);
+        assert_eq!(parse(&shown(&mut s)).0, parse(from).0, "{from}: one undo");
+    };
+    check("plain text▮", md(), "- [ ] plain text▮");
+    check("- item▮", md(), "- [ ] item▮");
+    check("  1. step▮", md(), "  1. [ ] step▮");
+    check("- [ ] task▮", md(), "- [x] task▮");
+    check("- [x] task▮", md(), "- [ ] task▮");
+    check("a\n⟦b\nc▮⟧\nd", md(), "a\n- [ ] ⟦b\n- [ ] c▮⟧\nd");
+    check("▮text", md(), "- [ ] ▮text");
+    // With "tasks": "cycle", a done task is text again.
+    check("- [x] task▮", json!({"syntax": "markdown", "tasks": "cycle"}), "task▮");
+    check("  - [x] ▮task", json!({"syntax": "markdown", "tasks": "cycle"}), "  ▮task");
+}

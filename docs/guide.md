@@ -140,7 +140,9 @@ document with its undo history), each with a revision (`rev`) and who wrote it l
   a number, and its keys wait until the text is a whole one (the status says why).
   `"syntax": "markdown"` styles headings, list markers, quotes, inline code and task items
   (theme parts `md.heading`, `md.bullet`, `md.quote`, `md.code`, `md.task`, `md.done`) while the
-  text stays plain; Ctrl-T or a click on a `[ ]` ticks it. `"readonly": true` shows a text to
+  text stays plain. Ctrl-T makes the lines it's on tasks (`text` → `- [ ] text`, `- item` →
+  `- [ ] item`) and ticks open ones; a ticked one is unticked, or with `"tasks": "cycle"` made
+  plain text again. A click on a `[ ]` ticks it. `"readonly": true` shows a text to
   read, scroll, select and copy, never change. `"tab": "indent"` keeps Tab and Shift-Tab to
   indent and outdent the selected lines or a list item (Esc leaves instead); `"indent-lines"`
   always indents the caret's line, as an outliner does. A `put` by the person

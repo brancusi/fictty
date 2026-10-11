@@ -364,7 +364,8 @@ pub enum Kind {
         placeholder: Option<String>,
         /// `markdown` styles headings, list markers, quotes and inline code (theme parts
         /// `md.heading`, `md.bullet`, `md.quote`, `md.code`), and task items (`- [ ]`, `- [x]`:
-        /// `md.task`, `md.done`), which Ctrl-T or a click on the box ticks. The text stays plain.
+        /// `md.task`, `md.done`): Ctrl-T makes the lines it's on tasks and ticks them (see `tasks`), a click
+        /// on a box ticks it. The text stays plain.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         syntax: Option<String>,
         /// Shows the text without changing it: the carets move, select and copy, the wheel and
@@ -376,6 +377,10 @@ pub enum Kind {
         /// indents the lines the caret or the selection is on, as an outliner does. Esc leaves.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         tab: Option<String>,
+        /// What Ctrl-T does to a ticked task in a Markdown editor: `toggle` (the default) unticks
+        /// it; `cycle` makes it plain text again, so text → task → done → text.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        tasks: Option<String>,
     },
     /// A one-line field (caretline, single-line): an editor whose text never holds a line
     /// break. Enter runs the node's `keys.enter`, so a form submits with a store action.
@@ -633,6 +638,8 @@ pub struct Field<'a> {
     pub indents: bool,
     /// Tab always indents the caret's line (an outliner), never types spaces.
     pub indent_lines: bool,
+    /// Ctrl-T on a ticked task makes it plain text again (`tasks: "cycle"`).
+    pub task_cycle: bool,
 }
 
 /// Where a Markdown task item's box is in a line: the column of the char inside `[ ]`, and whether
@@ -824,7 +831,7 @@ impl Node {
     /// An editor or an input: the text component's settings.
     pub fn field(&self) -> Option<Field<'_>> {
         match &self.kind {
-            Kind::Editor { text, doc, placeholder, syntax, readonly, tab } => Some(Field {
+            Kind::Editor { text, doc, placeholder, syntax, readonly, tab, tasks } => Some(Field {
                 seed: text,
                 doc: doc.as_deref(),
                 placeholder: placeholder.as_deref(),
@@ -834,6 +841,7 @@ impl Node {
                 readonly: *readonly,
                 indents: matches!(tab.as_deref(), Some("indent" | "indent-lines")),
                 indent_lines: tab.as_deref() == Some("indent-lines"),
+                task_cycle: tasks.as_deref() == Some("cycle"),
             }),
             Kind::Input { text, placeholder, accept } => Some(Field {
                 seed: text,
@@ -845,6 +853,7 @@ impl Node {
                 readonly: false,
                 indents: false,
                 indent_lines: false,
+                task_cycle: false,
             }),
             _ => None,
         }

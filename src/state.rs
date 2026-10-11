@@ -666,10 +666,9 @@ fn apply(st: &mut State, msg: Msg) -> Vec<Effect> {
         Msg::Key { key } => {
             if key == "c-t"
                 && let Some(id) = editing(st, &key)
-                && let Some((line, _)) = caret_place(st, &id)
-                && task_line(st, &id, line).is_some()
+                && st.ui.root.find(&id).and_then(|n| n.field()).is_some_and(|f| f.markdown && !f.readonly)
             {
-                toggle_task(st, &id, line);
+                tasks_key(st, &id);
                 return vec![];
             }
             if let Some(why) = not_a_number(st, &key) {
@@ -979,6 +978,49 @@ fn task_line(st: &State, id: &str, line: usize) -> Option<(usize, bool)> {
         return None;
     }
     crate::model::task_box(&doc.text.line(line).to_string())
+}
+
+/// Ctrl-T in a Markdown editor: each line the caret or selection is on becomes a task (`text` →
+/// `- [ ] text`, `- item` → `- [ ] item`), an open task is ticked, and a ticked one is unticked,
+/// or with `tasks: "cycle"` made plain text again. One edit by the person, carets kept on their
+/// text.
+fn tasks_key(st: &mut State, id: &str) {
+    let cycle = st.ui.root.find(id).and_then(|n| n.field()).is_some_and(|f| f.task_cycle);
+    let Some((key, view)) = field_view(st, id) else { return };
+    let r = view.selection.primary();
+    let Some(Entry { body: Body::Text { doc }, .. }) = st.store.get(&key) else { return };
+    let text = &doc.text;
+    let (lo, hi) = (r.anchor.min(r.head).min(text.len_chars()), r.anchor.max(r.head).min(text.len_chars()));
+    let first = text.char_to_line(lo);
+    let mut last = text.char_to_line(hi);
+    if hi > lo && last > first && hi == text.line_to_char(last) {
+        last -= 1;
+    }
+    let mut changes = Vec::new();
+    for l in first..=last {
+        let line = text.line(l).to_string();
+        let line = line.trim_end_matches(['\n', '\r']);
+        let at = text.line_to_char(l);
+        let indent = line.chars().take_while(|c| *c == ' ' || *c == '\t').count();
+        let rest: String = line.chars().skip(indent).collect();
+        let marker = if rest.starts_with("- ") || rest.starts_with("* ") || rest.starts_with("+ ") {
+            Some(2)
+        } else {
+            let d = rest.chars().take_while(char::is_ascii_digit).count();
+            (d > 0 && rest[d..].starts_with(". ")).then_some(d + 2)
+        };
+        match crate::model::task_box(line) {
+            Some((b, false)) => changes.push((at + b, at + b + 1, "x".to_string())),
+            // `- [x] done` back to `done`: the marker, the box and the space after it go.
+            Some((b, true)) if cycle => changes.push((at + indent, (at + b + 3).min(at + line.chars().count()), String::new())),
+            Some((b, true)) => changes.push((at + b, at + b + 1, " ".to_string())),
+            None => match marker {
+                Some(m) => changes.push((at + indent + m, at + indent + m, "[ ] ".to_string())),
+                None => changes.push((at + indent, at + indent, "- [ ] ".to_string())),
+            },
+        }
+    }
+    edit_lines(st, id, changes);
 }
 
 /// Tick or untick the task on line `line` of editor `id`: an edit by the person, one undo step.
@@ -2276,7 +2318,7 @@ mod tests {
         // The editor back, with a different seed: the note wins over the seed.
         let mut again = note();
         if let Some(c) = again.root.children_mut() {
-            c[0].kind = Kind::Editor { text: "a new seed".into(), doc: None, placeholder: None, syntax: None, readonly: false, tab: None };
+            c[0].kind = Kind::Editor { text: "a new seed".into(), doc: None, placeholder: None, syntax: None, readonly: false, tab: None, tasks: None };
         }
         update(&mut st, Msg::Push { ui: again });
         assert_eq!(text_of(&st, "note"), "hi!");
