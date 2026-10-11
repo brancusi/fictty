@@ -1,6 +1,7 @@
 # State and theme: who owns what
 
-A proposal, 10 October 2026. Status: **being built** on the `store-theme-prototype` branch.
+A proposal, 10 October 2026. Status: **built**, merged into `main` on 11 October 2026. What we learned building it is in
+[prototype-notes.md](prototype-notes.md).
 
 fictty mixed three kinds of state in one place, and an agent could wipe two of them by
 accident. A `push` replaced the UI, and with it every data value an agent had sent and the text of

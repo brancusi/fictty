@@ -12,7 +12,7 @@ fictty stays a runtime on ratatui. json-render, OpenTUI and the ratatui ecosyste
 first; none has the loop an outside agent needs (push, patch, read back, answer in place), so we
 build that and borrow formats and components from them. The store-and-theme prototype works: a
 notes app, a ledger, a live market and a gallery, all JSON over one store and three themes
-(`examples/showcase/`). The prototype is on the `store-theme-prototype` branch, not yet merged.
+(`examples/showcase/`). It was merged into `main` on 11 October.
 
 The order below follows what the prototype showed: first land it, then close the agent loop
 (`watch`, rebased text edits), then make records addressable, then layout and the kit.
@@ -29,7 +29,7 @@ here with its history.
 - [x] README, guide, architecture, time-travel proposal, identity explorations, agent files
 - [x] fictty.com: the site in `web/`, with the posts and the landscape research
 
-### The store and the theme (2026-10-11, on `store-theme-prototype`)
+### The store and the theme (merged 2026-10-11)
 
 - [x] Themes as their own layer: tokens, parts (a skin per primitive) and variants, loaded with
       `--themes`, switched by key or `fictty theme`; nodes ask for `variant` and `tone`
@@ -44,7 +44,7 @@ here with its history.
 
 ## 1 · Land the prototype (now)
 
-- [ ] Review and merge `store-theme-prototype` into `main`
+- [x] Review and merge `store-theme-prototype` into `main`
 - [ ] Errors about a field show on the field (its border and title), not only on the status line,
       which screens may hide
 - [ ] An escape for `<` in template markup

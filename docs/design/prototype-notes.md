@@ -83,7 +83,8 @@ place. That loop is fictty; the question was only which engine sits under it.
 
 ## What we built
 
-On the `store-theme-prototype` branch: about 4,200 lines across 29 files, 37 tests.
+On the `store-theme-prototype` branch, merged into `main` on 11 October: about 4,200 lines across
+29 files, 37 tests.
 
 - **The store:** named, versioned entries, either a JSON value or a caretline document. Writes from
   typing, store actions and agents (`put`, `merge`, `edit`, all with `--if-rev` and `--by`);
