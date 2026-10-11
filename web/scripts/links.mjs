@@ -21,7 +21,7 @@ const resolve = (url) => {
   if (existsSync(path.join(f, 'index.html'))) return path.join(f, 'index.html');
   return null;
 };
-const hosted = /github\.com\/brancusi\/fictty\/(blob|tree)\/main\/docs\/(blog|research|design\/(scope|adopt-or-build)\.md|PLAN\.md|guide\.md)/;
+const hosted = /github\.com\/brancusi\/fictty\/(blob|tree)\/main\/docs\/(blog|research|design\/(scope|adopt-or-build|state-and-theme|prototype-notes)\.md|PLAN\.md|guide\.md)/;
 const bad = [];
 let checked = 0;
 for (const page of pages) {

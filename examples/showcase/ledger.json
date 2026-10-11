@@ -1,0 +1,294 @@
+{
+ "root": {
+  "type": "col",
+  "children": [
+   {
+    "type": "text",
+    "size": 1,
+    "pad": 1,
+    "bind": "$theme",
+    "text": "<c3>●</> <b>fictty</> <d>›</> ledger <d>· October 2026</>\t<d>esc menu · t theme ·</> <accent>{name}</> "
+   },
+   {
+    "type": "row",
+    "pad": 1,
+    "children": [
+     {
+      "type": "col",
+      "children": [
+       {
+        "type": "table",
+        "id": "ledger",
+        "bind": "ledger",
+        "title": "Entries",
+        "variant": "card",
+        "keys": {
+         "x": {
+          "remove": "ledger"
+         }
+        },
+        "columns": [
+         {
+          "title": "date",
+          "value": "<d>{date}</>",
+          "size": 11
+         },
+         {
+          "title": "payee",
+          "value": "{payee}"
+         },
+         {
+          "title": "category",
+          "value": "<d>{category}</>",
+          "size": 13
+         },
+         {
+          "title": "amount",
+          "value": "{±amount}",
+          "size": 11,
+          "align": "right",
+          "total": "amount"
+         }
+        ]
+       },
+       {
+        "type": "row",
+        "size": 3,
+        "children": [
+         {
+          "type": "input",
+          "id": "f_date",
+          "bind": "f_date",
+          "title": "Date",
+          "size": 14,
+          "pad": 1,
+          "text": "2026-10-10"
+         },
+         {
+          "type": "input",
+          "id": "f_payee",
+          "bind": "f_payee",
+          "title": "Payee",
+          "pad": 1,
+          "placeholder": "Who"
+         },
+         {
+          "type": "input",
+          "id": "f_cat",
+          "bind": "f_cat",
+          "title": "Category",
+          "size": 16,
+          "pad": 1,
+          "placeholder": "Groceries"
+         },
+         {
+          "type": "input",
+          "id": "f_amount",
+          "bind": "f_amount",
+          "title": "Amount ⏎",
+          "size": 14,
+          "pad": 1,
+          "placeholder": "-12.50",
+          "accept": "number",
+          "keys": {
+           "enter": {
+            "do": [
+             {
+              "append": "ledger",
+              "value": {
+               "id": "{$id}",
+               "date": "{store.f_date}",
+               "payee": "{store.f_payee}",
+               "category": "{store.f_cat}",
+               "amount": "{store.f_amount}"
+              }
+             },
+             {
+              "put": "f_payee",
+              "value": ""
+             },
+             {
+              "put": "f_amount",
+              "value": ""
+             },
+             {
+              "focus": "f_payee"
+             }
+            ]
+           }
+          }
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "type": "text",
+      "size": 1,
+      "text": ""
+     },
+     {
+      "type": "col",
+      "size": 46,
+      "children": [
+       {
+        "type": "big",
+        "bind": "books",
+        "title": "Balance",
+        "size": 6,
+        "variant": "card",
+        "align": "center",
+        "text": "{balance}",
+        "tone": "accent"
+       },
+       {
+        "type": "text",
+        "bind": "books",
+        "size": 4,
+        "pad": 1,
+        "variant": "card",
+        "text": "<pos>in</>   <b>{income}</>\t<d>saved</> <b>{saved}</>\n<neg>out</>  <b>{spent}</>\t<d>{entries} entries</>"
+       },
+       {
+        "type": "bars",
+        "bind": "books.categories",
+        "title": "Spending by category",
+        "variant": "card",
+        "pad": 1,
+        "label": "{name}",
+        "value": "amount",
+        "horizontal": true,
+        "tone": "amber",
+        "size": 11
+       },
+       {
+        "type": "chart",
+        "title": "Running balance",
+        "variant": "card",
+        "series": [
+         {
+          "name": "balance",
+          "bind": "books.running",
+          "color": "accent"
+         }
+        ]
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "type": "text",
+    "size": 1,
+    "pad": 1,
+    "text": "<d>tab moves to the form · enter on the amount books it · x deletes the selected entry · the summary comes from </><accent>books.py</><d>, a helper reading the store</>"
+   }
+  ]
+ },
+ "data": {
+  "books": {
+   "stream": [
+    "python3",
+    "books.py"
+   ]
+  }
+ },
+ "store": {
+  "ledger": [
+   {
+    "id": "l1",
+    "date": "2026-10-01",
+    "payee": "Studio rent",
+    "category": "Rent",
+    "amount": "-1450.00"
+   },
+   {
+    "id": "l2",
+    "date": "2026-10-01",
+    "payee": "Northwind Design (invoice 41)",
+    "category": "Income",
+    "amount": "4200.00"
+   },
+   {
+    "id": "l3",
+    "date": "2026-10-02",
+    "payee": "Green Grocer",
+    "category": "Groceries",
+    "amount": "-64.20"
+   },
+   {
+    "id": "l4",
+    "date": "2026-10-03",
+    "payee": "Metro card",
+    "category": "Transport",
+    "amount": "-40.00"
+   },
+   {
+    "id": "l5",
+    "date": "2026-10-04",
+    "payee": "City Power & Light",
+    "category": "Utilities",
+    "amount": "-118.45"
+   },
+   {
+    "id": "l6",
+    "date": "2026-10-05",
+    "payee": "Lantern Noodle Bar",
+    "category": "Eating out",
+    "amount": "-36.80"
+   },
+   {
+    "id": "l7",
+    "date": "2026-10-06",
+    "payee": "Fibre broadband",
+    "category": "Utilities",
+    "amount": "-45.00"
+   },
+   {
+    "id": "l8",
+    "date": "2026-10-07",
+    "payee": "Hilltop Market",
+    "category": "Groceries",
+    "amount": "-92.15"
+   },
+   {
+    "id": "l9",
+    "date": "2026-10-08",
+    "payee": "Music streaming",
+    "category": "Subscriptions",
+    "amount": "-11.99"
+   },
+   {
+    "id": "l10",
+    "date": "2026-10-08",
+    "payee": "Paperback Exchange",
+    "category": "Books",
+    "amount": "-24.00"
+   },
+   {
+    "id": "l11",
+    "date": "2026-10-09",
+    "payee": "Blue Fern Cafe",
+    "category": "Eating out",
+    "amount": "-14.60"
+   },
+   {
+    "id": "l12",
+    "date": "2026-10-09",
+    "payee": "Orbit Labs (retainer)",
+    "category": "Income",
+    "amount": "1250.00"
+   }
+  ],
+  "f_date": "2026-10-10"
+ },
+ "keys": {
+  "esc": {
+   "load": "home.json"
+  },
+  "t": {
+   "theme": "next"
+  }
+ },
+ "status_bar": false
+}

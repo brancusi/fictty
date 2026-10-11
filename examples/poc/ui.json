@@ -1,0 +1,30 @@
+{
+  "root": {"type": "col", "children": [
+    {"type": "text", "id": "title", "size": 1, "style": {"bold": true, "fg": "cyan"},
+     "text": "fictty · proof of concept   (j/k move · q quit)"},
+    {"type": "row", "children": [
+      {"type": "table", "id": "services", "title": "Services", "bind": "services", "size": "58%",
+       "columns": [
+         {"title": "service", "value": "{name}"},
+         {"title": "region", "value": "{region}", "size": 10},
+         {"title": "status", "value": "{status}", "size": 10},
+         {"title": "p95", "value": "{p95} ms", "size": 8, "align": "right"}
+       ]},
+      {"type": "col", "children": [
+        {"type": "sparkline", "id": "latency", "title": "p95 latency, last 30 checks", "bind": "latency", "size": 6},
+        {"type": "text", "id": "detail", "title": "Selected service", "bind": "@services",
+         "text": "{name}\n\nregion   {region}\nstatus   {status}\nversion  {version}\np95      {p95} ms\n\n{note}"}
+      ]}
+    ]}
+  ]},
+  "store": {
+    "services": [
+      {"name": "api-gateway", "region": "us-east", "status": "ready", "version": "2.14", "p95": 182, "note": "Rolled out at 09:12."},
+      {"name": "billing", "region": "eu-west", "status": "ready", "version": "1.8", "p95": 240, "note": "Nightly invoices run at 02:00."},
+      {"name": "search", "region": "us-east", "status": "degraded", "version": "3.2", "p95": 910, "note": "Index rebuild in progress."},
+      {"name": "notifications", "region": "ap-south", "status": "ready", "version": "0.9", "p95": 133, "note": "Queue depth normal."}
+    ],
+    "latency": [180, 176, 190, 188, 201, 230, 260, 245, 210, 195, 188, 182, 179, 185, 192, 220, 310, 420, 390, 300, 240, 210, 198, 190, 186, 183, 181, 184, 180, 182]
+  },
+  "keys": {"q": "quit"}
+}

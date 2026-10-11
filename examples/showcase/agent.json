@@ -1,0 +1,27 @@
+{
+  "root": {"type": "col", "children": [
+    {"type": "text", "size": 1, "pad": 1, "bind": "$theme",
+     "text": "<c1>●</> <b>fictty</> <d>›</> agent <d>· what agents did over the socket, and what the store holds</>\t<d>t theme ·</> <accent>{name}</> <d>· esc menu</> "},
+    {"type": "row", "pad": 1, "children": [
+      {"type": "list", "id": "activity", "bind": "$log", "title": "Agent activity, newest first", "variant": "card",
+       "item": "<d>{at}</>  {op|push=<accent+b>push   </>;patch=<violet+b>patch  </>;put=<pos+b>put    </>;edit=<amber+b>edit   </>;merge=<amber+b>merge  </>;set=<violet+b>set    </>;key=<b>key    </>;theme=<violet+b>theme  </>;refused=<rose+b>refused</>;*=<b>$</>}  {what}",
+       "empty": "Nothing yet. Run examples/showcase/tour.sh in another terminal and watch an agent drive this showcase."},
+      {"type": "text", "size": 1, "text": ""},
+      {"type": "col", "size": "46%", "children": [
+        {"type": "table", "id": "entries", "bind": "$store", "title": "The store", "variant": "card",
+         "columns": [
+           {"title": "entry", "value": "<b>{key}</>"},
+           {"title": "rev", "value": "{rev}", "size": 5, "align": "right"},
+           {"title": "by", "value": "{by|person=<accent>person</>;seed=<d>seed</>;*=<amber>$</>}", "size": 8},
+           {"title": "holds", "value": "<d>{holds}</>", "size": 17}
+         ]},
+        {"type": "text", "title": "Try it from another terminal", "variant": "quiet", "size": 11, "pad": [2, 1],
+         "text": "<accent>fictty read note/standup</>\n<accent>echo '\"hi\"' | fictty put draft -</>\n<accent>fictty theme paper</>\n<accent>fictty get --state</>\n\nWrites take <b>--if-rev N</>: if anyone wrote since\nrevision N, the write is refused, with what's there."}
+      ]}
+    ]},
+    {"type": "text", "size": 1, "pad": 1,
+     "text": "<d>The store outlives every screen: the notes, the ledger and your drafts are all here, by revision and by who wrote them last.</>"}
+  ]},
+  "keys": {"esc": {"load": "home.json"}, "t": {"theme": "next"}},
+  "status_bar": false
+}

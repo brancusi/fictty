@@ -17,6 +17,10 @@ pub struct Ui {
     /// Named data sources, fetched by the runtime and bound to by nodes.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub data: BTreeMap<String, Source>,
+    /// Starting values for store entries (`seed`s): each is written only when its entry doesn't
+    /// exist yet, so a push never overwrites what the person or another agent wrote.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub store: BTreeMap<String, Value>,
     /// Keys that work everywhere (a focused node's own `keys` win).
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub keys: BTreeMap<String, Action>,
@@ -32,6 +36,35 @@ pub struct Ui {
     /// row. The meter is still bindable as `$stats`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub status_bar: Option<bool>,
+}
+
+/// A theme: colour `tokens`, styles for the `parts` of components the runtime draws (style specs,
+/// as in template markup: `accent+b`, `on-ring`), and named `variants` a node can ask for. Themes
+/// are the person's or the project's, loaded with `--themes`; a push doesn't change them.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct ThemeSpec {
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub tokens: BTreeMap<String, String>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub parts: BTreeMap<String, String>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub variants: BTreeMap<String, Variant>,
+}
+
+/// A named look: a style under the node's own, and a border and backdrop when the node has none.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct Variant {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub style: Option<Style>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub edge: Option<String>,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub border: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub backdrop: Option<Backdrop>,
+    /// The style of the node's title.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
 }
 
 /// One layer, anchored to a node (`on`) or one of its rows (`row`).
@@ -127,6 +160,15 @@ pub struct Node {
     /// Keys that work while this node has focus.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub keys: BTreeMap<String, Action>,
+    /// A named look from the active theme's `variants` (its style, border and backdrop).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub variant: Option<String>,
+    /// A meaning for the text colour, as a theme token: `warn`, `neg`, `accent`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tone: Option<String>,
+    /// Space inside the node's border: `1` (cells either side), or `[x, y]` (cells, rows).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pad: Option<Pad>,
     #[serde(flatten)]
     pub kind: Kind,
 }
@@ -147,6 +189,9 @@ impl Default for Node {
             click: None,
             backdrop: None,
             scale: None,
+            variant: None,
+            tone: None,
+            pad: None,
             kind: Kind::Text { text: String::new() },
         }
     }
@@ -221,6 +266,10 @@ pub enum Kind {
         items: Vec<Value>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         width: Option<u16>,
+        /// One row per item, the bar growing to the right, the label before it and the value
+        /// after it, instead of columns.
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        horizontal: bool,
     },
     /// A filled bar: `value` (a template giving a number) out of `max` (default 1).
     Gauge {
@@ -232,6 +281,38 @@ pub enum Kind {
     },
     /// Large digits (a KPI): the filled template, in a 3-row block font.
     Big { text: String },
+    /// A multi-line text editor (caretline) on a text entry in the store: `bind` names the
+    /// entry (default: the editor's id), and `text` seeds it when it doesn't exist yet. With
+    /// `doc`, the entry's name is a template over the bound value instead: `"bind": "@notes",
+    /// "doc": "note/{id}"` edits the selected note, and `text` (`"{body}"`) fills from it too.
+    /// The text and its undo history are the store's, so a push that drops the editor loses
+    /// nothing; the carets and scroll are the editor's, one set per entry it has shown. While it
+    /// has focus it takes every key except Tab, Shift-Tab and Esc, so Ctrl-C copies there.
+    Editor {
+        #[serde(default, skip_serializing_if = "String::is_empty")]
+        text: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        doc: Option<String>,
+        /// Shown, dimmed, while the text is empty.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        placeholder: Option<String>,
+        /// `markdown` styles headings, list markers, quotes and inline code (theme parts
+        /// `md.heading`, `md.bullet`, `md.quote`, `md.code`). The text stays plain.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        syntax: Option<String>,
+    },
+    /// A one-line field (caretline, single-line): an editor whose text never holds a line
+    /// break. Enter runs the node's `keys.enter`, so a form submits with a store action.
+    Input {
+        #[serde(default, skip_serializing_if = "String::is_empty")]
+        text: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        placeholder: Option<String>,
+        /// `number`: typing that can't make a number is refused, and the node's keys (Enter)
+        /// don't run until the text is one.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        accept: Option<String>,
+    },
     /// One child at a time, picked by a row of tab titles (click one, or ←/→ when focused).
     Tabs { tabs: Vec<String>, children: Vec<Node> },
     /// Lines drawn in pixels (anti-aliased, a gradient under each) where the terminal draws
@@ -333,6 +414,10 @@ pub struct Column {
     pub align: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub heat: Option<Heat>,
+    /// Sum this path of every row in a footer under the column (numbers, or strings that read as
+    /// numbers).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub total: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -375,9 +460,65 @@ pub struct Source {
     pub every: Option<f64>,
 }
 
+/// Space inside a node: cells either side, or `[x, y]`.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum Pad {
+    X(u16),
+    XY([u16; 2]),
+}
+
+impl Pad {
+    pub fn xy(self) -> (u16, u16) {
+        match self {
+            Pad::X(x) => (x, 0),
+            Pad::XY([x, y]) => (x, y),
+        }
+    }
+}
+
+/// An editor's or input's settings (see `Kind::Editor`, `Kind::Input`).
+#[derive(Clone, Copy, Debug)]
+pub struct Field<'a> {
+    pub seed: &'a str,
+    pub doc: Option<&'a str>,
+    pub placeholder: Option<&'a str>,
+    /// One line (an input).
+    pub line: bool,
+    /// Markdown styling.
+    pub markdown: bool,
+    /// Numbers only (`accept: "number"`).
+    pub number: bool,
+}
+
+/// Text that is a number, or the start of one ("", "-", "12.").
+pub fn number_so_far(t: &str) -> bool {
+    let t = t.strip_prefix('-').unwrap_or(t);
+    let mut dot = false;
+    t.chars().all(|c| match c {
+        '.' if !dot => {
+            dot = true;
+            true
+        }
+        c => c.is_ascii_digit(),
+    })
+}
+
+/// Text that is a whole number: "-12.50", "3", "4.".
+pub fn number_done(t: &str) -> bool {
+    number_so_far(t) && t.chars().any(|c| c.is_ascii_digit())
+}
+
 /// What a key does. Names: `quit`, `up`, `down`, `top`, `bottom`, `focus_next`, `focus_prev`,
 /// `refresh`. `run` executes a command (templated against the selected item, `{id}`), then
-/// refreshes; `load` replaces the whole UI with a file's.
+/// refreshes; `load` replaces the whole UI with a file's; `focus` moves focus to a node;
+/// `theme` chooses a theme (`next`, `prev` or a name).
+///
+/// Store actions write the store, as the person: `append` adds the filled `value` to an array
+/// entry, `put` writes one (a string into a text entry replaces its text, undoably), `remove`
+/// takes the focused list's selected row out of the array entry it shows, `do` runs several in
+/// order. Templates in `value` read `{field}` from the selected row, `{store.key}` from the store
+/// and `{$id}`, a fresh id; a string that is one placeholder takes the value with its type.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum Action {
@@ -385,6 +526,14 @@ pub enum Action {
     Run { run: Vec<String> },
     Load { load: String },
     Focus { focus: String },
+    Theme { theme: String },
+    Append { append: String, value: Value },
+    Put { put: String, value: Value },
+    Remove { remove: String },
+    Do {
+        #[serde(rename = "do")]
+        steps: Vec<Action>,
+    },
 }
 
 impl Node {
@@ -410,9 +559,57 @@ impl Node {
         }
     }
 
-    /// Lists, tables and tabs with an id take focus.
+    /// Lists, tables, tabs and editors with an id take focus.
     pub fn focusable(&self) -> bool {
-        self.id.is_some() && matches!(self.kind, Kind::List { .. } | Kind::Table { .. } | Kind::Tabs { .. })
+        self.id.is_some() && (matches!(self.kind, Kind::List { .. } | Kind::Table { .. } | Kind::Tabs { .. }) || self.field().is_some())
+    }
+
+    /// The component's name, as written in `type`.
+    pub fn kind_name(&self) -> &'static str {
+        match &self.kind {
+            Kind::Col { .. } => "col",
+            Kind::Row { .. } => "row",
+            Kind::Text { .. } => "text",
+            Kind::List { .. } => "list",
+            Kind::Rule { .. } => "rule",
+            Kind::Table { .. } => "table",
+            Kind::Sparkline { .. } => "sparkline",
+            Kind::Chart { .. } => "chart",
+            Kind::Bars { .. } => "bars",
+            Kind::Gauge { .. } => "gauge",
+            Kind::Big { .. } => "big",
+            Kind::Editor { .. } => "editor",
+            Kind::Input { .. } => "input",
+            Kind::Tabs { .. } => "tabs",
+            Kind::Plot { .. } => "plot",
+            Kind::Image { .. } => "image",
+            Kind::Svg { .. } => "svg",
+            Kind::Dot { .. } => "dot",
+            Kind::Map { .. } => "map",
+        }
+    }
+
+    /// An editor or an input: the text component's settings.
+    pub fn field(&self) -> Option<Field<'_>> {
+        match &self.kind {
+            Kind::Editor { text, doc, placeholder, syntax } => Some(Field {
+                seed: text,
+                doc: doc.as_deref(),
+                placeholder: placeholder.as_deref(),
+                line: false,
+                markdown: syntax.as_deref() == Some("markdown"),
+                number: false,
+            }),
+            Kind::Input { text, placeholder, accept } => Some(Field {
+                seed: text,
+                doc: None,
+                placeholder: placeholder.as_deref(),
+                line: true,
+                markdown: false,
+                number: accept.as_deref() == Some("number"),
+            }),
+            _ => None,
+        }
     }
 
     /// Like `walk`, but only into the shown child of each tabs node (`tab` gives its index).

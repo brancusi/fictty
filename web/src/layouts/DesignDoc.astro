@@ -12,7 +12,7 @@ const entry = (await getEntry('pages', id))!;
 const { Content, headings } = await render(entry);
 const title = headings.find((h) => h.depth === 1)?.text ?? id;
 const toc = headings.filter((h) => h.depth === 2);
-const src = { plan: 'docs/PLAN.md', scope: 'docs/design/scope.md', 'adopt-or-build': 'docs/design/adopt-or-build.md' }[id];
+const src = { plan: 'docs/PLAN.md', scope: 'docs/design/scope.md', 'adopt-or-build': 'docs/design/adopt-or-build.md', 'state-and-theme': 'docs/design/state-and-theme.md', 'prototype-notes': 'docs/design/prototype-notes.md' }[id];
 ---
 <Base title={title} description={description}>
   <article class={`page doc doc-${id} ${kind}`}>

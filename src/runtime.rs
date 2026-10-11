@@ -28,6 +28,33 @@ pub enum Request {
     Push { ui: Ui },
     Patch { id: String, node: crate::model::Node },
     Key { key: String },
+    /// Write one store entry (`put`, `merge` or `edit`), refused when `if_rev` is stale.
+    Write {
+        key: String,
+        #[serde(flatten)]
+        write: crate::store::Write,
+        #[serde(default)]
+        if_rev: Option<u64>,
+        #[serde(default = "agent")]
+        by: String,
+    },
+    /// One store entry: its revision, who wrote it last, and its text or value.
+    Read { key: String },
+    /// Add themes (by name) and choose one: a name, `next` or `prev`.
+    Theme {
+        #[serde(default)]
+        add: BTreeMap<String, crate::model::ThemeSpec>,
+        #[serde(default)]
+        choose: Option<String>,
+    },
+    /// Move one node's view state: `selected` (lists, tables) or `tab`.
+    Set {
+        id: String,
+        #[serde(default)]
+        selected: Option<usize>,
+        #[serde(default)]
+        tab: Option<usize>,
+    },
     /// Replace the layers only (callouts, rings, spotlights).
     Layers { layers: Vec<crate::model::LayerSpec> },
     /// The mouse at a cell, as the terminal would report it: `move`, `click`, `up` or `down`
@@ -141,6 +168,8 @@ struct Driver {
     blocking: bool,
     /// Set by an upgrade request: the binary to become.
     upgrade: Option<String>,
+    /// Zero on the logical clock (`State::now_ms`).
+    started: Instant,
 }
 
 impl Drop for Driver {
@@ -154,17 +183,23 @@ impl Drop for Driver {
 
 impl Driver {
     fn new(tx: Sender<Event>, blocking: bool) -> Driver {
-        Driver { tx, in_flight: BTreeSet::new(), last_fetch: BTreeMap::new(), streams: BTreeMap::new(), quit: false, blocking, upgrade: None }
+        Driver { tx, in_flight: BTreeSet::new(), last_fetch: BTreeMap::new(), streams: BTreeMap::new(), quit: false, blocking, upgrade: None, started: Instant::now() }
     }
 
     fn apply(&mut self, st: &mut State, msg: Msg) {
         if let Msg::Data { name, .. } = &msg {
             self.in_flight.remove(name);
         }
+        // Keys carry the time they arrived (an editor groups typing into undo steps by it).
+        // Headless renders keep the clock still, so they come out the same every time.
+        if matches!(msg, Msg::Key { .. }) && !self.blocking {
+            update(st, Msg::Tick { now_ms: self.started.elapsed().as_millis() as u64 });
+        }
         let mut queue: Vec<Effect> = update(st, msg);
         while let Some(fx) = queue.pop() {
             match fx {
                 Effect::Quit => self.quit = true,
+                Effect::Reply(_) => {}
                 Effect::Load(path) => match load(Path::new(&path)) {
                     Ok(ui) => queue.extend(update(st, Msg::Push { ui })),
                     Err(e) => st.status = Some(format!("{e:#}")),
@@ -280,6 +315,17 @@ impl Driver {
     }
 
     fn request(&mut self, st: &mut State, req: Request) -> Value {
+        // What changed the screen goes in `$log`, so a UI can show what its agent is doing.
+        // A write is logged after it's tried, so a refused one shows as refused.
+        let logged = activity(st, &req);
+        let log = |st: &mut State, op: &str, what: String| {
+            update(st, Msg::Tick { now_ms: self.started.elapsed().as_millis() as u64 });
+            update(st, Msg::Activity { op: op.into(), what, at: clock() });
+        };
+        let is_write = matches!(req, Request::Write { .. });
+        if let (Some((op, what)), false) = (&logged, is_write) {
+            log(st, op, what.clone());
+        }
         let msg = match req {
             Request::Get => return serde_json::to_value(&st.ui).unwrap_or_default(),
             Request::State => return serde_json::to_value(&*st).unwrap_or_default(),
@@ -287,23 +333,86 @@ impl Driver {
             Request::Push { ui } => Msg::Push { ui },
             Request::Patch { id, node } => Msg::Patch { id, node },
             Request::Key { key } => Msg::Key { key },
+            Request::Read { key } => {
+                return st.store.get(&key).map_or_else(|| json!({"ok": false, "status": format!("no entry {key}")}), |e| e.read());
+            }
+            Request::Write { key, write, if_rev, by } => {
+                let reply = update(st, Msg::Write { key, write, if_rev, by }).into_iter().find_map(|fx| match fx {
+                    Effect::Reply(r) => Some(r),
+                    _ => None,
+                });
+                let mut reply = reply.unwrap_or_else(|| json!({"ok": false}));
+                if let Some((op, what)) = logged {
+                    match reply["ok"].as_bool() {
+                        Some(true) => log(st, op, what),
+                        _ => log(st, "refused", format!("{op} {what} ({})", refusal(&reply))),
+                    }
+                }
+                if !st.problems.is_empty() {
+                    reply["problems"] = json!(st.problems);
+                }
+                return reply;
+            }
+            Request::Set { id, selected, tab } => Msg::Set { id, selected, tab },
+            Request::Theme { add, choose } => Msg::Theme { add, choose },
             Request::Layers { layers } => Msg::Layers { layers },
             Request::Click { id, row, tab } => Msg::Click { id, row, tab },
             // The loop answers these itself (they need the last frame).
             Request::Mouse { .. } | Request::Screen | Request::Upgrade { .. } => return json!({"ok": false}),
         };
         self.apply(st, msg);
-        json!({"ok": st.status.is_none(), "version": st.version, "status": st.status})
+        let mut reply = json!({"ok": st.status.is_none(), "version": st.version, "status": st.status});
+        if !st.problems.is_empty() {
+            reply["problems"] = json!(st.problems);
+        }
+        reply
     }
 }
 
-/// Run a UI in the terminal until `quit`.
-pub fn run(file: Option<PathBuf>, watch: bool, socket: PathBuf, restore: Option<PathBuf>) -> Result<()> {
+/// The store from its file, if there is one yet.
+fn load_store(path: &Path) -> Result<BTreeMap<String, crate::store::Entry>> {
+    match std::fs::read_to_string(path) {
+        Ok(raw) => serde_json::from_str(&raw).with_context(|| format!("{} is not a fictty store", path.display())),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(BTreeMap::new()),
+        Err(e) => Err(e).with_context(|| format!("reading {}", path.display())),
+    }
+}
+
+/// The store to its file: written beside it, then renamed over it, so a crash never leaves half.
+fn save_store(path: &Path, st: &State) -> Result<()> {
+    let tmp = path.with_extension("json.tmp");
+    std::fs::write(&tmp, serde_json::to_vec_pretty(&st.store)?)?;
+    std::fs::rename(&tmp, path)?;
+    Ok(())
+}
+
+/// Themes from a file: a JSON object of theme specs by name.
+pub fn load_themes(path: &Path) -> Result<BTreeMap<String, crate::model::ThemeSpec>> {
+    let raw = std::fs::read_to_string(path).with_context(|| format!("reading {}", path.display()))?;
+    serde_json::from_str(&raw).with_context(|| format!("{} is not a set of themes", path.display()))
+}
+
+/// What `run` starts from besides the UI: a store file, a themes file.
+#[derive(Default)]
+pub struct Files {
+    pub store: Option<PathBuf>,
+    pub themes: Option<PathBuf>,
+}
+
+/// Run a UI in the terminal until `quit`. With a store file, the store is read from it at the
+/// start and written back after every change; with a themes file, its themes are loaded and the
+/// first is chosen (unless a restored state already chose one).
+pub fn run(file: Option<PathBuf>, watch: bool, socket: PathBuf, restore: Option<PathBuf>, files: Files) -> Result<()> {
+    let Files { store, themes } = files;
     // Restoring (after an upgrade): the saved state, every selection and focus as it was.
     let mut st: State = match &restore {
         Some(p) => serde_json::from_str(&std::fs::read_to_string(p)?)?,
         None => State::default(),
     };
+    if let (None, Some(p)) = (&restore, &store) {
+        st.store = load_store(p)?;
+    }
+    let mut saved_writes = st.store_writes;
     let ui = match (&restore, &file) {
         (Some(_), _) => st.ui.clone(),
         (None, Some(p)) => load(p)?,
@@ -311,8 +420,22 @@ pub fn run(file: Option<PathBuf>, watch: bool, socket: PathBuf, restore: Option<
             "text": "Waiting for a UI.\n\nPush one:  fictty push ui.json"}}))?,
     };
     let (tx, rx) = mpsc::channel();
+    // Commands the screen runs (sources, `run`) can talk back to it: a helper script reads the
+    // store with `$FICTTY read …`. Set before any thread starts.
+    // SAFETY: no other thread exists yet, so nothing reads the environment concurrently.
+    unsafe {
+        std::env::set_var("FICTTY_SOCKET", &socket);
+        if let Ok(me) = std::env::current_exe() {
+            std::env::set_var("FICTTY", me);
+        }
+    }
+    if let Some(p) = &themes {
+        update(&mut st, Msg::Theme { add: load_themes(p)?, choose: None });
+    }
     serve(&socket, tx.clone())?;
     let mut d = Driver::new(tx, false);
+    // A restored state's clock carries on from where it was.
+    d.started = Instant::now().checked_sub(Duration::from_millis(st.now_ms)).unwrap_or_else(Instant::now);
     d.apply(&mut st, Msg::Push { ui });
     let caps = |sizing: bool| Msg::Caps { caps: crate::gfx::Caps::detect(), text_sizing: sizing };
     let mut kitty = crate::gfx::Kitty::default();
@@ -328,7 +451,7 @@ pub fn run(file: Option<PathBuf>, watch: bool, socket: PathBuf, restore: Option<
     // (The probe clears what it printed; ratatui's first frame draws every cell.)
     d.apply(&mut st, caps(sizing));
     let _ = ratatui::crossterm::execute!(std::io::stdout(), EnableMouseCapture);
-    let started = Instant::now();
+    let started = d.started;
     let res = (|| -> Result<()> {
         // Draw only when something changed, at most once per frame budget (120 fps).
         let budget = Duration::from_micros(8_333);
@@ -361,9 +484,10 @@ pub fn run(file: Option<PathBuf>, watch: bool, socket: PathBuf, restore: Option<
                 let mut text = None;
                 let mut pics = Vec::new();
                 let mut scaled = Vec::new();
+                let mut sizes = Vec::new();
                 term.draw(|f| {
                     let out = view::draw(&st, f);
-                    (hits, pics, scaled) = (out.hits, out.pics, out.scaled);
+                    (hits, pics, scaled, sizes) = (out.hits, out.pics, out.scaled, out.sizes);
                     if !screens.is_empty() {
                         text = Some(buffer_text(f.buffer_mut()));
                     }
@@ -388,7 +512,7 @@ pub fn run(file: Option<PathBuf>, watch: bool, socket: PathBuf, restore: Option<
                 }
                 window.frame(t.elapsed());
                 last_draw = Instant::now();
-                dirty = false;
+                dirty = resize_editors(&mut d, &mut st, sizes);
             }
             // Sleep until the next frame is due (when there's something to draw) or a while.
             let wait = if dirty || animating { budget.saturating_sub(last_draw.elapsed()) } else { Duration::from_millis(50) };
@@ -401,6 +525,12 @@ pub fn run(file: Option<PathBuf>, watch: bool, socket: PathBuf, restore: Option<
             let n = apply_batch(batch, &mut d, &mut st, &hits, &mut screens);
             window.msgs += n;
             dirty |= n > 0;
+            if let Some(p) = store.as_deref().filter(|_| st.store_writes != saved_writes) {
+                match save_store(p, &st) {
+                    Ok(()) => saved_writes = st.store_writes,
+                    Err(e) => st.status = Some(format!("saving the store: {e:#}")),
+                }
+            }
             if resized {
                 // The cell size can change with the window (a font size change, another display).
                 d.apply(&mut st, caps(sizing));
@@ -418,6 +548,12 @@ pub fn run(file: Option<PathBuf>, watch: bool, socket: PathBuf, restore: Option<
                 use std::os::unix::process::CommandExt;
                 let mut cmd = Command::new(&bin);
                 cmd.args(["run", "--socket"]).arg(&socket).arg("--restore").arg(&path);
+                if let Some(p) = &store {
+                    cmd.arg("--store").arg(p);
+                }
+                if let Some(p) = &themes {
+                    cmd.arg("--themes").arg(p);
+                }
                 if watch && let Some(p) = &file {
                     cmd.arg("--watch").arg(p);
                 }
@@ -526,6 +662,9 @@ fn mouse(kind: MouseEventKind, x: u16, y: u16, hits: &[Hit], st: &State) -> Opti
     match kind {
         MouseEventKind::Down(MouseButton::Left) => {
             let h = at(false)?;
+            if h.text {
+                return Some(Msg::Point { id: h.id.clone(), col: x - h.rect.x, row: y - h.rect.y });
+            }
             Some(Msg::Click { id: h.id.clone(), row: h.row.filter(|r| *r < 1000), tab: h.tab })
         }
         MouseEventKind::ScrollDown | MouseEventKind::ScrollUp => {
@@ -689,16 +828,26 @@ fn buffer_text(buf: &ratatui::buffer::Buffer) -> String {
 }
 
 /// Render one frame as text without a terminal, after fetching sources and replaying keys.
-pub fn render(ui: Ui, width: u16, height: u16, keys: &[String], ansi: bool) -> Result<String> {
+pub fn render(ui: Ui, width: u16, height: u16, keys: &[String], ansi: bool, files: Files, theme: Option<String>) -> Result<String> {
     use ratatui::{Terminal, backend::TestBackend};
     let (tx, _rx) = mpsc::channel();
     let mut st = State::default();
+    if let Some(p) = &files.store {
+        st.store = load_store(p)?;
+    }
+    if let Some(p) = &files.themes {
+        update(&mut st, Msg::Theme { add: load_themes(p)?, choose: theme });
+    }
     let mut d = Driver::new(tx, true);
     d.apply(&mut st, Msg::Push { ui });
+    let mut term = Terminal::new(TestBackend::new(width, height))?;
+    // One frame to learn each editor's size, so keys scroll it as they would on screen.
+    let mut sizes = Vec::new();
+    term.draw(|f| sizes = view::draw(&st, f).sizes)?;
+    resize_editors(&mut d, &mut st, sizes);
     for k in keys {
         d.apply(&mut st, Msg::Key { key: k.clone() });
     }
-    let mut term = Terminal::new(TestBackend::new(width, height))?;
     term.draw(|f| {
         view::draw(&st, f);
     })?;
@@ -715,8 +864,98 @@ pub fn render(ui: Ui, width: u16, height: u16, keys: &[String], ansi: bool) -> R
     Ok(out)
 }
 
+fn agent() -> String {
+    "agent".into()
+}
+
+/// A socket request as a `$log` entry (op, what), for the requests that change the screen.
+fn activity(st: &State, req: &Request) -> Option<(&'static str, String)> {
+    let short = |s: &str| {
+        let one: String = s.split_whitespace().collect::<Vec<_>>().join(" ");
+        if one.chars().count() > 40 { format!("{}…", one.chars().take(39).collect::<String>()) } else { one }
+    };
+    Some(match req {
+        Request::Push { ui } => ("push", format!("a new UI (v{}), {} sources", st.version + 1, ui.data.len())),
+        Request::Patch { id, .. } => ("patch", format!("node {id}")),
+        Request::Write { key, write, if_rev, .. } => {
+            use crate::store::Write;
+            let rev = if_rev.map(|r| format!(" @{r}")).unwrap_or_default();
+            match write {
+                Write::Put { value: Value::String(t) } => ("put", format!("{key}{rev}: \"{}\"", short(t))),
+                Write::Put { value: Value::Array(a) } => ("put", format!("{key}{rev}: {} items", a.len())),
+                Write::Put { .. } => ("put", format!("{key}{rev}")),
+                Write::Merge { .. } => ("merge", format!("{key}{rev}")),
+                Write::Edit { changes } => {
+                    let first = changes.first().map(|c| format!(": \"{}\"", short(&c.2))).unwrap_or_default();
+                    ("edit", format!("{key}{rev}{first}"))
+                }
+            }
+        }
+        Request::Set { id, selected, tab } => {
+            let what = match (selected, tab) {
+                (Some(r), _) => format!("{id} row {r}"),
+                (_, Some(t)) => format!("{id} tab {t}"),
+                _ => id.clone(),
+            };
+            ("set", what)
+        }
+        Request::Key { key } => ("key", key.clone()),
+        Request::Theme { add, choose } => ("theme", choose.clone().unwrap_or_else(|| format!("{} loaded", add.len()))),
+        Request::Layers { layers } => ("layers", format!("{} layers", layers.len())),
+        Request::Click { id, .. } => ("click", id.clone()),
+        _ => return None,
+    })
+}
+
+/// Why a write was refused, in a few words for the log: "at rev 3" for a stale one.
+fn refusal(reply: &Value) -> String {
+    match reply["current"]["rev"].as_u64() {
+        Some(rev) => format!("stale: at rev {rev}"),
+        None => reply["status"].as_str().unwrap_or("refused").to_string(),
+    }
+}
+
+/// The local wall-clock time, `HH:MM:SS`, for the activity log.
+fn clock() -> String {
+    let now = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).map_or(0, |d| d.as_secs()) as libc::time_t;
+    // SAFETY: localtime_r writes only into `tm`, which outlives the call.
+    let mut tm: libc::tm = unsafe { std::mem::zeroed() };
+    if unsafe { libc::localtime_r(&now, &mut tm) }.is_null() {
+        return format!("{:02}:{:02}:{:02}", now / 3600 % 24, now / 60 % 60, now % 60);
+    }
+    format!("{:02}:{:02}:{:02}", tm.tm_hour, tm.tm_min, tm.tm_sec)
+}
+
+/// Tells each editor the size it was drawn at, where that differs from its own. True when any
+/// changed (the next frame should draw).
+fn resize_editors(d: &mut Driver, st: &mut State, sizes: Vec<(String, u16, u16)>) -> bool {
+    let mut changed = false;
+    for (id, width, height) in sizes {
+        let own = crate::state::field_view(st, &id).map(|(_, v)| (v.viewport.width, v.viewport.height));
+        if own.is_some_and(|o| o != (width.max(1), height.max(1))) {
+            d.apply(st, Msg::Size { id, width, height });
+            changed = true;
+        }
+    }
+    changed
+}
+
 pub fn key_name(k: KeyEvent) -> Option<String> {
     let ctrl = k.modifiers.contains(KeyModifiers::CONTROL);
+    let shift = k.modifiers.contains(KeyModifiers::SHIFT);
+    let alt = k.modifiers.contains(KeyModifiers::ALT);
+    // Shift with a movement key extends a selection in an editor: `s-left`, `s-end`.
+    let moves = matches!(k.code, KeyCode::Up | KeyCode::Down | KeyCode::Left | KeyCode::Right | KeyCode::Home | KeyCode::End);
+    if shift && moves {
+        let base = key_name(KeyEvent::new(k.code, KeyModifiers::NONE))?;
+        return Some(format!("s-{base}"));
+    }
+    if let KeyCode::Char(c) = k.code
+        && alt
+        && !ctrl
+    {
+        return Some(format!("a-{c}"));
+    }
     Some(match k.code {
         KeyCode::Char(c) if ctrl => format!("c-{c}"),
         KeyCode::Char(' ') => "space".into(),
@@ -732,6 +971,9 @@ pub fn key_name(k: KeyEvent) -> Option<String> {
         KeyCode::Right => "right".into(),
         KeyCode::Home => "home".into(),
         KeyCode::End => "end".into(),
+        KeyCode::Delete => "del".into(),
+        KeyCode::PageUp => "pgup".into(),
+        KeyCode::PageDown => "pgdn".into(),
         _ => return None,
     })
 }

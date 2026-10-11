@@ -1,0 +1,159 @@
+{
+ "root": {
+  "type": "col",
+  "children": [
+   {
+    "type": "text",
+    "size": "*",
+    "text": ""
+   },
+   {
+    "type": "row",
+    "size": 25,
+    "children": [
+     {
+      "type": "text",
+      "size": "*",
+      "text": ""
+     },
+     {
+      "type": "col",
+      "size": 100,
+      "children": [
+       {
+        "type": "text",
+        "id": "mark",
+        "size": 6,
+        "text": "  <c1>████</>    <c2>██</>      <c3>████</>      <c4>██</>        <c1>██</>      <c2>██</>  <c2>██</>\n<c1>██</>  <c1+d>░░░░</>    <c2+d>░░</>  <c3>██</>  <c3+d>░░░░</>  <c4>██████</>    <c1>██████</>    <c2>██</><c2+d>░░</><c2>██</><c2+d>░░</>\n<c1>██████</>    <c2>██</>    <c3>██</><c3+d>░░</>        <c4>██</><c4+d>░░░░</>    <c1>██</><c1+d>░░░░</>    <c2>████</><c2+d>░░</>\n<c1>██</><c1+d>░░░░░░</>  <c2>██</><c2+d>░░</>  <c3>██</><c3+d>░░</>        <c4>██</><c4+d>░░</>      <c1>██</><c1+d>░░</>        <c2>██</><c2+d>░░</>\n<c1>██</><c1+d>░░</>      <c2>██</><c2+d>░░</>    <c3>████</>        <c4>██</>        <c1>██</>    <c2>████</>  <c2+d>░░</>\n  <c1+d>░░</>        <c2+d>░░</>      <c3+d>░░░░</>        <c4+d>░░</>        <c1+d>░░</>    <c2+d>░░░░</>"
+       },
+       {
+        "type": "text",
+        "size": 3,
+        "text": "\n<d>A terminal UI that is one value. Every screen in this showcase is JSON.</>"
+       },
+       {
+        "type": "row",
+        "size": 14,
+        "children": [
+         {
+          "type": "list",
+          "id": "chapters",
+          "title": "Showcase",
+          "size": 34,
+          "variant": "card",
+          "item": "{dot|c1=<c1>●</>;c2=<c2>●</>;c3=<c3>●</>;c4=<c4>●</>} <b>{title}</>\t<d>{n} </>",
+          "mark": "▌ ",
+          "lead": "  ",
+          "items": [
+           {
+            "n": "1",
+            "dot": "c1",
+            "title": "Notes",
+            "file": "notes.json",
+            "blurb": "A notes app: a list of notes, and a caretline editor on the one you pick. Each note is an entry in the store, so switching screens, pushing a new UI or restarting loses nothing.",
+            "try": "Enter on the field adds a note · x deletes the selected one · Tab moves between panes · type anywhere in the editor; Ctrl-Z undoes"
+           },
+           {
+            "n": "2",
+            "dot": "c3",
+            "title": "Ledger",
+            "file": "ledger.json",
+            "blurb": "Bookkeeping written as JSON: a table of entries with totals, a form that appends to the ledger, and a summary (balance, spending by category, the running balance) that a helper process computes from the store and streams back.",
+            "try": "Tab to the form, fill it in, Enter on the amount · x deletes the selected entry · the summary updates on its own"
+           },
+           {
+            "n": "3",
+            "dot": "c2",
+            "title": "Markets",
+            "file": "markets.json",
+            "blurb": "A live feed: a helper prints prices as JSON lines and the screen redraws from them, a few times a second. The data goes from the command to the screen; it never passes through a model.",
+            "try": "j / k move through the watchlist · the detail follows the selection"
+           },
+           {
+            "n": "4",
+            "dot": "c4",
+            "title": "Gallery",
+            "file": "gallery.json",
+            "blurb": "Every component, every variant and every tone, under the theme you have on. Screens ask for meanings (card, quiet, warn), never colours, so one key restyles everything.",
+            "try": "t switches theme · ←/→ switch tabs when the tab bar has focus"
+           },
+           {
+            "n": "5",
+            "dot": "c1",
+            "title": "Agent",
+            "file": "agent.json",
+            "blurb": "What agents did over the socket, newest first. Run examples/showcase/tour.sh in another terminal and watch an agent drive this showcase: open screens, write a note, book an entry, change the theme.",
+            "try": "Leave this open and start the tour beside it"
+           }
+          ],
+          "keys": {
+           "enter": {
+            "load": "{file}"
+           }
+          }
+         },
+         {
+          "type": "text",
+          "size": 2,
+          "text": ""
+         },
+         {
+          "type": "text",
+          "id": "about",
+          "bind": "@chapters",
+          "title": "About",
+          "variant": "card",
+          "text": "<b>{title}</>\n\n{blurb}\n\n<accent>Try</>  {try}",
+          "size": "*"
+         }
+        ]
+       },
+       {
+        "type": "text",
+        "size": 1,
+        "text": ""
+       },
+       {
+        "type": "text",
+        "bind": "$theme",
+        "text": "<d>↑↓ choose · enter open · t theme · q quit</>\t<d>theme</> <accent+b>{name}</>  ",
+        "size": 1
+       }
+      ]
+     },
+     {
+      "type": "text",
+      "size": "*",
+      "text": ""
+     }
+    ]
+   },
+   {
+    "type": "text",
+    "size": "*",
+    "text": ""
+   }
+  ]
+ },
+ "keys": {
+  "t": {
+   "theme": "next"
+  },
+  "1": {
+   "load": "notes.json"
+  },
+  "2": {
+   "load": "ledger.json"
+  },
+  "3": {
+   "load": "markets.json"
+  },
+  "4": {
+   "load": "gallery.json"
+  },
+  "5": {
+   "load": "agent.json"
+  }
+ },
+ "status_bar": false
+}

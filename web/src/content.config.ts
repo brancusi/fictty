@@ -4,7 +4,7 @@ import { z } from 'astro/zod';
 
 // The site renders the repo's own Markdown, so there's one source of truth:
 // - blog: docs/blog/ (a YYYY-MM- prefix on the file name is dropped from the URL)
-// - docs: the guide; pages: the scope, adopt-or-build and the plan
+// - docs: the guide; pages: the scope, adopt-or-build, the plan, state-and-theme and the prototype notes
 // - dossiers: docs/research/landscape/, one per project plus a cluster overview each
 export const collections = {
   blog: defineCollection({
@@ -15,7 +15,7 @@ export const collections = {
     loader: glob({ pattern: 'guide.md', base: '../docs' }),
   }),
   pages: defineCollection({
-    loader: glob({ pattern: ['PLAN.md', 'design/scope.md', 'design/adopt-or-build.md'], base: '../docs', generateId: ({ entry }) => entry.replace(/\.md$/, '').replace(/^design\//, '').toLowerCase() }),
+    loader: glob({ pattern: ['PLAN.md', 'design/scope.md', 'design/adopt-or-build.md', 'design/state-and-theme.md', 'design/prototype-notes.md'], base: '../docs', generateId: ({ entry }) => entry.replace(/\.md$/, '').replace(/^design\//, '').toLowerCase() }),
   }),
   dossiers: defineCollection({
     loader: glob({ pattern: '*.md', base: '../docs/research/landscape', generateId: ({ entry }) => entry.replace(/\.md$/, '') }),

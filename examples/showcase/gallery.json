@@ -1,0 +1,569 @@
+{
+ "root": {
+  "type": "col",
+  "children": [
+   {
+    "type": "text",
+    "size": 1,
+    "pad": 1,
+    "bind": "$theme",
+    "text": "<c4>●</> <b>fictty</> <d>›</> gallery <d>· every component, under the theme you have on</>\t<d>t theme ·</> <accent+b>{name}</> <d>· esc menu</> "
+   },
+   {
+    "type": "tabs",
+    "id": "tabs",
+    "pad": 1,
+    "tabs": [
+     "Components",
+     "Variants & tones",
+     "Text"
+    ],
+    "children": [
+     {
+      "type": "col",
+      "children": [
+       {
+        "type": "row",
+        "size": 11,
+        "children": [
+         {
+          "type": "list",
+          "id": "g_list",
+          "title": "list",
+          "variant": "card",
+          "mark": "▌ ",
+          "lead": "  ",
+          "item": "{icon} {name}\t<d>{size}</> ",
+          "items": [
+           {
+            "icon": "▤",
+            "name": "invoices.csv",
+            "size": "18 KB"
+           },
+           {
+            "icon": "▤",
+            "name": "ledger.json",
+            "size": "4 KB"
+           },
+           {
+            "icon": "◆",
+            "name": "themes.json",
+            "size": "6 KB"
+           },
+           {
+            "icon": "◇",
+            "name": "notes/",
+            "size": "4 items"
+           },
+           {
+            "icon": "◇",
+            "name": "archive/",
+            "size": "112 items"
+           }
+          ]
+         },
+         {
+          "type": "table",
+          "id": "g_table",
+          "title": "table",
+          "variant": "card",
+          "columns": [
+           {
+            "title": "region",
+            "value": "{r}"
+           },
+           {
+            "title": "p95",
+            "value": "{p} ms",
+            "align": "right",
+            "size": 8
+           },
+           {
+            "title": "errors",
+            "value": "{e}",
+            "align": "right",
+            "size": 7,
+            "total": "e"
+           }
+          ],
+          "items": [
+           {
+            "r": "us-east",
+            "p": 182,
+            "e": 3
+           },
+           {
+            "r": "eu-west",
+            "p": 240,
+            "e": 0
+           },
+           {
+            "r": "ap-south",
+            "p": 910,
+            "e": 41
+           },
+           {
+            "r": "sa-east",
+            "p": 133,
+            "e": 1
+           }
+          ]
+         },
+         {
+          "type": "col",
+          "size": 30,
+          "children": [
+           {
+            "type": "big",
+            "title": "big",
+            "variant": "card",
+            "size": 6,
+            "align": "center",
+            "tone": "accent",
+            "text": "+42.7%"
+           },
+           {
+            "type": "gauge",
+            "title": "gauge",
+            "variant": "card",
+            "value": "0.68",
+            "label": "rollout 68%",
+            "tone": "violet"
+           }
+          ]
+         }
+        ]
+       },
+       {
+        "type": "row",
+        "size": 10,
+        "children": [
+         {
+          "type": "sparkline",
+          "title": "sparkline",
+          "variant": "card",
+          "tone": "accent",
+          "values": [
+           3,
+           5,
+           4,
+           8,
+           6,
+           9,
+           7,
+           11,
+           9,
+           13,
+           12,
+           15,
+           11,
+           14,
+           17,
+           15,
+           19,
+           16,
+           21,
+           18,
+           22,
+           20,
+           24,
+           23,
+           26,
+           22,
+           27,
+           25,
+           29,
+           31
+          ]
+         },
+         {
+          "type": "bars",
+          "title": "bars",
+          "variant": "card",
+          "tone": "amber",
+          "label": "{m}",
+          "value": "v",
+          "items": [
+           {
+            "m": "Jun",
+            "v": 12
+           },
+           {
+            "m": "Jul",
+            "v": 18
+           },
+           {
+            "m": "Aug",
+            "v": 9
+           },
+           {
+            "m": "Sep",
+            "v": 22
+           },
+           {
+            "m": "Oct",
+            "v": 27
+           }
+          ]
+         },
+         {
+          "type": "bars",
+          "title": "bars, across",
+          "variant": "card",
+          "tone": "rose",
+          "horizontal": true,
+          "pad": 1,
+          "label": "{k}",
+          "value": "v",
+          "items": [
+           {
+            "k": "rust",
+            "v": 3873
+           },
+           {
+            "k": "json",
+            "v": 1890
+           },
+           {
+            "k": "python",
+            "v": 420
+           },
+           {
+            "k": "shell",
+            "v": 260
+           }
+          ]
+         }
+        ]
+       },
+       {
+        "type": "row",
+        "children": [
+         {
+          "type": "chart",
+          "title": "chart",
+          "variant": "card",
+          "series": [
+           {
+            "name": "requests",
+            "bind": "g_series.a",
+            "color": "accent"
+           },
+           {
+            "name": "errors ×20",
+            "bind": "g_series.b",
+            "color": "rose"
+           }
+          ]
+         },
+         {
+          "type": "text",
+          "title": "text, with markup",
+          "variant": "card",
+          "size": 46,
+          "pad": [
+           2,
+           1
+          ],
+          "text": "<b>bold</> <d>dim</> <i>italic</> <u>underline</> <s>struck</> <r> rev </>\n\n<accent>accent</> <violet>violet</> <amber>amber</> <rose>rose</>\n<pos>+12.40 gain</>  <neg>−3.10 loss</>\n\nleft side\t<d>right-aligned after a tab</>\n{*·}"
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "type": "col",
+      "children": [
+       {
+        "type": "row",
+        "size": 9,
+        "children": [
+         {
+          "type": "text",
+          "title": "card",
+          "variant": "card",
+          "pad": [
+           2,
+           1
+          ],
+          "text": "<b>\"variant\": \"card\"</>\n\nA raised panel: the theme's panel colour, rounded edges. The default for content."
+         },
+         {
+          "type": "text",
+          "size": 1,
+          "text": ""
+         },
+         {
+          "type": "text",
+          "title": "quiet",
+          "variant": "quiet",
+          "pad": [
+           2,
+           1
+          ],
+          "text": "<b>\"variant\": \"quiet\"</>\n\nFor what's secondary: hints, footnotes, help. It steps back."
+         },
+         {
+          "type": "text",
+          "size": 1,
+          "text": ""
+         },
+         {
+          "type": "text",
+          "title": "hero",
+          "variant": "hero",
+          "pad": [
+           2,
+           1
+          ],
+          "text": "<b>\"variant\": \"hero\"</>\n\nThe one thing on the screen that matters most. Use it once."
+         },
+         {
+          "type": "text",
+          "size": 1,
+          "text": ""
+         },
+         {
+          "type": "text",
+          "title": "alert",
+          "variant": "alert",
+          "pad": [
+           2,
+           1
+          ],
+          "text": "<b>\"variant\": \"alert\"</>\n\nSomething is wrong and needs the person: a failed sync, a stale write."
+         }
+        ]
+       },
+       {
+        "type": "text",
+        "size": 1,
+        "text": ""
+       },
+       {
+        "type": "row",
+        "size": 5,
+        "children": [
+         {
+          "type": "text",
+          "title": "tone",
+          "variant": "card",
+          "pad": [
+           2,
+           1
+          ],
+          "tone": "accent",
+          "text": "accent"
+         },
+         {
+          "type": "text",
+          "title": "tone",
+          "variant": "card",
+          "pad": [
+           2,
+           1
+          ],
+          "tone": "violet",
+          "text": "violet"
+         },
+         {
+          "type": "text",
+          "title": "tone",
+          "variant": "card",
+          "pad": [
+           2,
+           1
+          ],
+          "tone": "amber",
+          "text": "amber"
+         },
+         {
+          "type": "text",
+          "title": "tone",
+          "variant": "card",
+          "pad": [
+           2,
+           1
+          ],
+          "tone": "rose",
+          "text": "rose"
+         },
+         {
+          "type": "text",
+          "title": "tone",
+          "variant": "card",
+          "pad": [
+           2,
+           1
+          ],
+          "tone": "pos",
+          "text": "pos"
+         },
+         {
+          "type": "text",
+          "title": "tone",
+          "variant": "card",
+          "pad": [
+           2,
+           1
+          ],
+          "tone": "warn",
+          "text": "warn"
+         },
+         {
+          "type": "text",
+          "title": "tone",
+          "variant": "card",
+          "pad": [
+           2,
+           1
+          ],
+          "tone": "dim",
+          "text": "dim"
+         }
+        ]
+       },
+       {
+        "type": "text",
+        "size": 1,
+        "text": ""
+       },
+       {
+        "type": "text",
+        "title": "How the look is decided",
+        "variant": "quiet",
+        "pad": [
+         2,
+         1
+        ],
+        "text": "A screen never names a colour. It asks for a <b>variant</> (card, quiet, hero, alert) and a <b>tone</> (accent, warn, pos…).\nThe theme answers: its <b>tokens</> are the colours, its <b>parts</> style what the runtime draws (headers, the selected row,\nborders, the caret), its <b>variants</> are named looks. Themes are the person's, loaded with <accent>fictty run --themes</>;\na push never changes them. Press <accent+b>t</> and watch every screen in this showcase change at once.",
+        "size": 8
+       }
+      ]
+     },
+     {
+      "type": "col",
+      "children": [
+       {
+        "type": "input",
+        "id": "g_input",
+        "bind": "g_input",
+        "title": "input",
+        "size": 3,
+        "pad": 1,
+        "placeholder": "A one-line field. Type here; Enter does whatever the screen says."
+       },
+       {
+        "type": "row",
+        "children": [
+         {
+          "type": "editor",
+          "id": "g_editor",
+          "bind": "g_scratch",
+          "title": "editor",
+          "pad": [
+           2,
+           1
+          ],
+          "text": "A caretline editor on the store entry `g_scratch`.\n\nSelect with Shift and the arrows, undo with Ctrl-Z.\nOpen this chapter twice: the text is where you left it.\n",
+          "syntax": "markdown"
+         },
+         {
+          "type": "text",
+          "size": 1,
+          "text": ""
+         },
+         {
+          "type": "editor",
+          "id": "g_mirror",
+          "bind": "g_scratch",
+          "title": "the same entry, another editor",
+          "variant": "quiet",
+          "pad": [
+           2,
+           1
+          ],
+          "syntax": "markdown"
+         }
+        ]
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "type": "text",
+    "size": 1,
+    "pad": 1,
+    "text": "<d>tab to the tab bar, then ← → · t theme · esc menu · both editors on the Text tab show one store entry: type in one, the other follows</>"
+   }
+  ]
+ },
+ "store": {
+  "g_series": {
+   "a": [
+    120,
+    132,
+    128,
+    140,
+    151,
+    149,
+    160,
+    171,
+    168,
+    180,
+    176,
+    190,
+    205,
+    199,
+    214,
+    222,
+    218,
+    230,
+    241,
+    236,
+    248,
+    255,
+    262,
+    258,
+    270
+   ],
+   "b": [
+    20,
+    22,
+    18,
+    24,
+    30,
+    26,
+    22,
+    20,
+    28,
+    34,
+    30,
+    26,
+    24,
+    40,
+    62,
+    58,
+    44,
+    36,
+    30,
+    28,
+    26,
+    24,
+    30,
+    28,
+    26
+   ]
+  }
+ },
+ "keys": {
+  "esc": {
+   "load": "home.json"
+  },
+  "t": {
+   "theme": "next"
+  }
+ },
+ "status_bar": false
+}
