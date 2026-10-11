@@ -166,13 +166,14 @@ process reads the store and streams back the balance, the categories and the run
 **Tilde:** You can run this exact showcase yourself, in one line:
 
 ```sh
-curl -fsSL https://fictty.com/try.sh | sh
+curl -fsSL https://fictty.com/try/settling-the-stack.sh | sh
 ```
 
-It fetches fictty into `~/.fictty`, builds it (you'll need [Rust](https://rustup.rs) until there
-are prebuilt binaries), and opens the menu. Arrows and Enter open a screen, `t` changes the theme,
-Esc goes back. To watch an agent drive it, run `~/.fictty/src/examples/showcase/tour.sh` in a
-second terminal.
+It's pinned to the commit this post describes, so it shows what you see here even after fictty
+moves on. It fetches that version into `~/.fictty`, builds it (you'll need
+[Rust](https://rustup.rs)), and opens the menu. Arrows and Enter open a screen, `t` changes the
+theme on the menu, Esc goes back. To watch an agent drive it, run the `tour.sh` it names, in a
+second terminal. For the latest fictty instead, use `https://fictty.com/try.sh`.
 
 ## The morning: one number worth the night
 

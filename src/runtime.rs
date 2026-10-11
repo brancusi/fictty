@@ -441,6 +441,7 @@ pub fn run(file: Option<PathBuf>, watch: bool, socket: PathBuf, restore: Option<
     let mut kitty = crate::gfx::Kitty::default();
     let mut seen = file.as_deref().and_then(mtime);
 
+    generic_tty()?;
     let mut term = ratatui::init();
     // Larger text: the terminal's to say (a probe), unless FICTTY_TEXT_SIZE forces it.
     let sizing = match std::env::var("FICTTY_TEXT_SIZE").as_deref() {
@@ -913,6 +914,20 @@ fn refusal(reply: &Value) -> String {
         Some(rev) => format!("stale: at rev {rev}"),
         None => reply["status"].as_str().unwrap_or("refused").to_string(),
     }
+}
+
+/// macOS can't wait on input from the generic `/dev/tty` (kqueue refuses it), so a screen whose
+/// input is `/dev/tty` would spin on its first read. Say so instead; the terminal's own device
+/// (`/dev/ttys003`) works.
+fn generic_tty() -> Result<()> {
+    if cfg!(target_os = "macos") {
+        // SAFETY: ttyname returns null or a pointer to a static string, read before any other call.
+        let name = unsafe { libc::ttyname(0) };
+        if !name.is_null() && unsafe { std::ffi::CStr::from_ptr(name) }.to_bytes() == b"/dev/tty" {
+            anyhow::bail!("input is /dev/tty, which macOS can't wait on; run fictty with the terminal's own device (`tty` in that terminal names it) as its input");
+        }
+    }
+    Ok(())
 }
 
 /// The local wall-clock time, `HH:MM:SS`, for the activity log.

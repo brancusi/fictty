@@ -1,20 +1,26 @@
 #!/bin/sh
 # Try the fictty showcase in one line:
 #
-#   curl -fsSL https://fictty.com/try.sh | sh
+#   curl -fsSL https://fictty.com/try.sh | sh                 # the latest fictty
+#   curl -fsSL https://fictty.com/try.sh | sh -s -- v0.1.0    # a tag, a branch or a full commit
 #
-# It fetches fictty into ~/.fictty (or $FICTTY_HOME), uses a prebuilt binary for this machine
-# when a release has one and builds from source with cargo otherwise, then runs the showcase:
-# notes, a ledger, a live market, a gallery and an agent's log. Run it again to update.
-# Nothing is installed outside that folder; delete it to remove everything.
+# It fetches that version of fictty into ~/.fictty/<version> (or $FICTTY_HOME/<version>), uses
+# the release binary when the version is a release tag and builds from source with cargo
+# otherwise, then runs the showcase: notes, a ledger, a live market, a gallery and an agent's log.
+# Each version keeps its own folder and its own store, so an old demo never mixes with a new one.
+# Nothing is installed anywhere else; delete ~/.fictty to remove everything.
 #
-# Needs git, and cargo (https://rustup.rs) when there's no prebuilt binary for this machine.
+# Blog posts link a frozen copy of this script pinned to one commit (https://fictty.com/try/),
+# so the demo a post shows stays exactly that demo.
+#
+# Needs git, and cargo (https://rustup.rs) when there's no release binary for this machine.
 # python3 runs the ledger's and the market's helpers. FICTTY_NO_RUN=1 sets up without running.
 set -eu
 
+ref="${1:-${FICTTY_REF:-main}}"
 repo=https://github.com/brancusi/fictty
 home="${FICTTY_HOME:-$HOME/.fictty}"
-src="$home/src"
+src="$home/$(printf '%s' "$ref" | tr -c 'A-Za-z0-9._-' '-' | cut -c1-40)"
 bin="$src/target/release/fictty"
 
 say() { printf '\033[36m▸\033[0m %s\n' "$1" >&2; }
@@ -22,36 +28,38 @@ die() { printf '\033[31m✗\033[0m %s\n' "$1" >&2; exit 1; }
 
 command -v git >/dev/null 2>&1 || die "fictty needs git. Install it, then run this again."
 
-mkdir -p "$home"
-if [ -d "$src/.git" ]; then
-  say "Updating fictty in $src"
-  git -C "$src" pull --quiet --ff-only || die "Couldn't update $src. Delete it and run this again."
-else
-  say "Fetching fictty into $src"
-  git clone --quiet --depth 1 "$repo" "$src"
-fi
+# This version of the code: a branch moves on each run, a tag or a commit never does.
+say "Fetching fictty $ref into $src"
+mkdir -p "$src"
+[ -d "$src/.git" ] || { git init -q "$src" && git -C "$src" remote add origin "$repo"; }
+git -C "$src" fetch -q --depth 1 origin "$ref" || die "Couldn't fetch $ref from $repo."
+git -C "$src" checkout -q --detach FETCH_HEAD
 
-# A prebuilt binary, if the latest release has one for this machine.
+# A release binary, only when the version is a release tag (so it always matches the code).
+target=""
 case "$(uname -s)-$(uname -m)" in
   Darwin-arm64) target=aarch64-apple-darwin ;;
   Darwin-x86_64) target=x86_64-apple-darwin ;;
   Linux-x86_64) target=x86_64-unknown-linux-gnu ;;
   Linux-aarch64 | Linux-arm64) target=aarch64-unknown-linux-gnu ;;
-  *) target="" ;;
 esac
 got=""
-if [ -n "$target" ] && command -v curl >/dev/null 2>&1; then
-  tmp="$home/fictty-$target.tar.gz"
-  if curl -fsSL "$repo/releases/latest/download/fictty-$target.tar.gz" -o "$tmp" 2>/dev/null; then
-    mkdir -p "$(dirname "$bin")"
-    tar -xzf "$tmp" -C "$(dirname "$bin")" fictty && got=yes
-    rm -f "$tmp"
-    [ -n "$got" ] && say "Using the prebuilt fictty for $target"
-  fi
-fi
+case "$ref" in
+  v[0-9]*)
+    if [ -n "$target" ] && command -v curl >/dev/null 2>&1; then
+      tmp="$src/fictty-$target.tar.gz"
+      if curl -fsSL "$repo/releases/download/$ref/fictty-$target.tar.gz" -o "$tmp" 2>/dev/null; then
+        mkdir -p "$(dirname "$bin")"
+        tar -xzf "$tmp" -C "$(dirname "$bin")" fictty && got=yes
+        rm -f "$tmp"
+        [ -n "$got" ] && say "Using the $ref release binary for $target"
+      fi
+    fi
+    ;;
+esac
 if [ -z "$got" ]; then
   command -v cargo >/dev/null 2>&1 ||
-    die "No prebuilt fictty for this machine yet, and cargo isn't installed. Install Rust from https://rustup.rs, then run this again."
+    die "Building fictty needs Rust. Install it from https://rustup.rs, then run this again."
   say "Building fictty (a minute or two the first time)"
   (cd "$src" && cargo build --release --quiet) || die "The build failed; the output above says why."
 fi
@@ -59,10 +67,14 @@ fi
 command -v python3 >/dev/null 2>&1 ||
   say "python3 isn't installed: the ledger's summary and the live market will stay empty."
 
+# The showcase keeps notes and ledger entries here, apart from every other version's.
+export FICTTY_SHOWCASE_STORE="$src.store.json"
+
 if [ "${FICTTY_NO_RUN:-}" = 1 ]; then
-  say "Ready. Run it with: $src/examples/showcase/play.sh"
+  say "Ready. Run it with: FICTTY_SHOWCASE_STORE=$FICTTY_SHOWCASE_STORE $src/examples/showcase/play.sh"
   exit 0
 fi
+[ -r /dev/tty ] || die "This needs a terminal to run in."
 # The showcase is drawn for about 160×46; it works smaller, best bigger.
 if size=$(stty size </dev/tty 2>/dev/null); then
   rows=${size% *}; cols=${size#* }
@@ -73,4 +85,9 @@ fi
 say "Starting the showcase: arrows and Enter to open a screen, t for the theme, Esc back, q to quit"
 say "Watch an agent drive it: run $src/examples/showcase/tour.sh in another terminal"
 sleep 2
-exec "$src/examples/showcase/play.sh" </dev/tty >/dev/tty
+# Hand the showcase the terminal's own device. Under `curl | sh` our input is the pipe, and the
+# generic /dev/tty won't do: macOS can't wait on it (kqueue), so the screen would hang on its
+# first read. ps names the real one (ttys003, pts/1).
+term="/dev/$(ps -o tty= -p $$ 2>/dev/null | tr -d ' ')"
+[ -c "$term" ] || term=/dev/tty
+exec "$src/examples/showcase/play.sh" <"$term" >"$term"
