@@ -262,6 +262,9 @@ pub enum Kind {
     Stack { children: Vec<Node> },
     /// A labelled control: Enter or Space while focused, or a click, runs its `click`.
     Button { label: String },
+    /// Where toasts show, newest first, a line each, instead of the screen's corner (a bar of
+    /// the UI's own). Each takes the theme part `toast.<tone>`, else `toast`.
+    Toasts {},
     /// A turning glyph before `text` (a template): something is under way. A bound source that
     /// hasn't arrived shows one too.
     Spinner {
@@ -711,7 +714,13 @@ pub enum Action {
     ShowTab { tab: usize, of: String },
     Theme { theme: String },
     Append { append: String, value: Value },
-    Put { put: String, value: Value },
+    /// With `for_ms`, the write lasts that long (see `Msg::Write`).
+    Put {
+        put: String,
+        value: Value,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        for_ms: Option<u64>,
+    },
     /// With `where` (a template, filled like `value`), every row of the array entry whose fields
     /// match all of it, wherever the focus is: `{"remove": "files", "where": {"id": "{store.doomed}"}}`.
     Remove {
@@ -807,6 +816,7 @@ impl Node {
             Kind::Stack { .. } => "stack",
             Kind::Button { .. } => "button",
             Kind::Spinner { .. } => "spinner",
+            Kind::Toasts { .. } => "toasts",
             Kind::Text { .. } => "text",
             Kind::List { .. } => "list",
             Kind::Tree { .. } => "tree",

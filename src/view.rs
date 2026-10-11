@@ -52,6 +52,8 @@ struct Cx<'a> {
     scaled: Vec<Scaled>,
     sizes: Vec<(String, u16, u16)>,
     wake: Option<u64>,
+    /// A `toasts` node showed them, so the corner doesn't.
+    toasts_placed: bool,
 }
 
 /// Text the terminal draws larger (OSC 66): its cell, the text, the scale and the style.
@@ -289,7 +291,7 @@ fn theme(st: &State, active: Option<&ThemeSpec>) -> Theme {
 /// Draw the whole screen; returns what's under each cell and the pictures to place.
 pub fn draw(st: &State, f: &mut Frame) -> Out {
     let act = active(st);
-    let mut cx = Cx { st, active: act, th: theme(st, act), hits: Vec::new(), anchors: cl::AnchorMap::new(), pics: Vec::new(), scaled: Vec::new(), sizes: Vec::new(), wake: None };
+    let mut cx = Cx { st, active: act, th: theme(st, act), hits: Vec::new(), anchors: cl::AnchorMap::new(), pics: Vec::new(), scaled: Vec::new(), sizes: Vec::new(), wake: None, toasts_placed: false };
     let mut base = Style::default();
     if let Some(bg) = cx.th.bg {
         base = base.bg(bg);
@@ -304,7 +306,13 @@ pub fn draw(st: &State, f: &mut Frame) -> Out {
     node(&mut cx, &st.ui.root, f, body);
     let shade = layers(&cx, f.buffer_mut(), body);
     cx.pics.extend(shade);
-    toasts(&mut cx, f.buffer_mut(), body);
+    if !cx.toasts_placed {
+        toasts(&mut cx, f.buffer_mut(), body);
+    }
+    // A lasting write going changes the frame too.
+    if let Some(at) = st.expiring.iter().map(|e| e.at).min() {
+        cx.wake = Some(cx.wake.map_or(at, |w| w.min(at)));
+    }
     if !bar {
         return Out { hits: cx.hits, pics: cx.pics, scaled: cx.scaled, sizes: cx.sizes, wake: cx.wake };
     }
@@ -335,7 +343,7 @@ fn toasts(cx: &mut Cx, buf: &mut Buffer, body: Rect) {
         }
         let r = Rect::new(body.right().saturating_sub(w + 1), bottom - 3, w, 3);
         let tone = t.tone.as_deref().and_then(|c| cx.color(c)).unwrap_or(cx.th.accent);
-        let fill = cx.look("toast", Style::default().bg(cx.th.panel).fg(cx.th.fg.unwrap_or(Color::White)));
+        let fill = toast_look(cx, t.tone.as_deref());
         ratatui::widgets::Widget::render(ratatui::widgets::Clear, r, buf);
         buf.set_style(r, fill);
         let block = Block::bordered().border_type(BorderType::Rounded).border_style(fill.fg(tone));
@@ -356,6 +364,15 @@ fn spin(cx: &mut Cx) -> &'static str {
     let next = (now / SPIN_MS + 1) * SPIN_MS;
     cx.wake = Some(cx.wake.map_or(next, |w| w.min(next)));
     FRAMES[(now / SPIN_MS % FRAMES.len() as u64) as usize]
+}
+
+/// A toast's style: the theme's part for its tone (`toast.neg`), else `toast`, else the panel.
+fn toast_look(cx: &Cx, tone: Option<&str>) -> Style {
+    let base = cx.look("toast", Style::default().bg(cx.th.panel).fg(cx.th.fg.unwrap_or(Color::White)));
+    match tone.and_then(|t| cx.active?.parts.get(&format!("toast.{t}"))) {
+        Some(spec) => cx.spec(spec, base),
+        None => base,
+    }
 }
 
 /// A floating node's place in its stack.
@@ -668,6 +685,22 @@ fn node(cx: &mut Cx, n: &Node, f: &mut Frame, area: Rect) {
                     f.buffer_mut().set_style(at, base);
                 }
                 node(cx, c, f, at);
+            }
+        }
+        Kind::Toasts {} => {
+            cx.toasts_placed = true;
+            for (k, t) in st.toasts.iter().rev().take(inner.height as usize).enumerate() {
+                cx.wake = Some(cx.wake.map_or(t.until, |w| w.min(t.until)));
+                let line = Rect::new(inner.x, inner.y + k as u16, inner.width, 1);
+                let mut ts = toast_look(cx, t.tone.as_deref());
+                // Without a part for its tone, the tone colours the text.
+                if t.tone.as_deref().is_some_and(|tn| cx.active.is_none_or(|a| !a.parts.contains_key(&format!("toast.{tn}"))))
+                    && let Some(c) = t.tone.as_deref().and_then(|c| cx.color(c))
+                {
+                    ts = ts.fg(c);
+                }
+                f.buffer_mut().set_style(line, ts);
+                f.buffer_mut().set_stringn(line.x + 1, line.y, &t.text, line.width.saturating_sub(2) as usize, ts);
             }
         }
         Kind::Spinner { text } => {

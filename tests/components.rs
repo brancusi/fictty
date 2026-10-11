@@ -71,7 +71,7 @@ fn folds_survive_an_update_from_outside() {
     assert!(!s.screen().contains("Script it"));
     let mut plan = entry(&mut s, "plan")["value"].clone();
     plan[1]["text"] = "Rest a lot".into();
-    s.msg(Msg::Write { key: "plan".into(), write: serde_json::from_value(json!({"write": "put", "value": plan})).unwrap(), if_rev: None, by: "agent".into() });
+    s.msg(Msg::Write { key: "plan".into(), write: serde_json::from_value(json!({"write": "put", "value": plan})).unwrap(), if_rev: None, by: "agent".into(), for_ms: None });
     let text = s.screen();
     assert!(!text.contains("Script it") && text.contains("Rest a lot"), "{text}");
 }
@@ -314,13 +314,13 @@ fn a_selection_stays_on_its_row_when_rows_arrive_above_it() {
     let mut s = screen(ui, 20, 6);
     s.keys(&["j"]);
     let rows = json!([{"id": "z", "text": "Z"}, {"id": "y", "text": "Y"}, {"id": "a", "text": "A"}, {"id": "b", "text": "B"}, {"id": "c", "text": "C"}]);
-    s.msg(Msg::Write { key: "rows".into(), write: serde_json::from_value(json!({"write": "put", "value": rows})).unwrap(), if_rev: None, by: "agent".into() });
+    s.msg(Msg::Write { key: "rows".into(), write: serde_json::from_value(json!({"write": "put", "value": rows})).unwrap(), if_rev: None, by: "agent".into(), for_ms: None });
     assert_eq!(s.state().local["l"].selected, 3, "still on B");
     // Without a key it's the place that stays.
     let ui = json!({"root": {"type": "list", "id": "l", "bind": "rows"}, "store": {"rows": ["a", "b"]}});
     let mut s = screen(ui, 20, 6);
     s.keys(&["j"]);
-    s.msg(Msg::Write { key: "rows".into(), write: serde_json::from_value(json!({"write": "put", "value": ["z", "a", "b"]})).unwrap(), if_rev: None, by: "agent".into() });
+    s.msg(Msg::Write { key: "rows".into(), write: serde_json::from_value(json!({"write": "put", "value": ["z", "a", "b"]})).unwrap(), if_rev: None, by: "agent".into(), for_ms: None });
     assert_eq!(s.state().local["l"].selected, 1);
 }
 
@@ -557,4 +557,44 @@ fn a_push_fetches_only_the_sources_that_changed() {
     update(&mut st, Msg::Data { name: "moved".into(), result: Ok(json!(1)) });
     let again = update(&mut st, Msg::Push { ui: ui(2) });
     assert_eq!(again, vec![Effect::Fetch("moved".into())]);
+}
+
+#[test]
+fn a_lasting_write_goes_on_the_screens_clock() {
+    let ui = json!({"root": {"type": "list", "id": "l", "bind": "rows", "item": "{id}{live|*=}"},
+                    "store": {"rows": [{"id": "a"}, {"id": "b"}], "live": {}}});
+    let mut s = screen(ui, 20, 4);
+    let merge = |v: Value| serde_json::from_value(json!({"write": "merge", "value": v})).unwrap();
+    s.msg(Msg::Write { key: "live".into(), write: merge(json!({"a": true})), if_rev: None, by: "agent".into(), for_ms: Some(3000) });
+    s.msg(Msg::Tick { now_ms: 1000 });
+    s.msg(Msg::Write { key: "live".into(), write: merge(json!({"b": true})), if_rev: None, by: "agent".into(), for_ms: Some(3000) });
+    assert_eq!(entry(&mut s, "live")["value"], json!({"a": true, "b": true}));
+    s.msg(Msg::Tick { now_ms: 3000 });
+    assert_eq!(entry(&mut s, "live")["value"], json!({"b": true}), "a went at 3000, b lasts until 4000");
+    assert_eq!(entry(&mut s, "live")["by"], "clock");
+    s.msg(Msg::Tick { now_ms: 4000 });
+    assert_eq!(entry(&mut s, "live")["value"], json!({}));
+    // A put with for_ms takes the entry away again; a when on it comes and goes with it.
+    let ui = json!({"root": {"type": "col", "children": [
+        {"type": "text", "text": "undo?", "when": "undoable", "size": 1},
+        {"type": "list", "id": "l", "items": ["x"], "keys": {"d": {"put": "undoable", "value": true, "for_ms": 500}}}]}});
+    let mut s = screen(ui, 20, 3);
+    s.keys(&["d"]);
+    assert!(s.screen().contains("undo?"));
+    s.msg(Msg::Tick { now_ms: 600 });
+    assert!(!s.screen().contains("undo?"));
+    assert!(!s.state().store.contains_key("undoable"));
+}
+
+#[test]
+fn toasts_go_where_a_toasts_node_is() {
+    let ui = json!({"root": {"type": "col", "children": [
+        {"type": "text", "text": "body"},
+        {"type": "toasts", "size": 1}]}});
+    let mut s = screen(ui, 30, 4);
+    s.msg(Msg::Toast { text: "saved by agent".into(), tone: Some("pos".into()), ms: None });
+    let frame = s.screen();
+    let lines: Vec<&str> = frame.lines().collect();
+    assert_eq!(lines[2].trim(), "saved by agent", "{frame}");
+    assert!(!frame.contains('╭'), "no corner toast: {frame}");
 }

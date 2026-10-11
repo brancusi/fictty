@@ -81,8 +81,10 @@ fictty theme paper                                        # choose a loaded them
   them. **`when`** shows a node only
   while a condition holds: a bind that's set (`"dialog"`), not set (`"!dialog"`), compared
   (`"mode=edit"`, `"$screen.width>=120"`), or several joined by ` & `. A hidden node takes no
-  room and no focus. Layers take `when` too. **Toasts** show in the corner for a while: the
-  `toast` action, `fictty toast`, and failed commands and host actions.
+  room and no focus. Layers take `when` too. **Toasts** show for a while: the `toast` action,
+  `fictty toast`, and failed commands and host actions. They sit in the corner, or wherever a
+  `{"type": "toasts"}` node is (a line each, in a UI's own bar), styled by the theme part
+  `toast.<tone>`, else `toast`.
 - **Sources** in `data`: `cmd` (argv), `shell`, `stream` (a command printing JSON lines), a
   literal `value`, or `host` (the embedding app's, with `args` that are templates over the state,
   so `{"host": "detail", "args": {"id": "{@list.id}"}}` refetches as the selection moves); `path`
@@ -130,6 +132,10 @@ document with its undo history), each with a revision (`rev`) and who wrote it l
   `fictty put` (a value, or a string as a text's new contents), `merge` (RFC 7396) and `edit`
   (`[[from, to, "text"]]` ranges of a text). With `--if-rev N` a write is refused if anyone wrote
   since revision N, and the reply carries the entry as it is now.
+- **Writes that last a while**: `for_ms` on a write (`fictty put … --for-ms 3000`, `merge`, the
+  `put` action, `Notifier::write_for`) takes it away again on the screen's own clock: a put's
+  entry, or the keys a merge set. A row marked live for three seconds, or a `when` that holds
+  only while an undo is on offer; the expiry is in the state, so it replays.
 - **An agent's text edit is an edit**: the person's carets move with the text, and one undo takes
   it back.
 - **`fictty run --store file.json`** keeps it across runs, written atomically after each change.

@@ -39,6 +39,9 @@ pub enum Request {
         if_rev: Option<u64>,
         #[serde(default = "agent")]
         by: String,
+        /// The write lasts this long (ms): then the entry, or the keys a merge set, go.
+        #[serde(default)]
+        for_ms: Option<u64>,
     },
     /// One store entry: its revision, who wrote it last, and its text or value.
     Read { key: String },
@@ -462,8 +465,8 @@ impl Driver {
             Request::Read { key } => {
                 return st.store.get(&key).map_or_else(|| json!({"ok": false, "status": format!("no entry {key}")}), |e| e.read());
             }
-            Request::Write { key, write, if_rev, by } => {
-                let reply = update(st, Msg::Write { key, write, if_rev, by }).into_iter().find_map(|fx| match fx {
+            Request::Write { key, write, if_rev, by, for_ms } => {
+                let reply = update(st, Msg::Write { key, write, if_rev, by, for_ms }).into_iter().find_map(|fx| match fx {
                     Effect::Reply(r) => Some(r),
                     _ => None,
                 });

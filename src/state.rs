@@ -92,6 +92,19 @@ pub struct State {
     /// in order once it lands.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub typed_ahead: Vec<(String, String, String)>,
+    /// Writes that last a while (`for_ms`): what goes, and when on the logical clock.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub expiring: Vec<Expiry>,
+}
+
+/// Part of the store that goes at `at` (ms): the entry `key` when `path` is empty, else the
+/// value at that JSON Pointer in it.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct Expiry {
+    pub key: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub path: String,
+    pub at: u64,
 }
 
 /// A run of clicks on one cell of an editor (see `State::clicks`).
@@ -257,6 +270,10 @@ pub enum Msg {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         if_rev: Option<u64>,
         by: String,
+        /// The write lasts this long (ms, on the screen's clock): a `put` takes its entry away
+        /// again, a `merge` the keys it set. A row marked live for three seconds.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        for_ms: Option<u64>,
     },
     /// Add or replace themes (by name), and choose one: a name, or `next` / `prev` to cycle.
     Theme {
@@ -577,6 +594,10 @@ fn apply(st: &mut State, msg: Msg) -> Vec<Effect> {
         Msg::Tick { now_ms } => {
             st.now_ms = now_ms;
             st.toasts.retain(|t| t.until > now_ms);
+            if expire(st) {
+                derive_rows(st, None);
+                settle(st);
+            }
             vec![]
         }
         Msg::Toast { text, tone, ms } => {
@@ -603,9 +624,15 @@ fn apply(st: &mut State, msg: Msg) -> Vec<Effect> {
             settle(st);
             vec![]
         }
-        Msg::Write { key, write, if_rev, by } => {
+        Msg::Write { key, write, if_rev, by, for_ms } => {
+            let lasting = for_ms.map(|ms| (ms, expiry_paths(&write)));
             let reply = match write_entry(st, &key, write, if_rev, &by) {
-                Ok(()) => serde_json::json!({"ok": true, "key": key, "rev": st.store[&key].rev}),
+                Ok(()) => {
+                    if let Some((ms, paths)) = lasting {
+                        expire_later(st, &key, paths, ms);
+                    }
+                    serde_json::json!({"ok": true, "key": key, "rev": st.store[&key].rev})
+                }
                 Err(status) => {
                     let mut r = serde_json::json!({"ok": false, "status": status});
                     if let Some(e) = st.store.get(&key) {
@@ -782,6 +809,71 @@ fn choose_theme(st: &mut State, choice: &str) {
     // Bindable as `$theme`: which one is on, and what else there is.
     let value = serde_json::json!({"name": st.theme, "names": st.themes.keys().collect::<Vec<_>>()});
     st.data.insert("$theme".into(), Slot::Ready { value });
+}
+
+/// The parts of an entry a lasting write sets, as JSON Pointers: the whole entry for a put, each
+/// value a merge sets (not the ones it removes).
+fn expiry_paths(write: &Write) -> Vec<String> {
+    fn leaves(v: &Value, at: String, out: &mut Vec<String>) {
+        match v {
+            Value::Object(m) if !m.is_empty() => {
+                for (k, x) in m {
+                    leaves(x, format!("{at}/{}", k.replace('~', "~0").replace('/', "~1")), out);
+                }
+            }
+            Value::Null => {}
+            _ => out.push(at),
+        }
+    }
+    match write {
+        Write::Merge { value } => {
+            let mut out = Vec::new();
+            leaves(value, String::new(), &mut out);
+            out
+        }
+        _ => vec![String::new()],
+    }
+}
+
+/// Note that these parts of `key` go `ms` from now; a later lasting write to the same part
+/// replaces its time.
+fn expire_later(st: &mut State, key: &str, paths: Vec<String>, ms: u64) {
+    let at = st.now_ms + ms;
+    for path in paths {
+        st.expiring.retain(|e| !(e.key == key && e.path == path));
+        st.expiring.push(Expiry { key: key.into(), path, at });
+    }
+}
+
+/// Take away what's due. True when the store changed.
+fn expire(st: &mut State) -> bool {
+    let now = st.now_ms;
+    let (due, keep): (Vec<Expiry>, Vec<Expiry>) = std::mem::take(&mut st.expiring).into_iter().partition(|e| e.at <= now);
+    st.expiring = keep;
+    let mut changed = false;
+    for e in due {
+        if e.path.is_empty() {
+            if st.store.remove(&e.key).is_some() {
+                st.store_writes += 1;
+                changed = true;
+            }
+            continue;
+        }
+        let (parent, last) = e.path.rsplit_once('/').unwrap_or(("", ""));
+        let last = last.replace("~1", "/").replace("~0", "~");
+        let gone = match st.store.get_mut(&e.key).map(|x| &mut x.body) {
+            Some(Body::Value { value }) => match value.pointer_mut(parent) {
+                Some(Value::Object(m)) => m.remove(&last).is_some(),
+                _ => false,
+            },
+            _ => false,
+        };
+        if gone {
+            wrote(st, &e.key, "clock");
+            changed = true;
+        }
+    }
+    changed
 }
 
 /// How many toasts show at once (the oldest goes first).
@@ -1348,9 +1440,13 @@ fn act(st: &mut State, a: Action) -> Vec<Effect> {
             settle(st);
             vec![]
         }
-        Action::Put { put, value } => {
+        Action::Put { put, value, for_ms } => {
             let value = fill_value(&value, &action_context(st));
-            match write_entry(st, &put, Write::Put { value }, None, "person") {
+            let done = write_entry(st, &put, Write::Put { value }, None, "person");
+            if let (Ok(()), Some(ms)) = (&done, for_ms) {
+                expire_later(st, &put, vec![String::new()], ms);
+            }
+            match done {
                 Err(e) => st.status = Some(format!("put: {e}")),
                 // The person put it there: every editor showing it carries on after it.
                 Ok(()) if matches!(st.store.get(&put).map(|e| &e.body), Some(Body::Text { .. })) => {
@@ -2269,7 +2365,7 @@ mod tests {
 
     fn write(st: &mut State, key: &str, w: Value, if_rev: Option<u64>) -> Value {
         let write: Write = serde_json::from_value(w).unwrap();
-        match update(st, Msg::Write { key: key.into(), write, if_rev, by: "agent".into() }).pop() {
+        match update(st, Msg::Write { key: key.into(), write, if_rev, by: "agent".into(), for_ms: None }).pop() {
             Some(Effect::Reply(r)) => r,
             other => panic!("no reply: {other:?}"),
         }

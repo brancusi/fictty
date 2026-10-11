@@ -79,7 +79,13 @@ impl Notifier {
 
     /// Write a store entry, as `by` (shown in the store and in `$log`).
     pub fn write(&self, key: &str, write: Write, by: &str) {
-        self.msg(Msg::Write { key: key.into(), write, if_rev: None, by: by.into() });
+        self.msg(Msg::Write { key: key.into(), write, if_rev: None, by: by.into(), for_ms: None });
+    }
+
+    /// Write a store entry that lasts `ms` on the screen's clock: a put takes the entry away
+    /// again, a merge the keys it set (`live: {id: true}` for three seconds).
+    pub fn write_for(&self, key: &str, write: Write, by: &str, ms: u64) {
+        self.msg(Msg::Write { key: key.into(), write, if_rev: None, by: by.into(), for_ms: Some(ms) });
     }
 
     /// Any message, as if it came from the socket. False once the screen has gone.

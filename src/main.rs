@@ -53,6 +53,9 @@ enum Cmd {
         /// Who's writing, for the store's `by` (default `agent`).
         #[arg(long)]
         by: Option<String>,
+        /// The write lasts this long (ms), then the entry goes again.
+        #[arg(long)]
+        for_ms: Option<u64>,
     },
     /// Merge a JSON object into a store entry's value (RFC 7396: `null` removes a key).
     Merge {
@@ -62,6 +65,9 @@ enum Cmd {
         if_rev: Option<u64>,
         #[arg(long)]
         by: Option<String>,
+        /// The keys it sets last this long (ms), then go again.
+        #[arg(long)]
+        for_ms: Option<u64>,
     },
     /// Edit a text entry: a JSON array of `[from, to, "text"]` ranges in chars of its current
     /// text, in order. The person's carets move with it, and one undo takes it back.
@@ -190,9 +196,9 @@ fn main() -> Result<()> {
             let node: serde_json::Value = serde_json::from_str(&raw)?;
             runtime::send(&socket, json!({"op": "patch", "id": id, "node": node}))?
         }
-        Cmd::Put { key, file, if_rev, by } => write(&socket, "put", key, "value", &file, if_rev, by)?,
-        Cmd::Merge { key, file, if_rev, by } => write(&socket, "merge", key, "value", &file, if_rev, by)?,
-        Cmd::Edit { key, file, if_rev, by } => write(&socket, "edit", key, "changes", &file, if_rev, by)?,
+        Cmd::Put { key, file, if_rev, by, for_ms } => write(&socket, "put", key, "value", &file, if_rev, by, for_ms)?,
+        Cmd::Merge { key, file, if_rev, by, for_ms } => write(&socket, "merge", key, "value", &file, if_rev, by, for_ms)?,
+        Cmd::Edit { key, file, if_rev, by } => write(&socket, "edit", key, "changes", &file, if_rev, by, None)?,
         Cmd::Read { key } => runtime::send(&socket, json!({"op": "read", "key": key}))?,
         Cmd::Theme { name, load } => {
             let add = match load {
@@ -248,10 +254,11 @@ fn main() -> Result<()> {
 }
 
 /// A store write: the JSON in `file` (`-` reads stdin) as the request's `field`.
-fn write(socket: &std::path::Path, kind: &str, key: String, field: &str, file: &PathBuf, if_rev: Option<u64>, by: Option<String>) -> Result<serde_json::Value> {
+#[allow(clippy::too_many_arguments)]
+fn write(socket: &std::path::Path, kind: &str, key: String, field: &str, file: &PathBuf, if_rev: Option<u64>, by: Option<String>, for_ms: Option<u64>) -> Result<serde_json::Value> {
     let raw = if file.as_os_str() == "-" { std::io::read_to_string(std::io::stdin())? } else { std::fs::read_to_string(file)? };
     let body: serde_json::Value = serde_json::from_str(&raw)?;
-    let mut req = json!({"op": "write", "write": kind, "key": key, field: body, "if_rev": if_rev});
+    let mut req = json!({"op": "write", "write": kind, "key": key, field: body, "if_rev": if_rev, "for_ms": for_ms});
     if let Some(by) = by {
         req["by"] = by.into();
     }
