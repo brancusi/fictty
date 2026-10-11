@@ -18,6 +18,13 @@ line (`curl -fsSL https://fictty.com/try.sh | sh`) from the top of fictty.com.
 The order below follows what the prototype showed: first land it, then close the agent loop
 (`watch`, rebased text edits), then make records addressable, then layout and the kit.
 
+**New direction, 11 October 2026: fictty leaves the terminal.** A screen becomes a native window
+drawn by GPUI, in pixels with real type, and the terminal target goes; the Elm core, the UI as
+data, the socket and the host stay. A spike held 120 fps on every stress scenario with agents
+writing as fast as before. The plan is [design/native.md](design/native.md); its phases are
+section 0 below and come first. Terminal-only items in the sections after it (OSC 52, terminal
+recordings, cell-level polish) are superseded; the rest carry over.
+
 ## Done
 
 ### Extraction (2026-10-10)
@@ -137,7 +144,25 @@ run in process, at Headless speed.
       after what the person typed when a host's reload adds a marker or a line end around it;
       `State::derive` works out the tree of a state read back from `get --state`
 
-## 1 · Land the prototype (now)
+## 0 · Into the window (now)
+
+The phases of [design/native.md](design/native.md), where each is broken down.
+
+- [ ] Phase 0 · The seam (M): the core as its own crate, the engine on its own thread, readback,
+      the spike's window behind `fictty run --window`
+- [ ] Phase 1 · Parity in the window (L): every component, theme and input; the tour and Thought
+      Control run in it; the terminal code goes
+- [ ] Phase 2 · The agent's portal (M): `watch` and `emit`, drop zones, tabs (`fictty open
+      --tab`), readback with rectangles, screenshots, the command policy
+- [ ] Phase 3 · Media (M): images, video, pasted and dropped media, animation
+- [ ] Phase 4 · Typography (M–L): proportional text; caretline measuring through the renderer
+- [ ] Phase 5 · Ship (M): `fictty.app`, signed; `try.sh` opens a window; docs, site, a post;
+      v0.3.0
+- [ ] Waiting, from Thought Control's fuzzer: a task made between `2.` and `3.` (⌃T) splits the
+      list, as CommonMark reads it, so the items after it should number from 1 (renumber after
+      a task toggle, as after `list_style`)
+
+## 1 · Land the prototype
 
 - [x] Review and merge `store-theme-prototype` into `main`
 - [ ] Errors about a field show on the field (its border and title), not only on the status line,

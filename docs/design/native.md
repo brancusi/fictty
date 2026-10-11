@@ -1,0 +1,250 @@
+# fictty in its own window
+
+Status: **decided, 11 October 2026.** fictty leaves the terminal. A screen is a native window drawn
+by GPUI (Zed's GPU framework), laid out in pixels with real type, and the terminal target goes.
+The Elm core, the UI as data, the socket and the host stay exactly as they are. This file is the
+implementation plan; [PLAN.md](../PLAN.md) carries its phases as the order of work.
+
+## Why
+
+Aram's ask: a portal that stays open on his Mac, that agents fill with screens he works in (text,
+images, video, files), updating as fast as they write, beautiful, with no hoops between the app
+and the machine. The terminal is what's in the way:
+
+- it keeps keys for itself (⌘C, ⌘Z in WezTerm) and encodes the rest differently per terminal;
+- dropping a file types its path; the clipboard is OSC 52, refused silently by some terminals;
+- images work only where the kitty protocol does; video not at all;
+- one font, one size, whole cells: no real typography, layout or motion;
+- a terminal emulator sits between the grid we test and what's shown.
+
+The spike (branch `spike/native`, 11 October) answered the questions that could have stopped it:
+
+| | GPUI window (spike) | terminal (guide's numbers) |
+|---|---|---|
+| ticker, 500 values/s | 120 fps | — |
+| plasma, a full-screen frame at 120 Hz | 120 fps | — |
+| patch storm, 1,000 patches/s | 120 fps, 1,000/s | 116 fps, 1,000/s |
+| pushes as fast as a client sends | 120 fps, ~5,900/s | 108 fps, ~6,200/s |
+| 50,000-row list replaced 20×/s | 0.02 ms to build a frame | — |
+
+Built on an M-series Mac, release, gpui 0.2.2. The view rebuilds its elements from the state
+every frame (an Elm view, literally) in well under a millisecond; GPUI draws at the display's
+rate. The engine runs on its own thread, so how fast agents can write doesn't depend on the frame
+rate. Keys (⌘ included), clicks, file drops and `fictty screen` all worked through fictty's own
+messages.
+
+Iced (the same Elm shape, wgpu) stays the fallback if GPUI's churn ever costs more than it gives;
+the core doesn't depend on either.
+
+## What stays, what changes, what goes
+
+| stays | changes | goes |
+|---|---|---|
+| The UI value: nodes, templates, maps, markup, `when`, `each`, themes as data | `view`: GPUI elements from the state, not cells | ratatui, crossterm |
+| `State`, `Msg`, `update`, `Effect`; serializable, replayable | Layout: flexbox in pixels; `size` keeps meaning cells (a row's height, a column's width) and gains `px` | the kitty graphics protocol, OSC 66 (`gfx.rs` sending) |
+| The store, writes with revisions, expiring writes, `$log` | Pixels: cards, plots, SVG and images drawn natively, not rasterised and sent | `fictty::sim`, vt100, the escape-code differential |
+| Sources (command, stream, file, host), actions, the command policy | `fictty screen`: a readback of the node tree (kind, id, text, rectangle) | `fictty setup wezterm`, the terminal key-forwarding notes |
+| The socket and every op; `push`, `patch`, `write`, `read`, `key`, `get` | `Headless`: the engine and the readback, without pixels | terminal probes (cell size, text sizing, keyboard flags) |
+| The `Host` trait, `Notifier`, kept entries | `App::run`: opens a window, on the main thread | `render --ansi` |
+| caretline as the text engine | Themes: parts gain radius, shadow, padding, font | |
+| `fictty::fuzz` on the core | Key names: the same, now from the OS | |
+
+## Architecture
+
+```
+agents ── socket ──┐        host (an embedding app) ── Notifier ──┐
+                   ▼                                              ▼
+             ┌──────────────── engine thread (one per tab) ────────────────┐
+             │  events → Msg → update(&mut State) → effects → driver       │
+             │  sources, streams, the host, saves, the clock               │
+             └──────────────┬──────────────────────────────────────────────┘
+                            │ rings when the state changed
+                            ▼
+             ┌──────────────── main thread (GPUI) ──────────────────────────┐
+             │  view(&State) → elements → layout → Metal, once per frame    │
+             │  OS input → fictty Msg → engine                              │
+             └──────────────────────────────────────────────────────────────┘
+```
+
+- **One engine per tab**, on its own thread, holding the `State` behind a lock: it takes in
+  messages as fast as they arrive and rings the window. The window locks the state only while it
+  builds a frame (a fraction of a millisecond). This is `Live` from the spike, grown up.
+- **The view is a pure function of the state**, as now. Its only memory is GPUI's own element
+  state (a list's scroll offset), which is view state the terminal also kept outside `State`.
+  Anything an agent must see (selection, focus, caret, drag-hover, IME composition) is in `State`.
+- **Layout is GPUI's** (taffy flexbox). The `view` returns, besides elements, each node's laid-out
+  rectangle, for hit-testing what the OS doesn't route itself and for the readback.
+
+### Crates
+
+Split now, so the core never compiles GPUI and the core's tests stay fast:
+
+| crate | what | depends on |
+|---|---|---|
+| `fictty-core` | model, template language, state, update, store, lists, host, the engine (`Live`), the socket, `Headless`, `fuzz` | caretline, serde |
+| `fictty` | the window: view, input, themes to styles, media, tabs; `App` for embedding; the `fictty` binary and CLI | fictty-core, gpui |
+
+`fictty` re-exports the core, so an embedding app (Thought Control) depends on one crate as today.
+
+### Units and type
+
+- A number `size` stays in cells: rows are the base line height (24 px at 14 px type), columns the
+  width of a character of the UI font. Existing UIs lay out as before, just smoother.
+- New: `"120px"`, and the existing `"30%"`, `"*"`, `"2*"`. `min`/`max` the same.
+- Text uses a proportional UI font (Inter, bundled, OFL) outside editors and a monospace one
+  (JetBrains Mono, bundled, OFL) in editors, inputs and `code`. Themes can name others.
+- `scale` (headings drawn larger) becomes a font size; `Big` uses real large type.
+
+### Editors
+
+caretline lays text out in cells: its viewport is columns by rows, it wraps by column and moves
+up and down by column. Editors therefore stay **monospace** in the window: the caret, selection,
+wrap and clicks map exactly as now, at the mono font's cell size. Proportional editors (a
+document feel) need caretline to take line measurements from the renderer; that's a caretline
+change, made there first and released, and it comes after parity (phase 4).
+
+IME goes through GPUI's input handler on the focused editor: the composing text is a `Msg`
+(`Compose { text, range }`) and shown by the view from `State`, so `screen` sees it too.
+
+### Callouts, rings and spotlights
+
+`caretline-layers` places callouts in cells. In the window, layers are placed with GPUI's
+`anchored` element against the anchor's laid-out rectangle, and spotlights become a translucent
+scrim with soft holes (the `Shade` picture today). Pulses animate on the clock.
+
+### Readback and screenshots
+
+- `fictty screen` returns the shown nodes in order: kind, id, the text it shows, its rectangle,
+  focus and selection. `--text` prints it as an outline. This replaces the character grid: an
+  agent reads structure instead of positions.
+- `fictty screenshot out.png` captures the window. On macOS, capturing one's own window may need
+  the Screen Recording permission; if so, GPUI's offscreen rendering (or the test platform) is
+  the fallback. Settled in phase 2.
+
+## Phases
+
+Each ends with something Aram runs. Sizes: S one session, M a few, L a week or more of sessions.
+
+### Phase 0 · The seam (M)
+
+The core stands alone, and nothing breaks.
+
+- [ ] Workspace: `crates/fictty-core` and `crates/fictty`; `fictty` re-exports the core
+- [ ] The engine (`Live`) in the core: setup, pump, `wake_on_event`, its own thread; `App::run`
+      becomes "start the engine, then draw" for both the terminal (still there) and the window
+- [ ] Readback in the core: the shown node tree with text, focus and selection (rectangles come
+      from the window). `Headless::screen()` keeps the grid until phase 1 ends; tests move to
+      `readback()` and state assertions as the window reaches each component
+- [ ] Laid-out rectangles out of the view, so hit regions come from layout, not cells
+- [ ] The spike's window behind `fictty run --window`, so every later step is visible
+- Done when: `cargo test` passes with the core building without ratatui, and the spike runs from
+  `main`.
+
+### Phase 1 · Parity in the window (L)
+
+Every component, every theme, every input the terminal had; then the terminal goes.
+
+- [ ] Layout: `size` in cells and px, `%`, `*`, `min`/`max`, `gap`, `float`, `modal` (with a scrim)
+- [ ] Text with markup: styled runs (`<b>`, colours, signs), tabs and fills laid out as columns,
+      maps, conditionals; wrapping
+- [ ] Lists, trees, tables: virtualised, row templates, multi-line rows, `mark`/`lead`,
+      variants, skip rows, filters, heat colours, footers, scrollbars, hover
+- [ ] Editors and inputs: caretline at mono cell size; caret, selections, Markdown styles, links,
+      task boxes, ordered lists, placeholders, read-only; click, drag, double and triple click,
+      wheel; `accept: number`
+- [ ] Charts drawn with `canvas`: sparkline, chart, bars, gauge, plot, map, dot, big
+- [ ] Pictures native: cards (rounded, gradient, shadow, glow) as styles; SVG and images as
+      elements
+- [ ] Tabs, buttons, spinners, toasts, the status bar, problems
+- [ ] Layers: callouts, arrows, rings, spotlights, pulses, the hover tip
+- [ ] Themes: every token and part mapped to styles; parts gain radius, shadow, padding, font
+- [ ] Input: every key with every modifier from the OS (`d-` is ⌘), IME, the system clipboard
+      (copy as text, ⌘V pastes, owned by the runtime), mouse and wheel, hover, focus rings
+- [ ] Tests: the component tests rewritten on readback and state (70 read the character grid
+      today); a GPUI test-platform test per component that it lays out without overlap
+- [ ] The tour's ten chapters and every example run in the window and look right (screenshots
+      reviewed)
+- [ ] Thought Control runs in the window, unchanged but for `App::run` on the main thread
+- [ ] **The terminal goes**: ratatui, crossterm, vt100, `sim`, kitty and OSC 66 code, `setup`,
+      `render --ansi`; the fuzz driver loses "the terminal shows the frame"
+- Done when: the tour runs in the window end to end, Thought Control's screens run in it, and the
+  repo has no terminal code.
+
+### Phase 2 · The agent's portal (M)
+
+What the window makes possible for agents.
+
+- [ ] `watch`: an agent waits for events (a store write by the person, a submit, a click on a named
+      action, a drop) with filters and revisions; `emit` actions name events
+- [ ] Drop zones: `accept` and `on_drop` on any node; hover state in `State` (`$drop`), files as
+      `{$file.path}`, `{$file.name}`, `{$file.type}`, `{$file.size}`; a theme part `drop.hover`
+- [ ] Tabs: one app, many screens. `fictty open --tab <name> ui.json` opens a tab (starting the
+      app if it isn't running); each tab its own engine, store and socket
+      (`$FICTTY_DIR/<tab>.sock`); a tab bar; ⌘1–9, ⌘W, ⌘T
+- [ ] Readback with rectangles; `screenshot`
+- [ ] The command policy for UIs an agent shares: data only by default, commands asked for
+- Done when: the receipts walkthrough runs: an agent opens a tab with a drop zone, Aram drops
+  files, the agent hears it through `watch`, files them and the table updates.
+
+### Phase 3 · Media (M)
+
+- [ ] `image`: a path or URL, `fit` (contain, cover), rounded corners; decoded off the main thread
+- [ ] `video`: a path or URL in a node, hardware-decoded (AVFoundation) frames drawn as a
+      `surface`; play, pause, seek and position in `State`, so agents control and read it
+- [ ] Pasting and dropping images: the clipboard's image types arrive as files
+- [ ] Animation: transitions on focus, selection and layers, on the logical clock (replayable)
+- Done when: an agent puts a video in one tab and an image gallery in another, and both play and
+  scroll at the display's rate.
+
+### Phase 4 · Typography (M–L)
+
+- [ ] Proportional text where it reads better: headings, prose, tables' text columns
+- [ ] caretline measures lines through the renderer (a caretline release), so editors can be
+      proportional; Markdown documents get real heading sizes
+- [ ] The theme kit: type scale, spacing scale, radii, elevation
+
+### Phase 5 · Ship (M)
+
+- [ ] `fictty.app`: a bundle with an icon, menus (from the UI's keys), a Dock presence; signed and
+      notarised in the release workflow
+- [ ] `try.sh` downloads the app and opens the tour in a window; frozen demos keep working for
+      the posts that pinned them (they pin terminal builds and stay as they are)
+- [ ] README, guide, architecture, site: fictty as a window, not a terminal; screenshots
+- [ ] A post: why fictty left the terminal, with the spike's numbers
+- [ ] Release v0.3.0
+- Later: Linux (GPUI runs on Wayland and X11), Windows.
+
+## Thought Control
+
+Thought Control embeds fictty. What its move costs:
+
+- **Unchanged:** its UIs (JSON), its `Host` (sources, actions, kept entries, `Notifier`), its
+  store use, its Headless tests that assert on state, store text and the focused editor.
+- **Changes:** `App::run` opens a window and must be called on the main thread (it already is, in
+  `thc screen`). Tests that read the character grid move to `readback()` (phase 1). Sizes in its
+  UIs keep working; it can use `px` and the new theme parts when it wants.
+- **Goes:** its terminal key forwarding (`thc_keys.lua`, `fictty.lua`), its pty harness, terminal
+  image tuning. Already paused (11 October).
+- It pins a fictty commit per phase; each phase's end is a build it can take.
+
+## Risks
+
+| risk | what we do |
+|---|---|
+| GPUI's API moves and its crates.io release lags Zed | Pin `gpui = "=0.2.2"`; only `crates/fictty` touches it; move versions deliberately, one commit each. Iced is the fallback, the core untouched. |
+| Shaders need Xcode's `metal` compiler | `runtime_shaders` for development; the release workflow builds with Xcode and precompiled shaders. |
+| caretline lays text out in cells | Editors stay monospace until caretline measures through the renderer (phase 4, a caretline release first). |
+| `caretline-layers` places callouts in cells | Placement moves to GPUI's `anchored`; the layer data stays the same. |
+| Readback loses the character grid's exactness | Readback is structural (nodes, text, rectangles); screenshots for looks; GPUI's test platform for layout. |
+| Screenshots may need Screen Recording permission | Offscreen rendering or the test platform as the fallback; decided in phase 2. |
+| 70 tests read the grid | Rewritten on readback and state in phase 1, component by component, before the grid goes. |
+| Frozen terminal demos and posts | They pin terminal builds and keep working; new posts pin window builds. |
+| The name says tty | An open question for Aram, not a blocker. |
+
+## Open questions for Aram
+
+1. **The name.** fictty is a fictitious tty. Keep it (it has a site, a blog and a following), or
+   rename with the move?
+2. **Linux timing.** macOS first is the plan; does anything need Linux before v0.3.0?
+3. **One window with tabs, or a window per agent?** The plan says tabs in one app, windows on
+   request (⌘N, or `fictty open --window`).
