@@ -325,7 +325,9 @@ def themes():
          "columns": [{"title": "key", "value": "{k}", "size": 8}, {"title": "value", "value": "{v}"}]},
         {"type": "col", "children": [
             {"type": "gauge", "title": "a gauge", "value": "0.6", "size": 3},
-            {"type": "sparkline", "title": "a sparkline", "values": [1, 3, 2, 5, 4, 7, 6, 9, 7, 10]},
+            {"type": "sparkline", "title": "a sparkline", "size": 6, "tone": "accent",
+             "values": [3, 4, 3, 5, 6, 5, 7, 6, 8, 7, 9, 8, 10, 9, 8, 10, 12, 11, 13, 12, 14, 13, 15, 14, 16, 15, 17, 16, 18, 20,
+                        19, 21, 20, 22, 21, 23, 22, 24, 23, 25, 27, 26, 28, 27, 29, 28, 30, 29, 31, 30]},
         ]},
     ]}
     current = text("Now: <accent+b>{name}</>   <d>of {names}</>", bind="$theme", size=1, pad=[1, 0])
