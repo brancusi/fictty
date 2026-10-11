@@ -77,7 +77,8 @@ fictty theme paper                                        # choose a loaded them
   entry, so store actions reach it through a filter or deep in a tree.
 - **Overlays**: a `stack` draws its children over each other, the last on top; one with
   `float` (`width`, `height`, `at` an edge or corner, `margin`) sits where it says, and a `modal`
-  one dims what's behind it, swallows clicks there and keeps the focus. **`when`** shows a node only
+  one dims what's behind it, swallows clicks there and keeps the focus; both cover what's under
+  them. **`when`** shows a node only
   while a condition holds: a bind that's set (`"dialog"`), not set (`"!dialog"`), compared
   (`"mode=edit"`, `"$screen.width>=120"`), or several joined by ` & `. A hidden node takes no
   room and no focus. Layers take `when` too. **Toasts** show in the corner for a while: the
@@ -85,7 +86,8 @@ fictty theme paper                                        # choose a loaded them
 - **Sources** in `data`: `cmd` (argv), `shell`, `stream` (a command printing JSON lines), a
   literal `value`, or `host` (the embedding app's, with `args` that are templates over the state,
   so `{"host": "detail", "args": {"id": "{@list.id}"}}` refetches as the selection moves); `path`
-  narrows the JSON, `every` re-fetches. Sources are disposable: a push fetches them again. Built
+  narrows the JSON, `every` re-fetches. A push fetches the sources that are new or changed; one
+  that's the same keeps its value, stream and timer (`refresh` fetches them all). Built
   in: `$stats`, `$caps`, `$theme`, `$screen` (the terminal's `width` and `height`), `$keys` (a
   chord's keys so far), `$store` (every entry, by revision) and `$log` (what agents did over the
   socket, newest first, at the local clock time; a write that was refused shows as `refused`,
@@ -139,7 +141,10 @@ document with its undo history), each with a revision (`rev`) and who wrote it l
   `"syntax": "markdown"` styles headings, list markers, quotes, inline code and task items
   (theme parts `md.heading`, `md.bullet`, `md.quote`, `md.code`, `md.task`, `md.done`) while the
   text stays plain; Ctrl-T or a click on a `[ ]` ticks it. `"readonly": true` shows a text to
-  read, scroll, select and copy, never change.
+  read, scroll, select and copy, never change. `"tab": "indent"` keeps Tab and Shift-Tab to
+  indent and outdent the selected lines or a list item (Esc leaves instead). A `put` by the person
+  into a text leaves the caret after it, and keys typed while a host's text is loading land once
+  it has.
 - **Editing keys** follow the Mac text field, each with a twin for terminals that don't send ⌘:
   ⌘C/⌘X/⌘V (Ctrl), ⌘A (⌥A), ⌘Z and ⇧⌘Z (Ctrl-Z, Ctrl-Y), ⌘←/→ (Home/End, Ctrl-A/E), ⌘↑/↓
   (Ctrl-Home/End), ⌥←/→ (⌥B/F), Shift with any of them to select, ⌘⌫ (Ctrl-U), ⌥⌫ (Ctrl-W),

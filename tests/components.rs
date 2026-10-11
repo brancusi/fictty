@@ -480,3 +480,81 @@ fn the_wheel_scrolls_a_list_and_leaves_the_selection() {
     assert!(s.screen().starts_with("▸ row 1\n") || s.screen().contains("▸ row 1"), "{}", s.screen());
     assert_eq!(s.state().local["l"].top, None);
 }
+
+#[test]
+fn tab_indents_in_an_editor_that_asks_for_it() {
+    let ui = json!({"root": {"type": "col", "children": [
+        {"type": "editor", "id": "e", "tab": "indent", "syntax": "markdown", "text": "- one\n- two\n- three\nplain"},
+        {"type": "list", "id": "l", "items": ["x"]}
+    ]}});
+    let mut s = screen(ui, 30, 8);
+    s.keys(&["down", "tab"]);
+    assert_eq!(text(&mut s, "e"), "- one\n  - two\n- three\nplain");
+    assert_eq!(s.state().focus.as_deref(), Some("e"), "Tab stays in the editor");
+    // A selection over two lines indents both, one undo takes it back.
+    s.keys(&["c-home", "s-down", "s-down", "tab"]);
+    assert_eq!(text(&mut s, "e"), "  - one\n    - two\n- three\nplain");
+    s.keys(&["s-tab"]);
+    assert_eq!(text(&mut s, "e"), "- one\n  - two\n- three\nplain");
+    s.keys(&["d-z"]);
+    assert_eq!(text(&mut s, "e"), "  - one\n    - two\n- three\nplain");
+    // Plain text takes two spaces; Esc leaves.
+    s.keys(&["c-end", "tab"]);
+    assert!(text(&mut s, "e").ends_with("plain  "));
+    s.keys(&["esc"]);
+    assert_eq!(s.state().focus.as_deref(), Some("l"));
+}
+
+#[test]
+fn a_put_into_text_leaves_the_caret_after_it() {
+    // A find starts by putting the first letter typed into the finder, then focusing it.
+    let ui = json!({"root": {"type": "col", "children": [{"type": "input", "id": "find", "size": 1}, {"type": "list", "id": "l", "items": ["a"]}]},
+                    "focus": "l", "keys": {"3": {"do": [{"put": "find", "value": "3"}, {"focus": "find"}]}}});
+    let mut s = screen(ui, 20, 3);
+    s.keys(&["3", "q"]);
+    assert_eq!(text(&mut s, "find"), "3q");
+}
+
+#[test]
+fn a_modal_layer_covers_what_is_under_it() {
+    let ui = json!({"root": {"type": "stack", "children": [
+        {"type": "text", "text": "XXXXXXXXXXXXXXXXXXXX\nXXXXXXXXXXXXXXXXXXXX\nXXXXXXXXXXXXXXXXXXXX"},
+        {"type": "text", "id": "m", "modal": true, "pad": 1, "text": "hi"}
+    ]}});
+    let mut s = screen(ui, 20, 4);
+    let frame = s.screen();
+    assert!(!frame.contains('X'), "{frame}");
+    assert!(frame.contains("hi"));
+}
+
+#[test]
+fn keys_typed_while_a_page_loads_land_when_it_does() {
+    use fictty::state::{Effect, State, update};
+    let mut st = State { hosted: vec!["page/".into()], ..State::default() };
+    let ui = serde_json::from_value(json!({"root": {"type": "editor", "id": "e", "doc": "page/a"}})).unwrap();
+    let fx = update(&mut st, Msg::Push { ui });
+    assert!(fx.contains(&Effect::Read("page/a".into())));
+    for k in ["h", "i"] {
+        update(&mut st, Msg::Key { key: k.into() });
+    }
+    assert_eq!(st.typed_ahead.len(), 2);
+    update(&mut st, Msg::Loaded { key: "page/a".into(), result: Ok(json!("# Page")) });
+    assert!(st.typed_ahead.is_empty());
+    assert_eq!(st.store["page/a"].read()["text"], "hi# Page");
+}
+
+#[test]
+fn a_push_fetches_only_the_sources_that_changed() {
+    use fictty::state::{Effect, State, update};
+    let ui = |n: u32| -> fictty::model::Ui {
+        serde_json::from_value(json!({"root": {"type": "text", "text": "x"},
+                                      "data": {"same": {"cmd": ["date"]}, "moved": {"cmd": ["echo", n.to_string()]}}})).unwrap()
+    };
+    let mut st = State::default();
+    let first = update(&mut st, Msg::Push { ui: ui(1) });
+    assert_eq!(first.len(), 2);
+    update(&mut st, Msg::Data { name: "same".into(), result: Ok(json!(1)) });
+    update(&mut st, Msg::Data { name: "moved".into(), result: Ok(json!(1)) });
+    let again = update(&mut st, Msg::Push { ui: ui(2) });
+    assert_eq!(again, vec![Effect::Fetch("moved".into())]);
+}

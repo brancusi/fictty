@@ -670,6 +670,9 @@ impl App {
         let mut st = self.start()?;
         let mut saved_writes = st.store_writes;
         let ui = self.first_ui(&st)?;
+        // A restored screen's streams and timers died with the old process: its first push
+        // fetches every source again.
+        st.ui.data.clear();
         let (tx, rx) = mpsc::channel();
         // Commands the screen runs (sources, `run`) can talk back to it: a helper script reads the
         // store with `$FICTTY read …`. Set before any thread starts.

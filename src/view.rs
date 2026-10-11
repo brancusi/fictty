@@ -655,7 +655,8 @@ fn node(cx: &mut Cx, n: &Node, f: &mut Frame, area: Rect) {
                     }
                     cx.hits.push(Hit { rect: inner, id: String::new(), row: None, tab: None, text: false });
                 }
-                if c.float.is_some() {
+                // A floating or modal layer covers what's under it, characters and all.
+                if c.float.is_some() || c.modal {
                     f.render_widget(ratatui::widgets::Clear, at);
                     let mut base = Style::default();
                     if let Some(bg) = cx.th.bg {

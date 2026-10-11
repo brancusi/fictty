@@ -107,7 +107,7 @@ The live session showed both gaps: the agent couldn't know the person had typed 
       a key) without polling, with the revision to read from
 - [ ] Text edits rebased onto the person's typing (caretline maps edits through, as it does for
       live editors); `--if-rev` stays strict for values
-- [ ] Keep unchanged data sources on push (today every push restarts all of them)
+- [x] Keep unchanged data sources on push (a push fetches only new and changed ones)
 - [ ] Validated batches: several writes applied together, or none, naming the bad ones
 - [ ] The skill: the alphabet, the store, one full example, and the rules ("check with `screen`",
       "read before you write", "bind data to commands, never relay it")

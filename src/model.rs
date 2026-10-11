@@ -371,6 +371,10 @@ pub enum Kind {
         /// the keys scroll. A long text or a log to read.
         #[serde(default, skip_serializing_if = "std::ops::Not::not")]
         readonly: bool,
+        /// `indent`: the editor keeps Tab and Shift-Tab, which indent and outdent the lines of the
+        /// selection (or a list item; else Tab types two spaces). Esc leaves it.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        tab: Option<String>,
     },
     /// A one-line field (caretline, single-line): an editor whose text never holds a line
     /// break. Enter runs the node's `keys.enter`, so a form submits with a store action.
@@ -624,6 +628,8 @@ pub struct Field<'a> {
     pub number: bool,
     /// Read only.
     pub readonly: bool,
+    /// Tab and Shift-Tab indent and outdent instead of moving the focus.
+    pub indents: bool,
 }
 
 /// Where a Markdown task item's box is in a line: the column of the char inside `[ ]`, and whether
@@ -815,7 +821,7 @@ impl Node {
     /// An editor or an input: the text component's settings.
     pub fn field(&self) -> Option<Field<'_>> {
         match &self.kind {
-            Kind::Editor { text, doc, placeholder, syntax, readonly } => Some(Field {
+            Kind::Editor { text, doc, placeholder, syntax, readonly, tab } => Some(Field {
                 seed: text,
                 doc: doc.as_deref(),
                 placeholder: placeholder.as_deref(),
@@ -823,6 +829,7 @@ impl Node {
                 markdown: syntax.as_deref() == Some("markdown"),
                 number: false,
                 readonly: *readonly,
+                indents: tab.as_deref() == Some("indent"),
             }),
             Kind::Input { text, placeholder, accept } => Some(Field {
                 seed: text,
@@ -832,6 +839,7 @@ impl Node {
                 markdown: false,
                 number: accept.as_deref() == Some("number"),
                 readonly: false,
+                indents: false,
             }),
             _ => None,
         }

@@ -88,6 +88,10 @@ pub struct State {
     /// Where the focus was before it last moved (`{"focus": "$prev"}` goes back there).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub prev_focus: Option<String>,
+    /// Keys typed into an editor whose hosted text is still loading: (entry, editor, key), typed
+    /// in order once it lands.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub typed_ahead: Vec<(String, String, String)>,
 }
 
 /// A run of clicks on one cell of an editor (see `State::clicks`).
@@ -349,6 +353,7 @@ pub fn update(st: &mut State, msg: Msg) -> Vec<Effect> {
 fn apply(st: &mut State, msg: Msg) -> Vec<Effect> {
     match msg {
         Msg::Push { ui } => {
+            let before = std::mem::take(&mut st.ui.data);
             st.ui = ui;
             st.version += 1;
             st.status = None;
@@ -362,12 +367,14 @@ fn apply(st: &mut State, msg: Msg) -> Vec<Effect> {
             if let Some(f) = st.ui.focus.clone() {
                 st.focus = Some(f);
             }
-            // Every source is fetched anew, with args filled after this message.
-            st.args.clear();
+            // A source whose definition changed starts over (its args filled after this message).
+            st.args.retain(|k, _| before.get(k) == st.ui.data.get(k));
             settle(st);
-            // Sources can change with the UI; fetch them all again.
+            // Sources that are new or changed are fetched; one that's the same as before keeps its
+            // value, its stream and its clock (`refresh` fetches everything again).
             st.data.retain(|k, _| builtin(k) || st.ui.data.contains_key(k));
-            st.ui.data.keys().map(|k| Effect::Fetch(k.clone())).collect()
+            let stale: Vec<String> = st.ui.data.iter().filter(|(k, s)| before.get(*k) != Some(*s) || !st.data.contains_key(*k)).map(|(k, _)| k.clone()).collect();
+            stale.into_iter().map(Effect::Fetch).collect()
         }
         Msg::Patch { id, node } => {
             if st.ui.root.replace(&id, &node) {
@@ -501,6 +508,20 @@ fn apply(st: &mut State, msg: Msg) -> Vec<Effect> {
                     st.store.insert(key.clone(), Entry::value(v, "host"));
                     st.store_writes += 1;
                     fields(st);
+                    // What was typed while it loaded, typed now.
+                    let (now, later): (Vec<_>, Vec<_>) = std::mem::take(&mut st.typed_ahead).into_iter().partition(|(k, ..)| *k == key);
+                    st.typed_ahead = later;
+                    let mut fx = Vec::new();
+                    for (_, id, k) in now {
+                        if matches!(k.as_str(), "tab" | "s-tab") && st.ui.root.find(&id).and_then(|n| n.field()).is_some_and(|f| f.indents) {
+                            indent(st, &id, k == "tab");
+                        } else {
+                            let e = type_into(st, &id, &k);
+                            fx.extend(editor_effects(st, e));
+                        }
+                    }
+                    settle(st);
+                    return fx;
                 }
                 (true, v) => {
                     let same = match (&st.store[&key].body, &v) {
@@ -656,6 +677,15 @@ fn apply(st: &mut State, msg: Msg) -> Vec<Effect> {
                 return vec![];
             }
             if let Some(id) = editing(st, &key) {
+                // Text still on its way from the host: the key waits for it.
+                if let Some(k) = st.ui.root.find(&id).and_then(|n| doc_key(st, n)).filter(|k| st.loading.get(k) == Some(&None)) {
+                    st.typed_ahead.push((k, id, key));
+                    return vec![];
+                }
+                if matches!(key.as_str(), "tab" | "s-tab") {
+                    indent(st, &id, key == "tab");
+                    return vec![];
+                }
                 let fx = type_into(st, &id, &key);
                 return editor_effects(st, fx);
             }
@@ -818,7 +848,7 @@ fn editing(st: &State, key: &str) -> Option<String> {
     let n = st.ui.root.find(id)?;
     // Esc leaves an editor, unless there's a selection to drop first.
     let leaves = match key {
-        "tab" | "s-tab" => true,
+        "tab" | "s-tab" => !n.field().is_some_and(|f| f.indents),
         "esc" => !field_view(st, id).is_some_and(|(_, v)| {
             let r = v.selection.primary();
             r.anchor != r.head
@@ -850,6 +880,50 @@ fn type_into(st: &mut State, id: &str, key: &str) -> Vec<caretline::Effect> {
     let now_ms = st.now_ms;
     on_doc(st, id, caretline::Msg::Tick { now_ms }, "person");
     on_doc(st, id, msg, "person")
+}
+
+/// Tab in an editor that indents: the lines of the selection, or a list item, two spaces in (or
+/// out, with `inward` false, as far as two spaces go); elsewhere Tab types two spaces. One edit
+/// by the person, one undo step, every caret carried along.
+fn indent(st: &mut State, id: &str, inward: bool) {
+    let Some((key, view)) = field_view(st, id) else { return };
+    let r = view.selection.primary();
+    let Some(Entry { body: Body::Text { doc }, .. }) = st.store.get(&key) else { return };
+    let text = &doc.text;
+    let (lo, hi) = (r.anchor.min(r.head).min(text.len_chars()), r.anchor.max(r.head).min(text.len_chars()));
+    let first = text.char_to_line(lo);
+    let mut last = text.char_to_line(hi);
+    // A selection that ends at a line's start doesn't take that line.
+    if hi > lo && last > first && hi == text.line_to_char(last) {
+        last -= 1;
+    }
+    let line = |l: usize| text.line(l).to_string();
+    let listy = |t: &str| {
+        let t = t.trim_start();
+        t.starts_with("- ") || t.starts_with("* ") || t.starts_with("+ ") || {
+            let d = t.chars().take_while(char::is_ascii_digit).count();
+            d > 0 && t[d..].starts_with(". ")
+        }
+    };
+    let changes: Vec<(usize, usize, String)> = if inward && lo == hi && !listy(&line(first)) {
+        vec![(lo, lo, "  ".into())]
+    } else if inward {
+        (first..=last).map(|l| text.line_to_char(l)).map(|at| (at, at, "  ".to_string())).collect()
+    } else {
+        (first..=last)
+            .filter_map(|l| {
+                let n = line(l).chars().take(2).take_while(|c| *c == ' ').count();
+                let at = text.line_to_char(l);
+                (n > 0).then(|| (at, at + n, String::new()))
+            })
+            .collect()
+    };
+    if changes.is_empty() {
+        return;
+    }
+    let now_ms = st.now_ms;
+    on_doc(st, id, caretline::Msg::Tick { now_ms }, "person");
+    on_doc(st, id, caretline::Msg::Edit { changes, join: false }, "person");
 }
 
 /// Where editor `id`'s caret is: its line, and its column in that line.
@@ -1203,8 +1277,19 @@ fn act(st: &mut State, a: Action) -> Vec<Effect> {
         }
         Action::Put { put, value } => {
             let value = fill_value(&value, &action_context(st));
-            if let Err(e) = write_entry(st, &put, Write::Put { value }, None, "person") {
-                st.status = Some(format!("put: {e}"));
+            match write_entry(st, &put, Write::Put { value }, None, "person") {
+                Err(e) => st.status = Some(format!("put: {e}")),
+                // The person put it there: every editor showing it carries on after it.
+                Ok(()) if matches!(st.store.get(&put).map(|e| &e.body), Some(Body::Text { .. })) => {
+                    let mut all = Vec::new();
+                    st.ui.root.walk(&mut all);
+                    let ids: Vec<String> = all.iter().filter(|n| n.field().is_some() && doc_key(st, n).as_deref() == Some(put.as_str())).filter_map(|n| n.id.clone()).collect();
+                    for id in ids {
+                        use caretline::{By, Dir};
+                        on_doc(st, &id, caretline::Msg::Move { dir: Dir::Forward, by: By::DocEnd, extend: false }, "person");
+                    }
+                }
+                Ok(()) => {}
             }
             settle(st);
             vec![]
@@ -2160,7 +2245,7 @@ mod tests {
         // The editor back, with a different seed: the note wins over the seed.
         let mut again = note();
         if let Some(c) = again.root.children_mut() {
-            c[0].kind = Kind::Editor { text: "a new seed".into(), doc: None, placeholder: None, syntax: None, readonly: false };
+            c[0].kind = Kind::Editor { text: "a new seed".into(), doc: None, placeholder: None, syntax: None, readonly: false, tab: None };
         }
         update(&mut st, Msg::Push { ui: again });
         assert_eq!(text_of(&st, "note"), "hi!");
