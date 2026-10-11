@@ -38,7 +38,7 @@ function rewrite(href, fileDir) {
 
 // ---------- dialogue ----------
 // Speakers the site knows, each with a glass tint. "Aram (@brancusi):" and "Aram:" both match.
-const SPEAKERS = { aram: { name: 'Aram', handle: '@brancusi', tint: 'cyan' }, claude: { name: 'Claude', handle: '', tint: 'amber' } };
+const SPEAKERS = { aram: { name: 'Aram', handle: '@brancusi', tint: 'cyan' }, claude: { name: 'Claude', handle: '', tint: 'amber' }, tilde: { name: 'Tilde', handle: 'Claude', tint: 'amber' } };
 const text = (n) => (n.type === 'text' ? n.value : (n.children || []).map(text).join(''));
 const isWs = (n) => n.type === 'text' && !n.value.trim();
 /** If p opens with a bold speaker label, returns the speaker and strips the label from p. */
