@@ -37,7 +37,8 @@ These come first; every review checks them.
 - `src/main.rs`: the CLI, one subcommand per socket operation
 - `examples/`: UIs and their feeds. `stress/` and `finance/` are standalone; `thc/` and
   `pixels/` need Thought Control installed (they move to that repo, see the plan)
-- `docs/`: the guide, the plan, design proposals, the identity explorations
+- `docs/`: the guide, the plan, design proposals, the identity explorations, the blog
+- `web/`: fictty.com, an Astro site that renders the docs and the blog
 
 ## Build, test, run
 
@@ -85,3 +86,10 @@ This repo is public. Before every commit and push:
 Small, focused commits with a message that says what changed and why, in plain sentences. Keep
 `README.md`, `docs/guide.md` and `docs/PLAN.md` true: tick plan items as they land and update the
 guide when a feature changes.
+
+## Blog posts
+
+Posts on fictty.com/blog are milestones written as a conversation between Aram (@brancusi) and
+Tilde, the name Claude goes by on this project. Follow the `blog-post` skill
+([.claude/skills/blog-post/SKILL.md](.claude/skills/blog-post/SKILL.md)): keep the conversation
+true, use graphics, and ask before publishing.
