@@ -14,4 +14,4 @@ seed on the same nine-row cell font; nothing is typeset.
 The name: *fictile* means "capable of being moulded; made of clay", plus *tty*, the terminal.
 The identity asks what clay would be like as a gas.
 
-Next steps are phase 1 of [the plan](../../PLAN.md).
+Next steps are phase 5 (design system) of [the plan](../../PLAN.md).
