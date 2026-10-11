@@ -295,6 +295,28 @@ fn theme(st: &State, active: Option<&ThemeSpec>) -> Theme {
 }
 
 /// Draw the whole screen; returns what's under each cell and the pictures to place.
+/// A wide character (漢, 🙂) that something was drawn over (a toast, a float, a layer covering
+/// its second cell), or that the right edge cuts, goes: what's on top wins. A terminal can't show
+/// both, and ratatui never sends a cell it thinks a wide character covers, so the thing on top
+/// would be the part that's lost.
+fn whole_wide(buf: &mut Buffer) {
+    let a = buf.area;
+    for y in a.top()..a.bottom() {
+        let mut x = a.left();
+        while x < a.right() {
+            let w = Span::raw(buf[(x, y)].symbol()).width().max(1) as u16;
+            let cut = x + w > a.right();
+            let covered = (1..w).any(|i| x + i < a.right() && !matches!(buf[(x + i, y)].symbol(), " " | ""));
+            if w > 1 && (cut || covered) {
+                buf[(x, y)].set_symbol(" ");
+                x += 1;
+            } else {
+                x += w;
+            }
+        }
+    }
+}
+
 pub fn draw(st: &State, f: &mut Frame) -> Out {
     let act = active(st);
     let mut cx = Cx { st, active: act, th: theme(st, act), hits: Vec::new(), anchors: cl::AnchorMap::new(), pics: Vec::new(), scaled: Vec::new(), sizes: Vec::new(), wake: None, toasts_placed: false, laid_out: false, areas: Vec::new() };
@@ -320,6 +342,7 @@ pub fn draw(st: &State, f: &mut Frame) -> Out {
         cx.wake = Some(cx.wake.map_or(at, |w| w.min(at)));
     }
     if !bar {
+        whole_wide(f.buffer_mut());
         return Out { hits: cx.hits, pics: cx.pics, scaled: cx.scaled, sizes: cx.sizes, wake: cx.wake, areas: cx.areas };
     }
     let line = match st.status.as_ref().or(st.problems.first()) {
@@ -334,6 +357,7 @@ pub fn draw(st: &State, f: &mut Frame) -> Out {
     let [left, right] = Layout::horizontal([Constraint::Fill(1), Constraint::Length(meter.chars().count() as u16)]).areas(status);
     f.render_widget(Paragraph::new(line), left);
     f.render_widget(Paragraph::new(Line::styled(meter, Style::default().fg(Color::Yellow))), right);
+    whole_wide(f.buffer_mut());
     Out { hits: cx.hits, pics: cx.pics, scaled: cx.scaled, sizes: cx.sizes, wake: cx.wake, areas: cx.areas }
 }
 
@@ -1818,6 +1842,22 @@ impl Glyphs {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_wide_character_drawn_over_gives_way() {
+        let mut buf = Buffer::empty(Rect::new(0, 0, 6, 1));
+        buf.set_string(0, 0, "漢字", Style::default());
+        // Something drawn over 字's second cell, and 漢 left alone.
+        buf.set_string(3, 0, "╭", Style::default());
+        whole_wide(&mut buf);
+        let row: Vec<&str> = (0..6).map(|x| buf[(x, 0)].symbol()).collect();
+        assert_eq!(row, ["漢", " ", " ", "╭", " ", " "]);
+        // Cut by the right edge.
+        let mut buf = Buffer::empty(Rect::new(0, 0, 3, 1));
+        buf[(2, 0)].set_symbol("字");
+        whole_wide(&mut buf);
+        assert_eq!(buf[(2, 0)].symbol(), " ");
+    }
 
     #[test]
     fn big_digits_are_three_rows() {

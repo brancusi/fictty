@@ -393,3 +393,19 @@ fn ordered_lists_renumber_and_take_their_depths_style() {
     // A key changes one list's style, every sibling at once.
     check("1. one\n2. tw▮o\n  a. sub", &["a-l"], "a. one\nb. tw▮o\n  a. sub");
 }
+
+#[test]
+fn a_paste_renumbers_and_undo_goes_all_the_way_back() {
+    // Found by the fuzzer: undo renumbered the text it put back, a new edit each time, so undo
+    // could never get past it. And a paste didn't renumber at all.
+    let mut s = editor_with("▮- one\n1. a\n2. c", json!({"ordered": ["1.", "a.", "i."]}));
+    s.msg(Msg::Paste { text: "1. x\n2. y".into() });
+    // The pasted list runs on into the one below it.
+    assert_eq!(shown(&mut s), "1. x\n2. y▮- one\n3. a\n4. c");
+    s.keys(&["b"]);
+    assert_eq!(shown(&mut s), "1. x\n2. yb▮- one\n3. a\n4. c");
+    for _ in 0..4 {
+        s.keys(&["d-z"]);
+    }
+    assert_eq!(parse(&shown(&mut s)).0, "- one\n1. a\n2. c");
+}

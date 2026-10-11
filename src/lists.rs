@@ -128,11 +128,13 @@ pub fn item(line: &str) -> Option<Item> {
     Some(Item { indent, start: indent, end: indent + n + 1, text, marker: Marker::Ordered(Style { count, delim }) })
 }
 
-/// One level of the list being walked: its indent, its style (None for bullets), how many
+/// One level of the list being walked: its indent, its style (None for bullets), whether its
+/// items are numbered, how many
 /// ordered items it has had, and which run of siblings it is.
 struct Level {
     indent: usize,
     style: Option<Style>,
+    ordered: bool,
     count: usize,
     run: usize,
 }
@@ -153,6 +155,12 @@ fn walk(lines: &[&str], styles: &[Style], moved: &[usize], mut visit: impl FnMut
             continue;
         };
         stack.retain(|lv| lv.indent <= it.indent);
+        // A bullet after numbers at the same indent, or numbers after bullets, starts a new list
+        // (as in CommonMark).
+        let ordered = matches!(it.marker, Marker::Ordered(_));
+        if stack.last().is_some_and(|lv| lv.indent == it.indent && lv.ordered != ordered) {
+            stack.pop();
+        }
         let fresh = stack.last().is_none_or(|lv| lv.indent != it.indent);
         if fresh {
             let depth = stack.len();
@@ -163,7 +171,7 @@ fn walk(lines: &[&str], styles: &[Style], moved: &[usize], mut visit: impl FnMut
                 Marker::Bullet(_) => None,
             };
             runs += 1;
-            stack.push(Level { indent: it.indent, style, count: 0, run: runs });
+            stack.push(Level { indent: it.indent, style, ordered, count: 0, run: runs });
         }
         let lv = stack.last_mut().expect("a level");
         if matches!(it.marker, Marker::Ordered(_)) && lv.style.is_some() {
@@ -270,6 +278,12 @@ mod tests {
         let text = "1. one\n1. two\n  a. sub\n  a. sub two\n5. three\n\npara\n\n3. again";
         let want = "1. one\n2. two\n  a. sub\n  b. sub two\n3. three\n\npara\n\n1. again";
         assert_eq!(apply(text, renumber(text, &depth(), &[])), want);
+    }
+
+    #[test]
+    fn numbers_after_bullets_are_a_list_of_their_own() {
+        let text = "- one\n  - two\n2. a\n   a. b\n5. c\n- d";
+        assert_eq!(apply(text, renumber(text, &depth(), &[])), "- one\n  - two\n1. a\n   a. b\n2. c\n- d");
     }
 
     #[test]

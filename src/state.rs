@@ -700,6 +700,7 @@ fn apply(st: &mut State, msg: Msg) -> Vec<Effect> {
             let now_ms = st.now_ms;
             on_doc(st, &id, caretline::Msg::Tick { now_ms }, "person");
             let fx = on_doc(st, &id, caretline::Msg::Paste { text: Some(text) }, "person");
+            renumber(st, &id, &[]);
             editor_effects(st, fx)
         }
         Msg::Scroll { id, by } if tree!(st).find(&id).is_some_and(|n| n.field().is_some()) => {
@@ -861,8 +862,13 @@ fn apply(st: &mut State, msg: Msg) -> Vec<Effect> {
                     renumber(st, &id, &[]);
                     return vec![];
                 }
+                // Undo and redo put back a text that was numbered when it was written; renumbering
+                // it again would be a new edit, and the next undo would have nowhere to go.
+                let history = editor_key(&key).and_then(|k| caretline::keymap(&k)).is_some_and(|m| matches!(m, caretline::Msg::Undo | caretline::Msg::Redo));
                 let fx = type_into(st, &id, &key);
-                renumber(st, &id, &[]);
+                if !history {
+                    renumber(st, &id, &[]);
+                }
                 return editor_effects(st, fx);
             }
             // Chords: a key binding of several keys (`"p h"`) waits for the rest of them.
