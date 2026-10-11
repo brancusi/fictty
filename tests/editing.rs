@@ -357,3 +357,13 @@ fn enter_continues_a_markdown_list() {
     s.keys(&["enter"]);
     assert_eq!(shown(&mut s), "- item\n▮");
 }
+
+#[test]
+fn esc_drops_a_selection_even_where_the_editor_binds_esc() {
+    let mut s = editor_with("Hello ⟦wor▮⟧ld", json!({"keys": {"esc": {"focus": "after"}}}));
+    s.keys(&["esc"]);
+    assert_eq!(shown(&mut s), "Hello wor▮ld");
+    assert_eq!(s.state().focus.as_deref(), Some("e"), "the bound Esc waits");
+    s.keys(&["esc"]);
+    assert_eq!(s.state().focus.as_deref(), Some("after"), "now it runs");
+}

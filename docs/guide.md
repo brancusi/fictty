@@ -122,7 +122,7 @@ fictty theme paper                                        # choose a loaded them
   several keys (`"p h"`) is a chord. While fictty has the mouse, hold Shift (Option in some macOS
   terminals) to select text the usual way.
 - **Focus**: Tab and Shift-Tab move it, a UI's `focus` says where it starts when pushed, and Esc
-  leaves a text field (dropping a selection first). `{"focus": …}` takes an id, a template
+  leaves a text field (dropping a selection first). Esc drops a selection first, even where a node binds Esc. `{"focus": …}` takes an id, a template
   (`"{store.from}"`) or `$prev` (where it was before it last moved). Choosing a tab (a click, or
   `{"tab": 2, "of": "views"}`) moves the focus into it; a tabs node's `tab` is the one it starts
   on, and tab titles take markup.
@@ -213,7 +213,7 @@ fictty::App::new(ui)
   the status line too), and the host sources fetch again after it.
 - **`Notifier`**: `Host::start` gets one, for any thread. `changed("today")` refetches every source
   that reads `today` (the app's world changed; no polling), `write(key, write, by)` writes the
-  store, and `msg` sends any message.
+  store, `focus(id)` moves the focus without running a click, and `msg` sends any message.
 - **Everything the host says arrives as a message**, so `get --state`, `$log` and replays see it;
   the view never reads the host.
 - **Tests without a terminal**: `App::new(ui).host(h).headless(80, 24)?` gives a screen to send

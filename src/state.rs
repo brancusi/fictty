@@ -100,6 +100,13 @@ pub struct State {
     /// a push or a patch changes `ui`, never this. Shown in `get --state`, never read back.
     #[serde(default, skip_deserializing, skip_serializing_if = "Option::is_none")]
     pub tree: Option<Node>,
+    /// What `tree` was expanded from: the UI's revision and each `each`'s bound value. When
+    /// neither changed, it isn't expanded again.
+    #[serde(skip)]
+    pub expanded_from: Option<(u64, Vec<Option<Value>>)>,
+    /// Goes up with every push and patch, so derived trees know the UI changed.
+    #[serde(skip)]
+    pub ui_rev: u64,
 }
 
 /// `State::tree`, as a borrow of its fields alone, so the rest of the state can change beside it.
@@ -144,9 +151,42 @@ fn expand_node(st: &State, n: &Node) -> Node {
     }
 }
 
-/// Work out `State::tree`. True when it changed.
+/// The bound values every `each` in the UI reads (templates included), or None when one's bind
+/// depends on its item (a nested `each`), so the inputs can't be told apart without expanding.
+fn each_inputs(st: &State) -> Option<Vec<Option<Value>>> {
+    fn binds<'a>(n: &'a Node, out: &mut Vec<&'a str>, dynamic: &mut bool) {
+        if let Kind::Each { template, .. } = &n.kind {
+            match n.bind.as_deref() {
+                Some(b) if b.contains("{$item") => *dynamic = true,
+                Some(b) => out.push(b),
+                None => {}
+            }
+            binds(template, out, dynamic);
+        }
+        for c in n.children() {
+            binds(c, out, dynamic);
+        }
+    }
+    let (mut out, mut dynamic) = (Vec::new(), false);
+    binds(&st.ui.root, &mut out, &mut dynamic);
+    (!dynamic).then(|| out.into_iter().map(|b| value_of(st, b).cloned()).collect())
+}
+
+/// Work out `State::tree`, unless nothing it's made from changed. True when it changed.
 fn expand(st: &mut State) -> bool {
-    let tree = has_each(&st.ui.root).then(|| expand_node(st, &st.ui.root));
+    if !has_each(&st.ui.root) {
+        st.expanded_from = None;
+        return st.tree.take().is_some();
+    }
+    let inputs = each_inputs(st);
+    if let (Some(now), Some((rev, was))) = (&inputs, &st.expanded_from)
+        && *rev == st.ui_rev
+        && now == was
+    {
+        return false;
+    }
+    st.expanded_from = inputs.map(|i| (st.ui_rev, i));
+    let tree = Some(expand_node(st, &st.ui.root));
     if tree == st.tree {
         return false;
     }
@@ -357,6 +397,8 @@ pub enum Msg {
     Size { id: String, width: u16, height: u16 },
     /// Replace the layers only.
     Layers { layers: Vec<LayerSpec> },
+    /// Move the focus to a node (one that takes it), and nothing else: no click action runs.
+    Focus { id: String },
     /// The area a node's parent laid it out in, last frame (the view reports it, for `when`s
     /// that read `$width` and `$height`).
     Area { id: String, width: u16, height: u16 },
@@ -448,6 +490,7 @@ fn apply(st: &mut State, msg: Msg) -> Vec<Effect> {
         Msg::Push { ui } => {
             let before = std::mem::take(&mut st.ui.data);
             st.ui = ui;
+            st.ui_rev += 1;
             st.version += 1;
             st.status = None;
             // Seeds start entries that don't exist yet; the store is never cleared by a push.
@@ -471,6 +514,7 @@ fn apply(st: &mut State, msg: Msg) -> Vec<Effect> {
         }
         Msg::Patch { id, node } => {
             if st.ui.root.replace(&id, &node) {
+                st.ui_rev += 1;
                 st.status = None;
                 settle(st);
             } else {
@@ -571,7 +615,7 @@ fn apply(st: &mut State, msg: Msg) -> Vec<Effect> {
             }
             // A click on a link runs what its kind says (Shift: its `s-click`).
             if count == 1
-                && let Some((kind, _)) = link_at(st, &id)
+                && let Some((kind, _)) = link_under(st, &id, true)
                 && let Some(spec) = tree!(st).find(&id).and_then(|n| n.field()).and_then(|f| f.links.iter().find(|l| l.kind == kind).cloned())
                 && let Some(a) = if extend { spec.s_click } else { spec.click }
             {
@@ -686,6 +730,14 @@ fn apply(st: &mut State, msg: Msg) -> Vec<Effect> {
         }
         Msg::Toast { text, tone, ms } => {
             toast(st, text, tone, ms);
+            vec![]
+        }
+        Msg::Focus { id } => {
+            if focus_order(st).contains(&id) {
+                st.focus = Some(id);
+            } else {
+                st.status = Some(format!("focus: {id} doesn't take the focus now"));
+            }
             vec![]
         }
         Msg::Area { id, width, height } => {
@@ -873,6 +925,11 @@ fn action_context(st: &State) -> Value {
 
 /// The link under editor `id`'s caret, if its text has one there: its kind and what it names.
 fn link_at(st: &State, id: &str) -> Option<(String, String)> {
+    link_under(st, id, false)
+}
+
+/// `link_at`, but for a click: a wiki link's brackets aren't the link, only its title is.
+fn link_under(st: &State, id: &str, click: bool) -> Option<(String, String)> {
     let f = tree!(st).find(id)?.field()?;
     if f.links.is_empty() {
         return None;
@@ -884,7 +941,13 @@ fn link_at(st: &State, id: &str) -> Option<(String, String)> {
     let line = doc.text.char_to_line(at);
     let col = at - doc.text.line_to_char(line);
     let text = doc.text.line(line).to_string();
-    crate::model::links_in(&text, &kinds).into_iter().find(|(a, b, ..)| (*a..*b).contains(&col)).map(|(_, _, k, m)| (k, m))
+    crate::model::links_in(&text, &kinds)
+        .into_iter()
+        .find(|(a, b, k, _)| {
+            let inset = if click && k == "wiki" { 2 } else { 0 };
+            (*a + inset..*b - inset).contains(&col)
+        })
+        .map(|(_, _, k, m)| (k, m))
 }
 
 /// A store action's `value` filled from `ctx`: strings are templates. A string that is one
@@ -1071,7 +1134,9 @@ fn editing(st: &State, key: &str) -> Option<String> {
         }),
         _ => false,
     };
-    let taken = n.field().is_some() && !n.keys.contains_key(key) && !leaves;
+    // A selection is dropped first, even where the node binds Esc itself.
+    let selecting = key == "esc" && field_view(st, id).is_some_and(|(_, v)| v.selection.primary().anchor != v.selection.primary().head);
+    let taken = n.field().is_some() && (!n.keys.contains_key(key) || selecting) && !leaves;
     taken.then(|| id.clone())
 }
 

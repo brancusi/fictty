@@ -88,6 +88,11 @@ impl Notifier {
         self.msg(Msg::Write { key: key.into(), write, if_rev: None, by: by.into(), for_ms: Some(ms) });
     }
 
+    /// Move the focus to a node, without running its click (`Msg::Focus`).
+    pub fn focus(&self, id: &str) {
+        self.msg(Msg::Focus { id: id.into() });
+    }
+
     /// Any message, as if it came from the socket. False once the screen has gone.
     pub fn msg(&self, msg: Msg) -> bool {
         self.send.send(msg).is_ok()

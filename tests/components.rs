@@ -735,3 +735,42 @@ fn links_in_an_editor_act_on_a_click_and_a_key() {
     s.keys(&["a-o"]);
     assert_eq!(value(&mut s, "opened"), "Home Page");
 }
+
+#[test]
+fn focus_moves_without_a_click() {
+    let ui = json!({"root": {"type": "col", "children": [
+        {"type": "list", "id": "a", "items": ["1"]},
+        {"type": "list", "id": "b", "items": ["2"], "click": {"put": "clicked", "value": true}}]},
+        "store": {"clicked": false}});
+    let mut s = screen(ui, 20, 4);
+    s.msg(Msg::Focus { id: "b".into() });
+    assert_eq!(s.state().focus.as_deref(), Some("b"));
+    assert_eq!(entry(&mut s, "clicked")["value"], false, "no click action");
+}
+
+#[test]
+fn a_wiki_links_brackets_only_place_the_caret() {
+    let ui = json!({"root": {"type": "editor", "id": "e", "syntax": "markdown", "text": "go [[Home]] now",
+                    "links": [{"kind": "wiki", "click": {"put": "opened", "value": "{$match}"}}]},
+                    "store": {"opened": ""}});
+    let mut s = screen(ui, 30, 3);
+    s.msg(Msg::Point { id: "e".into(), col: 4, row: 0, extend: false });
+    assert_eq!(entry(&mut s, "opened")["value"], "", "a bracket");
+    s.msg(Msg::Tick { now_ms: 5000 });
+    s.msg(Msg::Point { id: "e".into(), col: 6, row: 0, extend: false });
+    assert_eq!(entry(&mut s, "opened")["value"], "Home", "the title");
+}
+
+#[test]
+fn each_follows_its_data_and_keeps_its_tree_otherwise() {
+    let ui = json!({"root": {"type": "col", "children": [
+        {"type": "each", "id": "e", "bind": "open", "template": {"type": "text", "id": "t-{$item}", "text": "{$item}!", "size": 1}},
+        {"type": "list", "id": "l", "items": ["x", "y"]}]},
+        "store": {"open": ["a"]}});
+    let mut s = screen(ui, 20, 5);
+    assert!(s.screen().contains("a!"));
+    s.keys(&["j"]);
+    assert!(s.screen().contains("a!"), "a key that changes nothing it reads leaves it");
+    s.msg(Msg::Write { key: "open".into(), write: serde_json::from_value(json!({"write": "put", "value": ["a", "b"]})).unwrap(), if_rev: None, by: "t".into(), for_ms: None });
+    assert!(s.screen().contains("b!"), "{}", s.screen());
+}
