@@ -1,0 +1,432 @@
+{
+ "root": {
+  "type": "col",
+  "children": [
+   {
+    "type": "row",
+    "size": 1,
+    "children": [
+     {
+      "type": "text",
+      "text": " <accent+b>fictty</> <d>tour</>",
+      "size": 14
+     },
+     {
+      "type": "text",
+      "text": "<accent+b>◆</>",
+      "size": 2,
+      "when": "seen=Saturn"
+     },
+     {
+      "type": "text",
+      "text": "<accent+b>◇</>",
+      "size": 2,
+      "when": "!seen=Saturn"
+     },
+     {
+      "type": "text",
+      "text": "<pos>◆</>",
+      "size": 2,
+      "when": "plan.0.children.0.done"
+     },
+     {
+      "type": "text",
+      "text": "<d>◇</>",
+      "size": 2,
+      "when": "!plan.0.children.0.done"
+     },
+     {
+      "type": "text",
+      "text": "<pos>◆</>",
+      "size": 2,
+      "when": "items.3"
+     },
+     {
+      "type": "text",
+      "text": "<d>◇</>",
+      "size": 2,
+      "when": "!items.3"
+     },
+     {
+      "type": "text",
+      "text": "<pos>◆</>",
+      "size": 2,
+      "when": "trash"
+     },
+     {
+      "type": "text",
+      "text": "<d>◇</>",
+      "size": 2,
+      "when": "!trash"
+     },
+     {
+      "type": "text",
+      "text": "<pos>◆</>",
+      "size": 2,
+      "when": "$theme.name!=glass"
+     },
+     {
+      "type": "text",
+      "text": "<d>◇</>",
+      "size": 2,
+      "when": "!$theme.name!=glass"
+     },
+     {
+      "type": "text",
+      "text": "<pos>◆</>",
+      "size": 2,
+      "when": "agent_done"
+     },
+     {
+      "type": "text",
+      "text": "<d>◇</>",
+      "size": 2,
+      "when": "!agent_done"
+     },
+     {
+      "type": "text",
+      "text": "<pos>◆</>",
+      "size": 2,
+      "when": "big_q"
+     },
+     {
+      "type": "text",
+      "text": "<d>◇</>",
+      "size": 2,
+      "when": "!big_q"
+     },
+     {
+      "type": "text",
+      "text": "<d>2/9</>  <b>One value</> ",
+      "align": "right"
+     }
+    ]
+   },
+   {
+    "type": "text",
+    "text": "<border>{*─}</>",
+    "size": 1
+   },
+   {
+    "type": "row",
+    "children": [
+     {
+      "type": "col",
+      "title": "2 · One value",
+      "size": 44,
+      "variant": "card",
+      "children": [
+       {
+        "type": "text",
+        "text": "A fictty screen is a <b>value</>: a tree of nodes, the data they show and the keys they take. The little app on the right is the JSON beside it, nothing more.\n\nAn agent builds one the way it writes any JSON, pushes it into a running screen (<accent>fictty push ui.json</>), and reads back exactly what it shows (<accent>fictty screen</>, <accent>fictty get --state</>).",
+        "pad": [
+         1,
+         0
+        ]
+       },
+       {
+        "type": "text",
+        "text": "\n<accent+b>Try</>\n<d>›</> <b>j</>/<b>k</> or the mouse to move\n<d>›</> <b>tab</> into the JSON, scroll it\n<d>›</> the detail follows the selection (<accent>\"bind\": \"@planets\"</>)",
+        "pad": [
+         1,
+         0
+        ],
+        "size": 6
+       },
+       {
+        "type": "col",
+        "size": 5,
+        "edge": "rounded",
+        "children": [
+         {
+          "type": "text",
+          "text": "<pos+b>◆ Quest done.</>\n<b>n</> for the next chapter.",
+          "when": "seen=Saturn",
+          "pad": [
+           1,
+           0
+          ]
+         },
+         {
+          "type": "text",
+          "text": "<warn+b>◇ Quest</>\nSelect <b>Saturn</> and press <b>Enter</>.",
+          "when": "!seen=Saturn",
+          "pad": [
+           1,
+           0
+          ]
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "type": "row",
+      "children": [
+       {
+        "type": "col",
+        "children": [
+         {
+          "type": "row",
+          "children": [
+           {
+            "type": "list",
+            "id": "planets",
+            "title": "Planets",
+            "size": "40%",
+            "items": [
+             {
+              "name": "Mercury",
+              "au": 0.39,
+              "moons": 0,
+              "ring": false
+             },
+             {
+              "name": "Venus",
+              "au": 0.72,
+              "moons": 0,
+              "ring": false
+             },
+             {
+              "name": "Earth",
+              "au": 1.0,
+              "moons": 1,
+              "ring": false
+             },
+             {
+              "name": "Mars",
+              "au": 1.52,
+              "moons": 2,
+              "ring": false
+             },
+             {
+              "name": "Jupiter",
+              "au": 5.2,
+              "moons": 95,
+              "ring": true
+             },
+             {
+              "name": "Saturn",
+              "au": 9.58,
+              "moons": 146,
+              "ring": true
+             },
+             {
+              "name": "Uranus",
+              "au": 19.2,
+              "moons": 28,
+              "ring": true
+             },
+             {
+              "name": "Neptune",
+              "au": 30.1,
+              "moons": 16,
+              "ring": true
+             }
+            ],
+            "item": "{name}\t<d>{moons} moons</>",
+            "keys": {
+             "enter": {
+              "do": [
+               {
+                "put": "seen",
+                "value": "{name}"
+               },
+               {
+                "toast": "You picked {name}",
+                "tone": "pos"
+               }
+              ]
+             }
+            }
+           },
+           {
+            "type": "text",
+            "bind": "@planets",
+            "title": "Detail",
+            "pad": [
+             1,
+             0
+            ],
+            "text": "<b>{name}</>\n\n{au} AU from the sun\n{moons} moons\n{ring|true=<accent>rings</>;*=<d>no rings</>}"
+           }
+          ]
+         }
+        ]
+       },
+       {
+        "type": "editor",
+        "id": "src",
+        "title": "…is this JSON",
+        "size": "45%",
+        "readonly": true,
+        "text": "{\n \"type\": \"row\",\n \"children\": [\n  {\n   \"type\": \"list\",\n   \"id\": \"planets\",\n   \"title\": \"Planets\",\n   \"size\": \"40%\",\n   \"items\": [\n    {\n     \"name\": \"Mercury\",\n     \"au\": 0.39,\n     \"moons\": 0,\n     \"ring\": false\n    },\n    {\n     \"name\": \"Venus\",\n     \"au\": 0.72,\n     \"moons\": 0,\n     \"ring\": false\n    },\n    {\n     \"name\": \"Earth\",\n     \"au\": 1.0,\n     \"moons\": 1,\n     \"ring\": false\n    },\n    {\n     \"name\": \"Mars\",\n     \"au\": 1.52,\n     \"moons\": 2,\n     \"ring\": false\n    },\n    {\n     \"name\": \"Jupiter\",\n     \"au\": 5.2,\n     \"moons\": 95,\n     \"ring\": true\n    },\n    {\n     \"name\": \"Saturn\",\n     \"au\": 9.58,\n     \"moons\": 146,\n     \"ring\": true\n    },\n    {\n     \"name\": \"Uranus\",\n     \"au\": 19.2,\n     \"moons\": 28,\n     \"ring\": true\n    },\n    {\n     \"name\": \"Neptune\",\n     \"au\": 30.1,\n     \"moons\": 16,\n     \"ring\": true\n    }\n   ],\n   \"item\": \"{name}\\t<d>{moons} moons</>\",\n   \"keys\": {\n    \"enter\": {\n     \"do\": [\n      {\n       \"put\": \"seen\",\n       \"value\": \"{name}\"\n      },\n      {\n       \"toast\": \"You picked {name}\",\n       \"tone\": \"pos\"\n      }\n     ]\n    }\n   }\n  },\n  {\n   \"type\": \"text\",\n   \"bind\": \"@planets\",\n   \"title\": \"Detail\",\n   \"pad\": [\n    1,\n    0\n   ],\n   \"text\": \"<b>{name}</>\\n\\n{au} AU from the sun\\n{moons} moons\\n{ring|true=<accent>rings</>;*=<d>no rings</>}\"\n  }\n ]\n}"
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "type": "row",
+    "size": 1,
+    "children": [
+     {
+      "type": "text",
+      "text": " <b>n</> <d>next</>  <b>p</> <d>back</>  <b>tab</> <d>move</>  <b>esc</> <d>leaves a field</>  <b>t</> <d>theme</>  <b>a</> <d>apps</>  <b>q</> <d>quit</>"
+     },
+     {
+      "type": "text",
+      "text": "<d>{fps} fps · {msgs} msg/s · {draw_ms} ms a frame</> ",
+      "bind": "$stats",
+      "align": "right",
+      "size": 44
+     }
+    ]
+   }
+  ]
+ },
+ "keys": {
+  "t": {
+   "theme": "next"
+  },
+  "a": {
+   "load": "home.json"
+  },
+  "n": {
+   "load": "tour-3-parts.json"
+  },
+  "p": {
+   "load": "tour-1-hello.json"
+  }
+ },
+ "store": {
+  "seen": "",
+  "plan": [
+   {
+    "id": "launch",
+    "text": "Launch the tour",
+    "children": [
+     {
+      "id": "post",
+      "text": "Write the post"
+     },
+     {
+      "id": "demo",
+      "text": "Record the demo",
+      "children": [
+       {
+        "id": "script",
+        "text": "Script it",
+        "done": true
+       },
+       {
+        "id": "shoot",
+        "text": "Shoot it"
+       }
+      ]
+     },
+     {
+      "id": "ship",
+      "text": "Ship it"
+     }
+    ]
+   },
+   {
+    "id": "rest",
+    "text": "Rest",
+    "children": [
+     {
+      "id": "walk",
+      "text": "A long walk"
+     },
+     {
+      "id": "read",
+      "text": "A short book"
+     }
+    ]
+   },
+   {
+    "id": "later",
+    "text": "Someday",
+    "children": [
+     {
+      "id": "sail",
+      "text": "Learn to sail"
+     }
+    ]
+   }
+  ],
+  "items": [
+   {
+    "name": "Coffee beans",
+    "qty": "1",
+    "done": true
+   },
+   {
+    "name": "Oat milk",
+    "qty": "2",
+    "done": false
+   },
+   {
+    "name": "Lemons",
+    "qty": "6",
+    "done": false
+   }
+  ],
+  "files": [
+   {
+    "name": "notes.md"
+   },
+   {
+    "name": "draft-v1.md"
+   },
+   {
+    "name": "draft-v2.md"
+   },
+   {
+    "name": "draft-final.md"
+   },
+   {
+    "name": "draft-final-FINAL.md"
+   },
+   {
+    "name": "todo.txt"
+   },
+   {
+    "name": "screenshot.png"
+   }
+  ],
+  "trash": [],
+  "confirm": false,
+  "doomed": "",
+  "agent_done": false,
+  "agent_tasks": [
+   {
+    "id": "read",
+    "text": "Read the screen",
+    "done": false
+   },
+   {
+    "id": "write",
+    "text": "Write a note",
+    "done": false
+   },
+   {
+    "id": "point",
+    "text": "Point at something",
+    "done": false
+   },
+   {
+    "id": "theme",
+    "text": "Try a theme",
+    "done": false
+   }
+  ],
+  "item_name": "",
+  "item_qty": "",
+  "items_q": "",
+  "big_q": "",
+  "agentpad": ""
+ },
+ "status_bar": false
+}

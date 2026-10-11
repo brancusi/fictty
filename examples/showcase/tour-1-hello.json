@@ -1,0 +1,387 @@
+{
+ "root": {
+  "type": "col",
+  "children": [
+   {
+    "type": "row",
+    "size": 1,
+    "children": [
+     {
+      "type": "text",
+      "text": " <accent+b>fictty</> <d>tour</>",
+      "size": 14
+     },
+     {
+      "type": "text",
+      "text": "<pos>◆</>",
+      "size": 2,
+      "when": "seen=Saturn"
+     },
+     {
+      "type": "text",
+      "text": "<d>◇</>",
+      "size": 2,
+      "when": "!seen=Saturn"
+     },
+     {
+      "type": "text",
+      "text": "<pos>◆</>",
+      "size": 2,
+      "when": "plan.0.children.0.done"
+     },
+     {
+      "type": "text",
+      "text": "<d>◇</>",
+      "size": 2,
+      "when": "!plan.0.children.0.done"
+     },
+     {
+      "type": "text",
+      "text": "<pos>◆</>",
+      "size": 2,
+      "when": "items.3"
+     },
+     {
+      "type": "text",
+      "text": "<d>◇</>",
+      "size": 2,
+      "when": "!items.3"
+     },
+     {
+      "type": "text",
+      "text": "<pos>◆</>",
+      "size": 2,
+      "when": "trash"
+     },
+     {
+      "type": "text",
+      "text": "<d>◇</>",
+      "size": 2,
+      "when": "!trash"
+     },
+     {
+      "type": "text",
+      "text": "<pos>◆</>",
+      "size": 2,
+      "when": "$theme.name!=glass"
+     },
+     {
+      "type": "text",
+      "text": "<d>◇</>",
+      "size": 2,
+      "when": "!$theme.name!=glass"
+     },
+     {
+      "type": "text",
+      "text": "<pos>◆</>",
+      "size": 2,
+      "when": "agent_done"
+     },
+     {
+      "type": "text",
+      "text": "<d>◇</>",
+      "size": 2,
+      "when": "!agent_done"
+     },
+     {
+      "type": "text",
+      "text": "<pos>◆</>",
+      "size": 2,
+      "when": "big_q"
+     },
+     {
+      "type": "text",
+      "text": "<d>◇</>",
+      "size": 2,
+      "when": "!big_q"
+     },
+     {
+      "type": "text",
+      "text": "<d>1/9</>  <b>Hello</> ",
+      "align": "right"
+     }
+    ]
+   },
+   {
+    "type": "text",
+    "text": "<border>{*─}</>",
+    "size": 1
+   },
+   {
+    "type": "col",
+    "children": [
+     {
+      "type": "text",
+      "text": "",
+      "size": "*"
+     },
+     {
+      "type": "row",
+      "size": 6,
+      "children": [
+       {
+        "type": "text",
+        "text": "",
+        "size": "*"
+       },
+       {
+        "type": "text",
+        "text": "  <c1>████</>    <c2>██</>      <c3>████</>      <c4>██</>        <c1>██</>      <c2>██</>  <c2>██</>\n<c1>██</>  <c1+d>░░░░</>    <c2+d>░░</>  <c3>██</>  <c3+d>░░░░</>  <c4>██████</>    <c1>██████</>    <c2>██</><c2+d>░░</><c2>██</><c2+d>░░</>\n<c1>██████</>    <c2>██</>    <c3>██</><c3+d>░░</>        <c4>██</><c4+d>░░░░</>    <c1>██</><c1+d>░░░░</>    <c2>████</><c2+d>░░</>\n<c1>██</><c1+d>░░░░░░</>  <c2>██</><c2+d>░░</>  <c3>██</><c3+d>░░</>        <c4>██</><c4+d>░░</>      <c1>██</><c1+d>░░</>        <c2>██</><c2+d>░░</>\n<c1>██</><c1+d>░░</>      <c2>██</><c2+d>░░</>    <c3>████</>        <c4>██</>        <c1>██</>    <c2>████</>  <c2+d>░░</>\n  <c1+d>░░</>        <c2+d>░░</>      <c3+d>░░░░</>        <c4+d>░░</>        <c1+d>░░</>    <c2+d>░░░░</>",
+        "size": 72
+       },
+       {
+        "type": "text",
+        "text": "",
+        "size": "*"
+       }
+      ]
+     },
+     {
+      "type": "text",
+      "text": "<d>Terminal screens agents write, patch and read back.</>",
+      "size": 2,
+      "align": "center"
+     },
+     {
+      "type": "row",
+      "size": 7,
+      "children": [
+       {
+        "type": "text",
+        "text": "",
+        "size": "*"
+       },
+       {
+        "type": "text",
+        "size": 30,
+        "title": "One value",
+        "variant": "card",
+        "pad": [
+         1,
+         0
+        ],
+        "text": "<c1>●</> Every screen in this tour is a JSON file. An agent writes one, pushes it in, patches it and reads it back."
+       },
+       {
+        "type": "text",
+        "size": 30,
+        "title": "Live",
+        "variant": "card",
+        "pad": [
+         1,
+         0
+        ],
+        "text": "<c2>●</> Data streams in from commands, people type into editors, and agents write the same store, all at once."
+       },
+       {
+        "type": "text",
+        "size": 30,
+        "title": "Fast",
+        "variant": "card",
+        "pad": [
+         1,
+         0
+        ],
+        "text": "<c3>●</> A Rust runtime on ratatui. Thousands of updates a second, drawn only when something changed."
+       },
+       {
+        "type": "text",
+        "text": "",
+        "size": "*"
+       }
+      ]
+     },
+     {
+      "type": "text",
+      "text": "",
+      "size": 1
+     },
+     {
+      "type": "row",
+      "size": 1,
+      "children": [
+       {
+        "type": "text",
+        "text": "",
+        "size": "*"
+       },
+       {
+        "type": "spinner",
+        "size": 44,
+        "text": "<b>n</> starts the tour  <d>·</>  <b>a</> opens the apps"
+       },
+       {
+        "type": "text",
+        "text": "",
+        "size": "*"
+       }
+      ]
+     },
+     {
+      "type": "text",
+      "text": "",
+      "size": "*"
+     }
+    ]
+   },
+   {
+    "type": "row",
+    "size": 1,
+    "children": [
+     {
+      "type": "text",
+      "text": " <b>n</> <d>next</>  <b>p</> <d>back</>  <b>tab</> <d>move</>  <b>esc</> <d>leaves a field</>  <b>t</> <d>theme</>  <b>a</> <d>apps</>  <b>q</> <d>quit</>"
+     },
+     {
+      "type": "text",
+      "text": "<d>{fps} fps · {msgs} msg/s · {draw_ms} ms a frame</> ",
+      "bind": "$stats",
+      "align": "right",
+      "size": 44
+     }
+    ]
+   }
+  ]
+ },
+ "keys": {
+  "t": {
+   "theme": "next"
+  },
+  "a": {
+   "load": "home.json"
+  },
+  "n": {
+   "load": "tour-2-value.json"
+  }
+ },
+ "store": {
+  "seen": "",
+  "plan": [
+   {
+    "id": "launch",
+    "text": "Launch the tour",
+    "children": [
+     {
+      "id": "post",
+      "text": "Write the post"
+     },
+     {
+      "id": "demo",
+      "text": "Record the demo",
+      "children": [
+       {
+        "id": "script",
+        "text": "Script it",
+        "done": true
+       },
+       {
+        "id": "shoot",
+        "text": "Shoot it"
+       }
+      ]
+     },
+     {
+      "id": "ship",
+      "text": "Ship it"
+     }
+    ]
+   },
+   {
+    "id": "rest",
+    "text": "Rest",
+    "children": [
+     {
+      "id": "walk",
+      "text": "A long walk"
+     },
+     {
+      "id": "read",
+      "text": "A short book"
+     }
+    ]
+   },
+   {
+    "id": "later",
+    "text": "Someday",
+    "children": [
+     {
+      "id": "sail",
+      "text": "Learn to sail"
+     }
+    ]
+   }
+  ],
+  "items": [
+   {
+    "name": "Coffee beans",
+    "qty": "1",
+    "done": true
+   },
+   {
+    "name": "Oat milk",
+    "qty": "2",
+    "done": false
+   },
+   {
+    "name": "Lemons",
+    "qty": "6",
+    "done": false
+   }
+  ],
+  "files": [
+   {
+    "name": "notes.md"
+   },
+   {
+    "name": "draft-v1.md"
+   },
+   {
+    "name": "draft-v2.md"
+   },
+   {
+    "name": "draft-final.md"
+   },
+   {
+    "name": "draft-final-FINAL.md"
+   },
+   {
+    "name": "todo.txt"
+   },
+   {
+    "name": "screenshot.png"
+   }
+  ],
+  "trash": [],
+  "confirm": false,
+  "doomed": "",
+  "agent_done": false,
+  "agent_tasks": [
+   {
+    "id": "read",
+    "text": "Read the screen",
+    "done": false
+   },
+   {
+    "id": "write",
+    "text": "Write a note",
+    "done": false
+   },
+   {
+    "id": "point",
+    "text": "Point at something",
+    "done": false
+   },
+   {
+    "id": "theme",
+    "text": "Try a theme",
+    "done": false
+   }
+  ],
+  "item_name": "",
+  "item_qty": "",
+  "items_q": "",
+  "big_q": "",
+  "agentpad": ""
+ },
+ "status_bar": false
+}

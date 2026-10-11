@@ -46,6 +46,14 @@
           "lead": "  ",
           "items": [
            {
+            "n": "0",
+            "dot": "c2",
+            "title": "The tour",
+            "file": "tour-1-hello.json",
+            "blurb": "Nine short chapters, each with something to play with and a quest: a value, the components, the store, layers and dialogs, themes, an agent at work, and a firehose.",
+            "try": "Enter starts it · n and p move between chapters · esc leaves a field"
+           },
+           {
             "n": "1",
             "dot": "c1",
             "title": "Notes",
@@ -153,6 +161,9 @@
   },
   "5": {
    "load": "agent.json"
+  },
+  "0": {
+   "load": "tour-1-hello.json"
   }
  },
  "status_bar": false

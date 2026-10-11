@@ -1,0 +1,705 @@
+{
+ "root": {
+  "type": "col",
+  "children": [
+   {
+    "type": "row",
+    "size": 1,
+    "children": [
+     {
+      "type": "text",
+      "text": " <accent+b>fictty</> <d>tour</>",
+      "size": 14
+     },
+     {
+      "type": "text",
+      "text": "<pos>◆</>",
+      "size": 2,
+      "when": "seen=Saturn"
+     },
+     {
+      "type": "text",
+      "text": "<d>◇</>",
+      "size": 2,
+      "when": "!seen=Saturn"
+     },
+     {
+      "type": "text",
+      "text": "<accent+b>◆</>",
+      "size": 2,
+      "when": "plan.0.children.0.done"
+     },
+     {
+      "type": "text",
+      "text": "<accent+b>◇</>",
+      "size": 2,
+      "when": "!plan.0.children.0.done"
+     },
+     {
+      "type": "text",
+      "text": "<pos>◆</>",
+      "size": 2,
+      "when": "items.3"
+     },
+     {
+      "type": "text",
+      "text": "<d>◇</>",
+      "size": 2,
+      "when": "!items.3"
+     },
+     {
+      "type": "text",
+      "text": "<pos>◆</>",
+      "size": 2,
+      "when": "trash"
+     },
+     {
+      "type": "text",
+      "text": "<d>◇</>",
+      "size": 2,
+      "when": "!trash"
+     },
+     {
+      "type": "text",
+      "text": "<pos>◆</>",
+      "size": 2,
+      "when": "$theme.name!=glass"
+     },
+     {
+      "type": "text",
+      "text": "<d>◇</>",
+      "size": 2,
+      "when": "!$theme.name!=glass"
+     },
+     {
+      "type": "text",
+      "text": "<pos>◆</>",
+      "size": 2,
+      "when": "agent_done"
+     },
+     {
+      "type": "text",
+      "text": "<d>◇</>",
+      "size": 2,
+      "when": "!agent_done"
+     },
+     {
+      "type": "text",
+      "text": "<pos>◆</>",
+      "size": 2,
+      "when": "big_q"
+     },
+     {
+      "type": "text",
+      "text": "<d>◇</>",
+      "size": 2,
+      "when": "!big_q"
+     },
+     {
+      "type": "text",
+      "text": "<d>3/9</>  <b>Components</> ",
+      "align": "right"
+     }
+    ]
+   },
+   {
+    "type": "text",
+    "text": "<border>{*─}</>",
+    "size": 1
+   },
+   {
+    "type": "row",
+    "children": [
+     {
+      "type": "col",
+      "title": "3 · Components",
+      "size": 44,
+      "variant": "card",
+      "children": [
+       {
+        "type": "text",
+        "text": "A closed set of components, each with its behaviour built in: lists, tables, trees, charts, editors, inputs, tabs, buttons, dialogs, toasts, spinners.\n\nAnything that only <i>arranges</> them is data, not code: a project component or a recipe.",
+        "pad": [
+         1,
+         0
+        ]
+       },
+       {
+        "type": "text",
+        "text": "\n<accent+b>Try</>\n<d>›</> <b>tab</> to the tab bar, <b>←</>/<b>→</> to switch\n<d>›</> in <b>Outline</>: type to filter, <b>space</> folds\n<d>›</> in <b>Text</>: click a <b>[ ]</> box",
+        "pad": [
+         1,
+         0
+        ],
+        "size": 6
+       },
+       {
+        "type": "col",
+        "size": 5,
+        "edge": "rounded",
+        "children": [
+         {
+          "type": "text",
+          "text": "<pos+b>◆ Quest done.</>\n<b>n</> for the next chapter.",
+          "when": "plan.0.children.0.done",
+          "pad": [
+           1,
+           0
+          ]
+         },
+         {
+          "type": "text",
+          "text": "<warn+b>◇ Quest</>\nIn <b>Outline</>, tick <i>Write the post</> with <b>x</>.",
+          "when": "!plan.0.children.0.done",
+          "pad": [
+           1,
+           0
+          ]
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "type": "row",
+      "children": [
+       {
+        "type": "tabs",
+        "id": "gallery",
+        "tabs": [
+         "Data",
+         "Outline",
+         "Charts",
+         "Text"
+        ],
+        "children": [
+         {
+          "type": "row",
+          "gap": 1,
+          "children": [
+           {
+            "type": "table",
+            "id": "sales",
+            "title": "table · totals · heat",
+            "items": [
+             {
+              "m": "Jan",
+              "v": 42,
+              "d": 3.1
+             },
+             {
+              "m": "Feb",
+              "v": 51,
+              "d": 9.0
+             },
+             {
+              "m": "Mar",
+              "v": 47,
+              "d": -4.2
+             },
+             {
+              "m": "Apr",
+              "v": 63,
+              "d": 16.0
+             },
+             {
+              "m": "May",
+              "v": 58,
+              "d": -5.1
+             },
+             {
+              "m": "Jun",
+              "v": 71,
+              "d": 13.4
+             },
+             {
+              "m": "Jul",
+              "v": 69,
+              "d": -2.0
+             },
+             {
+              "m": "Aug",
+              "v": 80,
+              "d": 11.0
+             }
+            ],
+            "size": "45%",
+            "columns": [
+             {
+              "title": "month",
+              "value": "{m}",
+              "size": 7
+             },
+             {
+              "title": "sales",
+              "value": "{v}",
+              "size": 8,
+              "align": "right",
+              "total": "v"
+             },
+             {
+              "title": "change",
+              "value": "{±d}%",
+              "size": 9,
+              "align": "right",
+              "heat": {
+               "value": "{d}",
+               "min": -10,
+               "max": 10
+              }
+             }
+            ]
+           },
+           {
+            "type": "col",
+            "children": [
+             {
+              "type": "big",
+              "title": "big",
+              "text": "80",
+              "size": 5,
+              "align": "center"
+             },
+             {
+              "type": "gauge",
+              "title": "gauge",
+              "value": "0.72",
+              "label": "72% of the goal",
+              "size": 3
+             },
+             {
+              "type": "sparkline",
+              "title": "sparkline",
+              "values": [
+               3,
+               5,
+               4,
+               8,
+               6,
+               9,
+               7,
+               12,
+               10,
+               14,
+               12,
+               16
+              ],
+              "size": 4
+             },
+             {
+              "type": "bars",
+              "title": "bars",
+              "horizontal": true,
+              "items": [
+               {
+                "m": "May",
+                "v": 58,
+                "d": -5.1
+               },
+               {
+                "m": "Jun",
+                "v": 71,
+                "d": 13.4
+               },
+               {
+                "m": "Jul",
+                "v": 69,
+                "d": -2.0
+               },
+               {
+                "m": "Aug",
+                "v": 80,
+                "d": 11.0
+               }
+              ],
+              "label": "{m}",
+              "value": "v"
+             }
+            ]
+           }
+          ]
+         },
+         {
+          "type": "row",
+          "gap": 1,
+          "children": [
+           {
+            "type": "col",
+            "children": [
+             {
+              "type": "input",
+              "id": "plan_q",
+              "size": 3,
+              "title": "filter",
+              "placeholder": "type to filter the outline"
+             },
+             {
+              "type": "tree",
+              "id": "plan",
+              "bind": "plan",
+              "filter": "plan_q",
+              "title": "tree · x ticks · ←/→ fold",
+              "item": "{done|true=<pos>☑</>;*=<d>☐</>} {text}\t<d>{$kids|0=;*=$}</>",
+              "keys": {
+               "x": {
+                "toggle": "done"
+               }
+              }
+             }
+            ]
+           },
+           {
+            "type": "text",
+            "bind": "@plan",
+            "title": "@plan",
+            "size": "35%",
+            "pad": [
+             1,
+             0
+            ],
+            "text": "<b>{text}</>\n\ndepth {$depth}\n{$kids} under it\n{done|true=<pos>done</>;*=<d>not done</>}\n\n<d>at {$ptr}</>"
+           }
+          ]
+         },
+         {
+          "type": "col",
+          "gap": 1,
+          "children": [
+           {
+            "type": "chart",
+            "title": "chart",
+            "series": [
+             {
+              "name": "sales",
+              "bind": "sales_s",
+              "field": "v",
+              "color": "accent"
+             },
+             {
+              "name": "costs",
+              "bind": "costs_s",
+              "field": "v",
+              "color": "rose"
+             }
+            ],
+            "labels": [
+             "Jan",
+             "Apr",
+             "Aug"
+            ]
+           },
+           {
+            "type": "bars",
+            "title": "bars · columns",
+            "items": [
+             {
+              "m": "Jan",
+              "v": 42,
+              "d": 3.1
+             },
+             {
+              "m": "Feb",
+              "v": 51,
+              "d": 9.0
+             },
+             {
+              "m": "Mar",
+              "v": 47,
+              "d": -4.2
+             },
+             {
+              "m": "Apr",
+              "v": 63,
+              "d": 16.0
+             },
+             {
+              "m": "May",
+              "v": 58,
+              "d": -5.1
+             },
+             {
+              "m": "Jun",
+              "v": 71,
+              "d": 13.4
+             },
+             {
+              "m": "Jul",
+              "v": 69,
+              "d": -2.0
+             },
+             {
+              "m": "Aug",
+              "v": 80,
+              "d": 11.0
+             }
+            ],
+            "label": "{m}",
+            "value": "d",
+            "size": 10
+           }
+          ]
+         },
+         {
+          "type": "row",
+          "gap": 1,
+          "children": [
+           {
+            "type": "editor",
+            "id": "page",
+            "title": "editor · markdown · ctrl-t ticks",
+            "syntax": "markdown",
+            "text": "# Saturday\n\n- [x] Coffee\n- [ ] Call Ada about the boat\n- [ ] Fix the bike\n\n> Small steps, every day.\n\nRun `fictty render` to see a screen without a terminal."
+           },
+           {
+            "type": "editor",
+            "id": "longread",
+            "title": "editor · readonly",
+            "readonly": true,
+            "text": "  1  A read-only editor scrolls, selects and copies, but never changes.\n  2  A read-only editor scrolls, selects and copies, but never changes.\n  3  A read-only editor scrolls, selects and copies, but never changes.\n  4  A read-only editor scrolls, selects and copies, but never changes.\n  5  A read-only editor scrolls, selects and copies, but never changes.\n  6  A read-only editor scrolls, selects and copies, but never changes.\n  7  A read-only editor scrolls, selects and copies, but never changes.\n  8  A read-only editor scrolls, selects and copies, but never changes.\n  9  A read-only editor scrolls, selects and copies, but never changes.\n 10  A read-only editor scrolls, selects and copies, but never changes.\n 11  A read-only editor scrolls, selects and copies, but never changes.\n 12  A read-only editor scrolls, selects and copies, but never changes.\n 13  A read-only editor scrolls, selects and copies, but never changes.\n 14  A read-only editor scrolls, selects and copies, but never changes.\n 15  A read-only editor scrolls, selects and copies, but never changes.\n 16  A read-only editor scrolls, selects and copies, but never changes.\n 17  A read-only editor scrolls, selects and copies, but never changes.\n 18  A read-only editor scrolls, selects and copies, but never changes.\n 19  A read-only editor scrolls, selects and copies, but never changes.\n 20  A read-only editor scrolls, selects and copies, but never changes.\n 21  A read-only editor scrolls, selects and copies, but never changes.\n 22  A read-only editor scrolls, selects and copies, but never changes.\n 23  A read-only editor scrolls, selects and copies, but never changes.\n 24  A read-only editor scrolls, selects and copies, but never changes.\n 25  A read-only editor scrolls, selects and copies, but never changes.\n 26  A read-only editor scrolls, selects and copies, but never changes.\n 27  A read-only editor scrolls, selects and copies, but never changes.\n 28  A read-only editor scrolls, selects and copies, but never changes.\n 29  A read-only editor scrolls, selects and copies, but never changes.\n 30  A read-only editor scrolls, selects and copies, but never changes.\n 31  A read-only editor scrolls, selects and copies, but never changes.\n 32  A read-only editor scrolls, selects and copies, but never changes.\n 33  A read-only editor scrolls, selects and copies, but never changes.\n 34  A read-only editor scrolls, selects and copies, but never changes.\n 35  A read-only editor scrolls, selects and copies, but never changes.\n 36  A read-only editor scrolls, selects and copies, but never changes.\n 37  A read-only editor scrolls, selects and copies, but never changes.\n 38  A read-only editor scrolls, selects and copies, but never changes.\n 39  A read-only editor scrolls, selects and copies, but never changes.\n 40  A read-only editor scrolls, selects and copies, but never changes.\n 41  A read-only editor scrolls, selects and copies, but never changes.\n 42  A read-only editor scrolls, selects and copies, but never changes.\n 43  A read-only editor scrolls, selects and copies, but never changes.\n 44  A read-only editor scrolls, selects and copies, but never changes.\n 45  A read-only editor scrolls, selects and copies, but never changes.\n 46  A read-only editor scrolls, selects and copies, but never changes.\n 47  A read-only editor scrolls, selects and copies, but never changes.\n 48  A read-only editor scrolls, selects and copies, but never changes.\n 49  A read-only editor scrolls, selects and copies, but never changes.\n 50  A read-only editor scrolls, selects and copies, but never changes.\n 51  A read-only editor scrolls, selects and copies, but never changes.\n 52  A read-only editor scrolls, selects and copies, but never changes.\n 53  A read-only editor scrolls, selects and copies, but never changes.\n 54  A read-only editor scrolls, selects and copies, but never changes.\n 55  A read-only editor scrolls, selects and copies, but never changes.\n 56  A read-only editor scrolls, selects and copies, but never changes.\n 57  A read-only editor scrolls, selects and copies, but never changes.\n 58  A read-only editor scrolls, selects and copies, but never changes.\n 59  A read-only editor scrolls, selects and copies, but never changes.\n 60  A read-only editor scrolls, selects and copies, but never changes.\n 61  A read-only editor scrolls, selects and copies, but never changes.\n 62  A read-only editor scrolls, selects and copies, but never changes.\n 63  A read-only editor scrolls, selects and copies, but never changes.\n 64  A read-only editor scrolls, selects and copies, but never changes.\n 65  A read-only editor scrolls, selects and copies, but never changes.\n 66  A read-only editor scrolls, selects and copies, but never changes.\n 67  A read-only editor scrolls, selects and copies, but never changes.\n 68  A read-only editor scrolls, selects and copies, but never changes.\n 69  A read-only editor scrolls, selects and copies, but never changes.\n 70  A read-only editor scrolls, selects and copies, but never changes.\n 71  A read-only editor scrolls, selects and copies, but never changes.\n 72  A read-only editor scrolls, selects and copies, but never changes.\n 73  A read-only editor scrolls, selects and copies, but never changes.\n 74  A read-only editor scrolls, selects and copies, but never changes.\n 75  A read-only editor scrolls, selects and copies, but never changes.\n 76  A read-only editor scrolls, selects and copies, but never changes.\n 77  A read-only editor scrolls, selects and copies, but never changes.\n 78  A read-only editor scrolls, selects and copies, but never changes.\n 79  A read-only editor scrolls, selects and copies, but never changes.\n 80  A read-only editor scrolls, selects and copies, but never changes.\n 81  A read-only editor scrolls, selects and copies, but never changes.\n 82  A read-only editor scrolls, selects and copies, but never changes.\n 83  A read-only editor scrolls, selects and copies, but never changes.\n 84  A read-only editor scrolls, selects and copies, but never changes.\n 85  A read-only editor scrolls, selects and copies, but never changes.\n 86  A read-only editor scrolls, selects and copies, but never changes.\n 87  A read-only editor scrolls, selects and copies, but never changes.\n 88  A read-only editor scrolls, selects and copies, but never changes.\n 89  A read-only editor scrolls, selects and copies, but never changes.\n 90  A read-only editor scrolls, selects and copies, but never changes.\n 91  A read-only editor scrolls, selects and copies, but never changes.\n 92  A read-only editor scrolls, selects and copies, but never changes.\n 93  A read-only editor scrolls, selects and copies, but never changes.\n 94  A read-only editor scrolls, selects and copies, but never changes.\n 95  A read-only editor scrolls, selects and copies, but never changes.\n 96  A read-only editor scrolls, selects and copies, but never changes.\n 97  A read-only editor scrolls, selects and copies, but never changes.\n 98  A read-only editor scrolls, selects and copies, but never changes.\n 99  A read-only editor scrolls, selects and copies, but never changes.\n100  A read-only editor scrolls, selects and copies, but never changes.\n101  A read-only editor scrolls, selects and copies, but never changes.\n102  A read-only editor scrolls, selects and copies, but never changes.\n103  A read-only editor scrolls, selects and copies, but never changes.\n104  A read-only editor scrolls, selects and copies, but never changes.\n105  A read-only editor scrolls, selects and copies, but never changes.\n106  A read-only editor scrolls, selects and copies, but never changes.\n107  A read-only editor scrolls, selects and copies, but never changes.\n108  A read-only editor scrolls, selects and copies, but never changes.\n109  A read-only editor scrolls, selects and copies, but never changes.\n110  A read-only editor scrolls, selects and copies, but never changes.\n111  A read-only editor scrolls, selects and copies, but never changes.\n112  A read-only editor scrolls, selects and copies, but never changes.\n113  A read-only editor scrolls, selects and copies, but never changes.\n114  A read-only editor scrolls, selects and copies, but never changes.\n115  A read-only editor scrolls, selects and copies, but never changes.\n116  A read-only editor scrolls, selects and copies, but never changes.\n117  A read-only editor scrolls, selects and copies, but never changes.\n118  A read-only editor scrolls, selects and copies, but never changes.\n119  A read-only editor scrolls, selects and copies, but never changes.\n120  A read-only editor scrolls, selects and copies, but never changes."
+           }
+          ]
+         }
+        ]
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "type": "row",
+    "size": 1,
+    "children": [
+     {
+      "type": "text",
+      "text": " <b>n</> <d>next</>  <b>p</> <d>back</>  <b>tab</> <d>move</>  <b>esc</> <d>leaves a field</>  <b>t</> <d>theme</>  <b>a</> <d>apps</>  <b>q</> <d>quit</>"
+     },
+     {
+      "type": "text",
+      "text": "<d>{fps} fps · {msgs} msg/s · {draw_ms} ms a frame</> ",
+      "bind": "$stats",
+      "align": "right",
+      "size": 44
+     }
+    ]
+   }
+  ]
+ },
+ "keys": {
+  "t": {
+   "theme": "next"
+  },
+  "a": {
+   "load": "home.json"
+  },
+  "n": {
+   "load": "tour-4-store.json"
+  },
+  "p": {
+   "load": "tour-2-value.json"
+  }
+ },
+ "store": {
+  "seen": "",
+  "plan": [
+   {
+    "id": "launch",
+    "text": "Launch the tour",
+    "children": [
+     {
+      "id": "post",
+      "text": "Write the post"
+     },
+     {
+      "id": "demo",
+      "text": "Record the demo",
+      "children": [
+       {
+        "id": "script",
+        "text": "Script it",
+        "done": true
+       },
+       {
+        "id": "shoot",
+        "text": "Shoot it"
+       }
+      ]
+     },
+     {
+      "id": "ship",
+      "text": "Ship it"
+     }
+    ]
+   },
+   {
+    "id": "rest",
+    "text": "Rest",
+    "children": [
+     {
+      "id": "walk",
+      "text": "A long walk"
+     },
+     {
+      "id": "read",
+      "text": "A short book"
+     }
+    ]
+   },
+   {
+    "id": "later",
+    "text": "Someday",
+    "children": [
+     {
+      "id": "sail",
+      "text": "Learn to sail"
+     }
+    ]
+   }
+  ],
+  "items": [
+   {
+    "name": "Coffee beans",
+    "qty": "1",
+    "done": true
+   },
+   {
+    "name": "Oat milk",
+    "qty": "2",
+    "done": false
+   },
+   {
+    "name": "Lemons",
+    "qty": "6",
+    "done": false
+   }
+  ],
+  "files": [
+   {
+    "name": "notes.md"
+   },
+   {
+    "name": "draft-v1.md"
+   },
+   {
+    "name": "draft-v2.md"
+   },
+   {
+    "name": "draft-final.md"
+   },
+   {
+    "name": "draft-final-FINAL.md"
+   },
+   {
+    "name": "todo.txt"
+   },
+   {
+    "name": "screenshot.png"
+   }
+  ],
+  "trash": [],
+  "confirm": false,
+  "doomed": "",
+  "agent_done": false,
+  "agent_tasks": [
+   {
+    "id": "read",
+    "text": "Read the screen",
+    "done": false
+   },
+   {
+    "id": "write",
+    "text": "Write a note",
+    "done": false
+   },
+   {
+    "id": "point",
+    "text": "Point at something",
+    "done": false
+   },
+   {
+    "id": "theme",
+    "text": "Try a theme",
+    "done": false
+   }
+  ],
+  "item_name": "",
+  "item_qty": "",
+  "items_q": "",
+  "big_q": "",
+  "agentpad": ""
+ },
+ "status_bar": false,
+ "data": {
+  "sales_s": {
+   "value": [
+    {
+     "m": "Jan",
+     "v": 42,
+     "d": 3.1
+    },
+    {
+     "m": "Feb",
+     "v": 51,
+     "d": 9.0
+    },
+    {
+     "m": "Mar",
+     "v": 47,
+     "d": -4.2
+    },
+    {
+     "m": "Apr",
+     "v": 63,
+     "d": 16.0
+    },
+    {
+     "m": "May",
+     "v": 58,
+     "d": -5.1
+    },
+    {
+     "m": "Jun",
+     "v": 71,
+     "d": 13.4
+    },
+    {
+     "m": "Jul",
+     "v": 69,
+     "d": -2.0
+    },
+    {
+     "m": "Aug",
+     "v": 80,
+     "d": 11.0
+    }
+   ]
+  },
+  "costs_s": {
+   "value": [
+    {
+     "v": 30
+    },
+    {
+     "v": 33
+    },
+    {
+     "v": 35
+    },
+    {
+     "v": 38
+    },
+    {
+     "v": 41
+    },
+    {
+     "v": 44
+    },
+    {
+     "v": 46
+    },
+    {
+     "v": 48
+    }
+   ]
+  }
+ }
+}

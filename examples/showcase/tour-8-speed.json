@@ -1,0 +1,466 @@
+{
+ "root": {
+  "type": "col",
+  "children": [
+   {
+    "type": "row",
+    "size": 1,
+    "children": [
+     {
+      "type": "text",
+      "text": " <accent+b>fictty</> <d>tour</>",
+      "size": 14
+     },
+     {
+      "type": "text",
+      "text": "<pos>◆</>",
+      "size": 2,
+      "when": "seen=Saturn"
+     },
+     {
+      "type": "text",
+      "text": "<d>◇</>",
+      "size": 2,
+      "when": "!seen=Saturn"
+     },
+     {
+      "type": "text",
+      "text": "<pos>◆</>",
+      "size": 2,
+      "when": "plan.0.children.0.done"
+     },
+     {
+      "type": "text",
+      "text": "<d>◇</>",
+      "size": 2,
+      "when": "!plan.0.children.0.done"
+     },
+     {
+      "type": "text",
+      "text": "<pos>◆</>",
+      "size": 2,
+      "when": "items.3"
+     },
+     {
+      "type": "text",
+      "text": "<d>◇</>",
+      "size": 2,
+      "when": "!items.3"
+     },
+     {
+      "type": "text",
+      "text": "<pos>◆</>",
+      "size": 2,
+      "when": "trash"
+     },
+     {
+      "type": "text",
+      "text": "<d>◇</>",
+      "size": 2,
+      "when": "!trash"
+     },
+     {
+      "type": "text",
+      "text": "<pos>◆</>",
+      "size": 2,
+      "when": "$theme.name!=glass"
+     },
+     {
+      "type": "text",
+      "text": "<d>◇</>",
+      "size": 2,
+      "when": "!$theme.name!=glass"
+     },
+     {
+      "type": "text",
+      "text": "<pos>◆</>",
+      "size": 2,
+      "when": "agent_done"
+     },
+     {
+      "type": "text",
+      "text": "<d>◇</>",
+      "size": 2,
+      "when": "!agent_done"
+     },
+     {
+      "type": "text",
+      "text": "<accent+b>◆</>",
+      "size": 2,
+      "when": "big_q"
+     },
+     {
+      "type": "text",
+      "text": "<accent+b>◇</>",
+      "size": 2,
+      "when": "!big_q"
+     },
+     {
+      "type": "text",
+      "text": "<d>8/9</>  <b>Speed</> ",
+      "align": "right"
+     }
+    ]
+   },
+   {
+    "type": "text",
+    "text": "<border>{*─}</>",
+    "size": 1
+   },
+   {
+    "type": "row",
+    "children": [
+     {
+      "type": "col",
+      "title": "8 · Speed",
+      "size": 44,
+      "variant": "card",
+      "children": [
+       {
+        "type": "text",
+        "text": "Updates are messages; the screen draws only when something changed, at most 120 times a second, and only the newest value of a busy source is drawn.\n\nThe table on the right is fed by one <b>awk</> process printing JSON lines as fast as it can. The list holds 100,000 rows and filters on every key.",
+        "pad": [
+         1,
+         0
+        ]
+       },
+       {
+        "type": "text",
+        "text": "\n<accent+b>Try</>\n<d>›</> watch the counters\n<d>›</> <b>tab</> to the filter and type: every word must match\n<d>›</> <b>G</> jumps to the last row",
+        "pad": [
+         1,
+         0
+        ],
+        "size": 6
+       },
+       {
+        "type": "col",
+        "size": 5,
+        "edge": "rounded",
+        "children": [
+         {
+          "type": "text",
+          "text": "<pos+b>◆ Quest done.</>\n<b>n</> for the next chapter.",
+          "when": "big_q",
+          "pad": [
+           1,
+           0
+          ]
+         },
+         {
+          "type": "text",
+          "text": "<warn+b>◇ Quest</>\nFilter the 100,000 rows.",
+          "when": "!big_q",
+          "pad": [
+           1,
+           0
+          ]
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "type": "row",
+      "children": [
+       {
+        "type": "col",
+        "children": [
+         {
+          "type": "row",
+          "size": 5,
+          "gap": 1,
+          "children": [
+           {
+            "type": "big",
+            "title": "frames a second",
+            "text": "{fps}",
+            "bind": "$stats",
+            "tone": "accent",
+            "align": "center",
+            "variant": "card"
+           },
+           {
+            "type": "big",
+            "title": "messages a second",
+            "text": "{msgs}",
+            "bind": "$stats",
+            "tone": "pos",
+            "align": "center",
+            "variant": "card"
+           },
+           {
+            "type": "big",
+            "title": "ms to draw a frame",
+            "text": "{draw_ms}",
+            "bind": "$stats",
+            "tone": "warn",
+            "align": "center",
+            "variant": "card"
+           }
+          ]
+         },
+         {
+          "type": "row",
+          "gap": 1,
+          "children": [
+           {
+            "type": "table",
+            "id": "book",
+            "bind": "fire.rows",
+            "title": "a stream, as fast as awk can print",
+            "size": "55%",
+            "columns": [
+             {
+              "title": "sym",
+              "value": "{sym}",
+              "size": 6
+             },
+             {
+              "title": "price",
+              "value": "{px}",
+              "size": 9,
+              "align": "right"
+             },
+             {
+              "title": "‰",
+              "value": "{±chg}",
+              "size": 7,
+              "align": "right",
+              "heat": {
+               "value": "{chg}",
+               "min": -2,
+               "max": 2
+              }
+             }
+            ]
+           },
+           {
+            "type": "col",
+            "children": [
+             {
+              "type": "text",
+              "text": "seq <b>{seq}</>   index <accent+b>{index}</>",
+              "bind": "fire",
+              "size": 1,
+              "pad": [
+               1,
+               0
+              ]
+             },
+             {
+              "type": "sparkline",
+              "bind": "fire.hist",
+              "title": "index",
+              "tone": "accent"
+             }
+            ]
+           }
+          ]
+         }
+        ]
+       },
+       {
+        "type": "col",
+        "size": 40,
+        "children": [
+         {
+          "type": "input",
+          "id": "big_q",
+          "size": 3,
+          "title": "filter",
+          "placeholder": "filter 100,000 rows: try ada kyoto"
+         },
+         {
+          "type": "list",
+          "id": "big",
+          "bind": "big",
+          "filter": "big_q",
+          "title": "100,000 rows",
+          "item": "<d>{n}</> {who} <d>in</> {city}\t<d>{likes}</>"
+         }
+        ]
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "type": "row",
+    "size": 1,
+    "children": [
+     {
+      "type": "text",
+      "text": " <b>n</> <d>next</>  <b>p</> <d>back</>  <b>tab</> <d>move</>  <b>esc</> <d>leaves a field</>  <b>t</> <d>theme</>  <b>a</> <d>apps</>  <b>q</> <d>quit</>"
+     },
+     {
+      "type": "text",
+      "text": "<d>{fps} fps · {msgs} msg/s · {draw_ms} ms a frame</> ",
+      "bind": "$stats",
+      "align": "right",
+      "size": 44
+     }
+    ]
+   }
+  ]
+ },
+ "keys": {
+  "t": {
+   "theme": "next"
+  },
+  "a": {
+   "load": "home.json"
+  },
+  "n": {
+   "load": "tour-9-yours.json"
+  },
+  "p": {
+   "load": "tour-7-agents.json"
+  }
+ },
+ "store": {
+  "seen": "",
+  "plan": [
+   {
+    "id": "launch",
+    "text": "Launch the tour",
+    "children": [
+     {
+      "id": "post",
+      "text": "Write the post"
+     },
+     {
+      "id": "demo",
+      "text": "Record the demo",
+      "children": [
+       {
+        "id": "script",
+        "text": "Script it",
+        "done": true
+       },
+       {
+        "id": "shoot",
+        "text": "Shoot it"
+       }
+      ]
+     },
+     {
+      "id": "ship",
+      "text": "Ship it"
+     }
+    ]
+   },
+   {
+    "id": "rest",
+    "text": "Rest",
+    "children": [
+     {
+      "id": "walk",
+      "text": "A long walk"
+     },
+     {
+      "id": "read",
+      "text": "A short book"
+     }
+    ]
+   },
+   {
+    "id": "later",
+    "text": "Someday",
+    "children": [
+     {
+      "id": "sail",
+      "text": "Learn to sail"
+     }
+    ]
+   }
+  ],
+  "items": [
+   {
+    "name": "Coffee beans",
+    "qty": "1",
+    "done": true
+   },
+   {
+    "name": "Oat milk",
+    "qty": "2",
+    "done": false
+   },
+   {
+    "name": "Lemons",
+    "qty": "6",
+    "done": false
+   }
+  ],
+  "files": [
+   {
+    "name": "notes.md"
+   },
+   {
+    "name": "draft-v1.md"
+   },
+   {
+    "name": "draft-v2.md"
+   },
+   {
+    "name": "draft-final.md"
+   },
+   {
+    "name": "draft-final-FINAL.md"
+   },
+   {
+    "name": "todo.txt"
+   },
+   {
+    "name": "screenshot.png"
+   }
+  ],
+  "trash": [],
+  "confirm": false,
+  "doomed": "",
+  "agent_done": false,
+  "agent_tasks": [
+   {
+    "id": "read",
+    "text": "Read the screen",
+    "done": false
+   },
+   {
+    "id": "write",
+    "text": "Write a note",
+    "done": false
+   },
+   {
+    "id": "point",
+    "text": "Point at something",
+    "done": false
+   },
+   {
+    "id": "theme",
+    "text": "Try a theme",
+    "done": false
+   }
+  ],
+  "item_name": "",
+  "item_qty": "",
+  "items_q": "",
+  "big_q": "",
+  "agentpad": ""
+ },
+ "status_bar": false,
+ "focus": "big",
+ "data": {
+  "fire": {
+   "stream": [
+    "awk",
+    "\nBEGIN {\n  srand(); n = split(\"ACME BOLT CRUX DUSK EMBR FLUX GLOW HALO IRIS JADE KILN LUMA MOSS NOVA ONYX PIKE QUAY RUNE SAGA TIDE\", sym, \" \");\n  for (i = 1; i <= n; i++) px[i] = 40 + rand() * 160;\n  for (k = 0; k < 120; k++) hist[k] = 100;\n  idx = 100; t = 0;\n  while (1) {\n    t++; s = \"{\\\"seq\\\":\" t \",\\\"rows\\\":[\";\n    for (i = 1; i <= n; i++) {\n      d = (rand() - 0.5) * px[i] * 0.004; px[i] += d; c = (px[i] / (px[i] - d) - 1) * 1000;\n      s = s (i > 1 ? \",\" : \"\") sprintf(\"{\\\"sym\\\":\\\"%s\\\",\\\"px\\\":%.2f,\\\"chg\\\":%.2f}\", sym[i], px[i], c);\n    }\n    idx += (rand() - 0.5) * 2; hist[t % 120] = idx; h = \"\";\n    for (k = 1; k <= 120; k++) h = h (k > 1 ? \",\" : \"\") sprintf(\"%.2f\", hist[(t + k) % 120]);\n    print s \"],\\\"index\\\":\" sprintf(\"%.2f\", idx) \",\\\"hist\\\":[\" h \"]}\"; fflush();\n  }\n}\n"
+   ]
+  },
+  "big": {
+   "cmd": [
+    "awk",
+    "\nBEGIN {\n  srand(7); na = split(\"Ada Ben Cleo Dev Eli Fay Gus Hana Ivo June Kai Lena Milo Nia Otto Pia Quin Rosa Sami Tess Ugo Vera Wes Xia Yuri Zoe\", a, \" \");\n  nb = split(\"Lisbon Oslo Lagos Lima Kyoto Quito Accra Hanoi Perth Malmo Cork Sucre Turku Nara Fez Bergen Cusco Hue Leeds Pune\", b, \" \");\n  nc = split(\"violin kite garden tram lantern atlas comet harbor pepper meadow\", c, \" \");\n  printf \"[\";\n  for (i = 1; i <= 100000; i++) {\n    printf \"%s{\\\"n\\\":%d,\\\"who\\\":\\\"%s\\\",\\\"city\\\":\\\"%s\\\",\\\"likes\\\":\\\"%s\\\"}\", (i > 1 ? \",\" : \"\"), i, a[int(rand()*na)+1], b[int(rand()*nb)+1], c[int(rand()*nc)+1];\n  }\n  print \"]\";\n}\n"
+   ]
+  }
+ }
+}

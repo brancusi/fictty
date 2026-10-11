@@ -1,0 +1,515 @@
+{
+ "root": {
+  "type": "col",
+  "children": [
+   {
+    "type": "row",
+    "size": 1,
+    "children": [
+     {
+      "type": "text",
+      "text": " <accent+b>fictty</> <d>tour</>",
+      "size": 14
+     },
+     {
+      "type": "text",
+      "text": "<pos>◆</>",
+      "size": 2,
+      "when": "seen=Saturn"
+     },
+     {
+      "type": "text",
+      "text": "<d>◇</>",
+      "size": 2,
+      "when": "!seen=Saturn"
+     },
+     {
+      "type": "text",
+      "text": "<pos>◆</>",
+      "size": 2,
+      "when": "plan.0.children.0.done"
+     },
+     {
+      "type": "text",
+      "text": "<d>◇</>",
+      "size": 2,
+      "when": "!plan.0.children.0.done"
+     },
+     {
+      "type": "text",
+      "text": "<accent+b>◆</>",
+      "size": 2,
+      "when": "items.3"
+     },
+     {
+      "type": "text",
+      "text": "<accent+b>◇</>",
+      "size": 2,
+      "when": "!items.3"
+     },
+     {
+      "type": "text",
+      "text": "<pos>◆</>",
+      "size": 2,
+      "when": "trash"
+     },
+     {
+      "type": "text",
+      "text": "<d>◇</>",
+      "size": 2,
+      "when": "!trash"
+     },
+     {
+      "type": "text",
+      "text": "<pos>◆</>",
+      "size": 2,
+      "when": "$theme.name!=glass"
+     },
+     {
+      "type": "text",
+      "text": "<d>◇</>",
+      "size": 2,
+      "when": "!$theme.name!=glass"
+     },
+     {
+      "type": "text",
+      "text": "<pos>◆</>",
+      "size": 2,
+      "when": "agent_done"
+     },
+     {
+      "type": "text",
+      "text": "<d>◇</>",
+      "size": 2,
+      "when": "!agent_done"
+     },
+     {
+      "type": "text",
+      "text": "<pos>◆</>",
+      "size": 2,
+      "when": "big_q"
+     },
+     {
+      "type": "text",
+      "text": "<d>◇</>",
+      "size": 2,
+      "when": "!big_q"
+     },
+     {
+      "type": "text",
+      "text": "<d>4/9</>  <b>The store</> ",
+      "align": "right"
+     }
+    ]
+   },
+   {
+    "type": "text",
+    "text": "<border>{*─}</>",
+    "size": 1
+   },
+   {
+    "type": "row",
+    "children": [
+     {
+      "type": "col",
+      "title": "4 · The store",
+      "size": 44,
+      "variant": "card",
+      "children": [
+       {
+        "type": "text",
+        "text": "The app's data lives in a <b>store</>, apart from the UI: a push never touches it. Every write, by you or by an agent, gets a revision and says who made it.\n\nAgents write with <accent>--if-rev</>: if you typed since they read, their write is refused and they read again. Nobody's work is lost.",
+        "pad": [
+         1,
+         0
+        ]
+       },
+       {
+        "type": "text",
+        "text": "\n<accent+b>Try</>\n<d>›</> <b>tab</> to the form, fill it, <b>enter</> or click <b>Add</>\n<d>›</> watch <b>rev</> and <b>by</> change on the right\n<d>›</> <b>x</> ticks, <b>d</> deletes, type to filter",
+        "pad": [
+         1,
+         0
+        ],
+        "size": 6
+       },
+       {
+        "type": "col",
+        "size": 5,
+        "edge": "rounded",
+        "children": [
+         {
+          "type": "text",
+          "text": "<pos+b>◆ Quest done.</>\n<b>n</> for the next chapter.",
+          "when": "items.3",
+          "pad": [
+           1,
+           0
+          ]
+         },
+         {
+          "type": "text",
+          "text": "<warn+b>◇ Quest</>\nAdd a fourth thing to the list.",
+          "when": "!items.3",
+          "pad": [
+           1,
+           0
+          ]
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "type": "row",
+      "children": [
+       {
+        "type": "col",
+        "children": [
+         {
+          "type": "col",
+          "size": 5,
+          "children": [
+           {
+            "type": "row",
+            "size": 3,
+            "gap": 1,
+            "children": [
+             {
+              "type": "input",
+              "id": "item_name",
+              "title": "thing",
+              "placeholder": "a thing to buy",
+              "keys": {
+               "enter": {
+                "do": [
+                 {
+                  "append": "items",
+                  "value": {
+                   "name": "{store.item_name}",
+                   "qty": "{store.item_qty}",
+                   "done": false
+                  }
+                 },
+                 {
+                  "toast": "Added {store.item_name}",
+                  "tone": "pos"
+                 },
+                 {
+                  "put": "item_name",
+                  "value": ""
+                 },
+                 {
+                  "put": "item_qty",
+                  "value": ""
+                 },
+                 {
+                  "focus": "item_name"
+                 }
+                ]
+               }
+              }
+             },
+             {
+              "type": "input",
+              "id": "item_qty",
+              "title": "how many",
+              "size": 12,
+              "accept": "number",
+              "placeholder": "1",
+              "keys": {
+               "enter": {
+                "do": [
+                 {
+                  "append": "items",
+                  "value": {
+                   "name": "{store.item_name}",
+                   "qty": "{store.item_qty}",
+                   "done": false
+                  }
+                 },
+                 {
+                  "toast": "Added {store.item_name}",
+                  "tone": "pos"
+                 },
+                 {
+                  "put": "item_name",
+                  "value": ""
+                 },
+                 {
+                  "put": "item_qty",
+                  "value": ""
+                 },
+                 {
+                  "focus": "item_name"
+                 }
+                ]
+               }
+              }
+             },
+             {
+              "type": "button",
+              "id": "add",
+              "label": "Add",
+              "size": 9,
+              "click": {
+               "do": [
+                {
+                 "append": "items",
+                 "value": {
+                  "name": "{store.item_name}",
+                  "qty": "{store.item_qty}",
+                  "done": false
+                 }
+                },
+                {
+                 "toast": "Added {store.item_name}",
+                 "tone": "pos"
+                },
+                {
+                 "put": "item_name",
+                 "value": ""
+                },
+                {
+                 "put": "item_qty",
+                 "value": ""
+                },
+                {
+                 "focus": "item_name"
+                }
+               ]
+              },
+              "border": true
+             }
+            ]
+           }
+          ]
+         },
+         {
+          "type": "col",
+          "children": [
+           {
+            "type": "input",
+            "id": "items_q",
+            "size": 3,
+            "title": "filter",
+            "placeholder": "type to filter"
+           },
+           {
+            "type": "list",
+            "id": "items",
+            "bind": "items",
+            "filter": "items_q",
+            "title": "list · x ticks · d deletes",
+            "item": "{done|true=<pos>☑</>;*=<d>☐</>} {name}\t<d>×{qty}</>",
+            "keys": {
+             "x": {
+              "toggle": "done"
+             },
+             "d": {
+              "remove": "items"
+             }
+            }
+           }
+          ]
+         }
+        ]
+       },
+       {
+        "type": "table",
+        "id": "revs",
+        "bind": "$store",
+        "title": "$store · every entry, live",
+        "size": "42%",
+        "columns": [
+         {
+          "title": "key",
+          "value": "{key}",
+          "size": 12
+         },
+         {
+          "title": "rev",
+          "value": "{rev}",
+          "size": 4,
+          "align": "right"
+         },
+         {
+          "title": "by",
+          "value": "{by}",
+          "size": 7
+         },
+         {
+          "title": "holds",
+          "value": "<d>{holds}</>"
+         }
+        ]
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "type": "row",
+    "size": 1,
+    "children": [
+     {
+      "type": "text",
+      "text": " <b>n</> <d>next</>  <b>p</> <d>back</>  <b>tab</> <d>move</>  <b>esc</> <d>leaves a field</>  <b>t</> <d>theme</>  <b>a</> <d>apps</>  <b>q</> <d>quit</>"
+     },
+     {
+      "type": "text",
+      "text": "<d>{fps} fps · {msgs} msg/s · {draw_ms} ms a frame</> ",
+      "bind": "$stats",
+      "align": "right",
+      "size": 44
+     }
+    ]
+   }
+  ]
+ },
+ "keys": {
+  "t": {
+   "theme": "next"
+  },
+  "a": {
+   "load": "home.json"
+  },
+  "n": {
+   "load": "tour-5-layers.json"
+  },
+  "p": {
+   "load": "tour-3-parts.json"
+  }
+ },
+ "store": {
+  "seen": "",
+  "plan": [
+   {
+    "id": "launch",
+    "text": "Launch the tour",
+    "children": [
+     {
+      "id": "post",
+      "text": "Write the post"
+     },
+     {
+      "id": "demo",
+      "text": "Record the demo",
+      "children": [
+       {
+        "id": "script",
+        "text": "Script it",
+        "done": true
+       },
+       {
+        "id": "shoot",
+        "text": "Shoot it"
+       }
+      ]
+     },
+     {
+      "id": "ship",
+      "text": "Ship it"
+     }
+    ]
+   },
+   {
+    "id": "rest",
+    "text": "Rest",
+    "children": [
+     {
+      "id": "walk",
+      "text": "A long walk"
+     },
+     {
+      "id": "read",
+      "text": "A short book"
+     }
+    ]
+   },
+   {
+    "id": "later",
+    "text": "Someday",
+    "children": [
+     {
+      "id": "sail",
+      "text": "Learn to sail"
+     }
+    ]
+   }
+  ],
+  "items": [
+   {
+    "name": "Coffee beans",
+    "qty": "1",
+    "done": true
+   },
+   {
+    "name": "Oat milk",
+    "qty": "2",
+    "done": false
+   },
+   {
+    "name": "Lemons",
+    "qty": "6",
+    "done": false
+   }
+  ],
+  "files": [
+   {
+    "name": "notes.md"
+   },
+   {
+    "name": "draft-v1.md"
+   },
+   {
+    "name": "draft-v2.md"
+   },
+   {
+    "name": "draft-final.md"
+   },
+   {
+    "name": "draft-final-FINAL.md"
+   },
+   {
+    "name": "todo.txt"
+   },
+   {
+    "name": "screenshot.png"
+   }
+  ],
+  "trash": [],
+  "confirm": false,
+  "doomed": "",
+  "agent_done": false,
+  "agent_tasks": [
+   {
+    "id": "read",
+    "text": "Read the screen",
+    "done": false
+   },
+   {
+    "id": "write",
+    "text": "Write a note",
+    "done": false
+   },
+   {
+    "id": "point",
+    "text": "Point at something",
+    "done": false
+   },
+   {
+    "id": "theme",
+    "text": "Try a theme",
+    "done": false
+   }
+  ],
+  "item_name": "",
+  "item_qty": "",
+  "items_q": "",
+  "big_q": "",
+  "agentpad": ""
+ },
+ "status_bar": false,
+ "focus": "items"
+}

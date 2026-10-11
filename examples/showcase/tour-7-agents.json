@@ -1,0 +1,458 @@
+{
+ "root": {
+  "type": "col",
+  "children": [
+   {
+    "type": "row",
+    "size": 1,
+    "children": [
+     {
+      "type": "text",
+      "text": " <accent+b>fictty</> <d>tour</>",
+      "size": 14
+     },
+     {
+      "type": "text",
+      "text": "<pos>◆</>",
+      "size": 2,
+      "when": "seen=Saturn"
+     },
+     {
+      "type": "text",
+      "text": "<d>◇</>",
+      "size": 2,
+      "when": "!seen=Saturn"
+     },
+     {
+      "type": "text",
+      "text": "<pos>◆</>",
+      "size": 2,
+      "when": "plan.0.children.0.done"
+     },
+     {
+      "type": "text",
+      "text": "<d>◇</>",
+      "size": 2,
+      "when": "!plan.0.children.0.done"
+     },
+     {
+      "type": "text",
+      "text": "<pos>◆</>",
+      "size": 2,
+      "when": "items.3"
+     },
+     {
+      "type": "text",
+      "text": "<d>◇</>",
+      "size": 2,
+      "when": "!items.3"
+     },
+     {
+      "type": "text",
+      "text": "<pos>◆</>",
+      "size": 2,
+      "when": "trash"
+     },
+     {
+      "type": "text",
+      "text": "<d>◇</>",
+      "size": 2,
+      "when": "!trash"
+     },
+     {
+      "type": "text",
+      "text": "<pos>◆</>",
+      "size": 2,
+      "when": "$theme.name!=glass"
+     },
+     {
+      "type": "text",
+      "text": "<d>◇</>",
+      "size": 2,
+      "when": "!$theme.name!=glass"
+     },
+     {
+      "type": "text",
+      "text": "<accent+b>◆</>",
+      "size": 2,
+      "when": "agent_done"
+     },
+     {
+      "type": "text",
+      "text": "<accent+b>◇</>",
+      "size": 2,
+      "when": "!agent_done"
+     },
+     {
+      "type": "text",
+      "text": "<pos>◆</>",
+      "size": 2,
+      "when": "big_q"
+     },
+     {
+      "type": "text",
+      "text": "<d>◇</>",
+      "size": 2,
+      "when": "!big_q"
+     },
+     {
+      "type": "text",
+      "text": "<d>7/9</>  <b>Agents</> ",
+      "align": "right"
+     }
+    ]
+   },
+   {
+    "type": "text",
+    "text": "<border>{*─}</>",
+    "size": 1
+   },
+   {
+    "type": "row",
+    "children": [
+     {
+      "type": "col",
+      "title": "7 · Agents",
+      "size": 44,
+      "variant": "card",
+      "children": [
+       {
+        "type": "text",
+        "text": "Agents drive a screen over a socket, with the same verbs you just used: push a UI, write the store, move the selection, point with callouts, read the frame back as text.\n\nThe autopilot is a shell script doing exactly that. Everything it does lands in <accent>$log</>, so you always see what an agent did.",
+        "pad": [
+         1,
+         0
+        ]
+       },
+       {
+        "type": "text",
+        "text": "\n<accent+b>Try</>\n<d>›</> press the button, then watch\n<d>›</> copy a command, run it in another terminal",
+        "pad": [
+         1,
+         0
+        ],
+        "size": 5
+       },
+       {
+        "type": "col",
+        "size": 5,
+        "edge": "rounded",
+        "children": [
+         {
+          "type": "text",
+          "text": "<pos+b>◆ Quest done.</>\n<b>n</> for the next chapter.",
+          "when": "agent_done",
+          "pad": [
+           1,
+           0
+          ]
+         },
+         {
+          "type": "text",
+          "text": "<warn+b>◇ Quest</>\nRun the autopilot and keep your hands off.",
+          "when": "!agent_done",
+          "pad": [
+           1,
+           0
+          ]
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "type": "row",
+      "children": [
+       {
+        "type": "col",
+        "children": [
+         {
+          "type": "button",
+          "id": "go",
+          "label": "▶  Run the autopilot",
+          "size": 3,
+          "border": true,
+          "click": {
+           "do": [
+            {
+             "toast": "Autopilot on. Hands off!",
+             "tone": "warn"
+            },
+            {
+             "run": [
+              "sh",
+              "autopilot.sh"
+             ]
+            }
+           ]
+          }
+         },
+         {
+          "type": "row",
+          "gap": 1,
+          "children": [
+           {
+            "type": "editor",
+            "id": "agentpad",
+            "title": "the agent writes here",
+            "syntax": "markdown",
+            "placeholder": "(empty, for now)"
+           },
+           {
+            "type": "list",
+            "id": "agent_tasks",
+            "bind": "agent_tasks",
+            "title": "and ticks these",
+            "size": "40%",
+            "item": "{done|true=<pos>☑</>;*=<d>☐</>} {text}",
+            "keys": {
+             "x": {
+              "toggle": "done"
+             }
+            }
+           }
+          ]
+         },
+         {
+          "type": "list",
+          "id": "cmds",
+          "title": "or drive it yourself · enter copies",
+          "size": 9,
+          "items": [
+           {
+            "cmd": "fictty screen",
+            "about": "the frame, as text"
+           },
+           {
+            "cmd": "fictty read agentpad",
+            "about": "read what's in the note"
+           },
+           {
+            "cmd": "echo '\"hello from a terminal\"' | fictty put agentpad -",
+            "about": "write the note"
+           },
+           {
+            "cmd": "fictty toast 'hi from another terminal' --tone pos",
+            "about": "say hi"
+           },
+           {
+            "cmd": "fictty theme next",
+            "about": "change the theme"
+           },
+           {
+            "cmd": "fictty get --state",
+            "about": "everything, as JSON"
+           }
+          ],
+          "item": "<accent>{cmd}</>\t<d>{about}</>",
+          "keys": {
+           "enter": {
+            "do": [
+             {
+              "copy": "{$self.env} && {cmd}"
+             },
+             {
+              "toast": "Copied. Paste it in another terminal.",
+              "tone": "pos"
+             }
+            ]
+           }
+          },
+          "click": {
+           "copy": "{$self.env} && {cmd}"
+          }
+         }
+        ]
+       },
+       {
+        "type": "table",
+        "id": "log",
+        "bind": "$log",
+        "title": "$log · what agents did",
+        "size": "36%",
+        "columns": [
+         {
+          "title": "at",
+          "value": "<d>{at}</>",
+          "size": 8
+         },
+         {
+          "title": "op",
+          "value": "<accent>{op}</>",
+          "size": 7
+         },
+         {
+          "title": "what",
+          "value": "{what}"
+         }
+        ]
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "type": "row",
+    "size": 1,
+    "children": [
+     {
+      "type": "text",
+      "text": " <b>n</> <d>next</>  <b>p</> <d>back</>  <b>tab</> <d>move</>  <b>esc</> <d>leaves a field</>  <b>t</> <d>theme</>  <b>a</> <d>apps</>  <b>q</> <d>quit</>"
+     },
+     {
+      "type": "text",
+      "text": "<d>{fps} fps · {msgs} msg/s · {draw_ms} ms a frame</> ",
+      "bind": "$stats",
+      "align": "right",
+      "size": 44
+     }
+    ]
+   }
+  ]
+ },
+ "keys": {
+  "t": {
+   "theme": "next"
+  },
+  "a": {
+   "load": "home.json"
+  },
+  "n": {
+   "load": "tour-8-speed.json"
+  },
+  "p": {
+   "load": "tour-6-themes.json"
+  }
+ },
+ "store": {
+  "seen": "",
+  "plan": [
+   {
+    "id": "launch",
+    "text": "Launch the tour",
+    "children": [
+     {
+      "id": "post",
+      "text": "Write the post"
+     },
+     {
+      "id": "demo",
+      "text": "Record the demo",
+      "children": [
+       {
+        "id": "script",
+        "text": "Script it",
+        "done": true
+       },
+       {
+        "id": "shoot",
+        "text": "Shoot it"
+       }
+      ]
+     },
+     {
+      "id": "ship",
+      "text": "Ship it"
+     }
+    ]
+   },
+   {
+    "id": "rest",
+    "text": "Rest",
+    "children": [
+     {
+      "id": "walk",
+      "text": "A long walk"
+     },
+     {
+      "id": "read",
+      "text": "A short book"
+     }
+    ]
+   },
+   {
+    "id": "later",
+    "text": "Someday",
+    "children": [
+     {
+      "id": "sail",
+      "text": "Learn to sail"
+     }
+    ]
+   }
+  ],
+  "items": [
+   {
+    "name": "Coffee beans",
+    "qty": "1",
+    "done": true
+   },
+   {
+    "name": "Oat milk",
+    "qty": "2",
+    "done": false
+   },
+   {
+    "name": "Lemons",
+    "qty": "6",
+    "done": false
+   }
+  ],
+  "files": [
+   {
+    "name": "notes.md"
+   },
+   {
+    "name": "draft-v1.md"
+   },
+   {
+    "name": "draft-v2.md"
+   },
+   {
+    "name": "draft-final.md"
+   },
+   {
+    "name": "draft-final-FINAL.md"
+   },
+   {
+    "name": "todo.txt"
+   },
+   {
+    "name": "screenshot.png"
+   }
+  ],
+  "trash": [],
+  "confirm": false,
+  "doomed": "",
+  "agent_done": false,
+  "agent_tasks": [
+   {
+    "id": "read",
+    "text": "Read the screen",
+    "done": false
+   },
+   {
+    "id": "write",
+    "text": "Write a note",
+    "done": false
+   },
+   {
+    "id": "point",
+    "text": "Point at something",
+    "done": false
+   },
+   {
+    "id": "theme",
+    "text": "Try a theme",
+    "done": false
+   }
+  ],
+  "item_name": "",
+  "item_qty": "",
+  "items_q": "",
+  "big_q": "",
+  "agentpad": ""
+ },
+ "status_bar": false,
+ "focus": "go"
+}

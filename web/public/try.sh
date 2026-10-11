@@ -6,7 +6,8 @@
 #
 # It fetches that version of fictty into ~/.fictty/<version> (or $FICTTY_HOME/<version>), uses
 # the release binary when the version is a release tag and builds from source with cargo
-# otherwise, then runs the showcase: notes, a ledger, a live market, a gallery and an agent's log.
+# otherwise, then runs the showcase: a tour of nine chapters, then notes, a ledger, a live market,
+# a gallery and an agent's log.
 # Each version keeps its own folder and its own store, so an old demo never mixes with a new one.
 # Nothing is installed anywhere else; delete ~/.fictty to remove everything.
 #
@@ -101,8 +102,8 @@ if size=$(stty size </dev/tty 2>/dev/null); then
     say "Your terminal is ${cols}×${rows}; the showcase looks best at 160×46 or more."
   fi
 fi
-say "Starting the showcase: arrows and Enter to open a screen, t for the theme, Esc back, q to quit"
-say "To drive it from a second terminal: open the Agent screen and click a command to copy it"
+say "Starting the tour: n for the next chapter, p to go back, t for the theme, q to quit"
+say "Each chapter has a quest; a for the apps (notes, a ledger, a live market) at any time"
 sleep 2
 # Hand the showcase the terminal's own device. Under `curl | sh` our input is the pipe, and the
 # generic /dev/tty won't do: macOS can't wait on it (kqueue), so the screen would hang on its

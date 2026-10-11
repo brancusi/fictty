@@ -11,7 +11,10 @@
       "table.header": "violet+b", "table.total": "fg+b", "row.selected": "fg+on-ring+b",
       "row.selected.blur": "on-panel", "tabs.active": "bg+on-accent+b", "tabs.idle": "dim",
       "editor.caret": "bg+on-accent", "editor.selection": "fg+on-ring", "input.placeholder": "dim+i",
-      "empty": "dim+i", "status": "dim", "status.error": "rose"
+      "empty": "dim+i", "status": "dim", "status.error": "rose",
+      "button": "fg+on-ring", "button.focused": "bg+on-accent+b", "toast": "fg+on-panel",
+      "tree.guide": "dim", "tabs.underline": "accent", "scrollbar": "border", "scrollbar.thumb": "accent",
+      "md.task": "accent+b", "md.done": "dim+s", "spinner": "accent"
     },
     "variants": {
       "card": {"edge": "rounded", "style": {"bg": "panel"}},
@@ -33,7 +36,10 @@
       "table.header": "violet+b", "table.total": "fg+b", "row.selected": "fg+on-ring+b",
       "row.selected.blur": "on-panel", "tabs.active": "bg+on-accent+b", "tabs.idle": "dim",
       "editor.caret": "bg+on-accent", "editor.selection": "fg+on-ring", "input.placeholder": "dim+i",
-      "empty": "dim+i", "status": "dim", "status.error": "rose"
+      "empty": "dim+i", "status": "dim", "status.error": "rose",
+      "button": "fg+on-panel", "button.focused": "bg+on-accent+b", "toast": "fg+on-panel",
+      "tree.guide": "dim", "tabs.underline": "accent", "scrollbar": "border", "scrollbar.thumb": "accent",
+      "md.task": "accent+b", "md.done": "dim+s", "spinner": "accent"
     },
     "variants": {
       "card": {"edge": "rounded", "style": {"bg": "panel"}},
@@ -55,7 +61,10 @@
       "table.header": "violet+b", "table.total": "accent+b", "row.selected": "accent+on-ring+b",
       "row.selected.blur": "on-panel", "tabs.active": "bg+on-accent+b", "tabs.idle": "dim",
       "editor.caret": "bg+on-fg", "editor.selection": "bg+on-dim", "input.placeholder": "dim+i",
-      "empty": "dim+i", "status": "dim", "status.error": "rose"
+      "empty": "dim+i", "status": "dim", "status.error": "rose",
+      "button": "fg+on-ring", "button.focused": "bg+on-accent+b", "toast": "accent+on-panel",
+      "tree.guide": "dim", "tabs.underline": "accent", "scrollbar": "border", "scrollbar.thumb": "accent",
+      "md.task": "accent+b", "md.done": "dim+s", "spinner": "accent"
     },
     "variants": {
       "card": {"edge": "plain", "style": {"bg": "panel"}},

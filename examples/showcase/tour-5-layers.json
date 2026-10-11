@@ -1,0 +1,483 @@
+{
+ "root": {
+  "type": "col",
+  "children": [
+   {
+    "type": "row",
+    "size": 1,
+    "children": [
+     {
+      "type": "text",
+      "text": " <accent+b>fictty</> <d>tour</>",
+      "size": 14
+     },
+     {
+      "type": "text",
+      "text": "<pos>◆</>",
+      "size": 2,
+      "when": "seen=Saturn"
+     },
+     {
+      "type": "text",
+      "text": "<d>◇</>",
+      "size": 2,
+      "when": "!seen=Saturn"
+     },
+     {
+      "type": "text",
+      "text": "<pos>◆</>",
+      "size": 2,
+      "when": "plan.0.children.0.done"
+     },
+     {
+      "type": "text",
+      "text": "<d>◇</>",
+      "size": 2,
+      "when": "!plan.0.children.0.done"
+     },
+     {
+      "type": "text",
+      "text": "<pos>◆</>",
+      "size": 2,
+      "when": "items.3"
+     },
+     {
+      "type": "text",
+      "text": "<d>◇</>",
+      "size": 2,
+      "when": "!items.3"
+     },
+     {
+      "type": "text",
+      "text": "<accent+b>◆</>",
+      "size": 2,
+      "when": "trash"
+     },
+     {
+      "type": "text",
+      "text": "<accent+b>◇</>",
+      "size": 2,
+      "when": "!trash"
+     },
+     {
+      "type": "text",
+      "text": "<pos>◆</>",
+      "size": 2,
+      "when": "$theme.name!=glass"
+     },
+     {
+      "type": "text",
+      "text": "<d>◇</>",
+      "size": 2,
+      "when": "!$theme.name!=glass"
+     },
+     {
+      "type": "text",
+      "text": "<pos>◆</>",
+      "size": 2,
+      "when": "agent_done"
+     },
+     {
+      "type": "text",
+      "text": "<d>◇</>",
+      "size": 2,
+      "when": "!agent_done"
+     },
+     {
+      "type": "text",
+      "text": "<pos>◆</>",
+      "size": 2,
+      "when": "big_q"
+     },
+     {
+      "type": "text",
+      "text": "<d>◇</>",
+      "size": 2,
+      "when": "!big_q"
+     },
+     {
+      "type": "text",
+      "text": "<d>5/9</>  <b>Layers</> ",
+      "align": "right"
+     }
+    ]
+   },
+   {
+    "type": "text",
+    "text": "<border>{*─}</>",
+    "size": 1
+   },
+   {
+    "type": "row",
+    "children": [
+     {
+      "type": "col",
+      "title": "5 · Layers",
+      "size": 44,
+      "variant": "card",
+      "children": [
+       {
+        "type": "text",
+        "text": "A <b>stack</> draws its children over each other. One that <b>float</>s sits where it says; a <b>modal</> one dims what's behind it and keeps the focus. With <b>when</>, a layer comes and goes with the store.\n\nToasts, callouts and rings are layers too: agents use them to point at things.",
+        "pad": [
+         1,
+         0
+        ]
+       },
+       {
+        "type": "text",
+        "text": "\n<accent+b>Try</>\n<d>›</> <b>d</> on a file opens the dialog\n<d>›</> <b>tab</> between its buttons, <b>esc</> backs out\n<d>›</> resize the window",
+        "pad": [
+         1,
+         0
+        ],
+        "size": 6
+       },
+       {
+        "type": "col",
+        "size": 5,
+        "edge": "rounded",
+        "children": [
+         {
+          "type": "text",
+          "text": "<pos+b>◆ Quest done.</>\n<b>n</> for the next chapter.",
+          "when": "trash",
+          "pad": [
+           1,
+           0
+          ]
+         },
+         {
+          "type": "text",
+          "text": "<warn+b>◇ Quest</>\nDelete a file, and say yes.",
+          "when": "!trash",
+          "pad": [
+           1,
+           0
+          ]
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "type": "row",
+      "children": [
+       {
+        "type": "stack",
+        "children": [
+         {
+          "type": "row",
+          "gap": 1,
+          "children": [
+           {
+            "type": "list",
+            "id": "files",
+            "bind": "files",
+            "title": "files · d deletes",
+            "item": "{name}",
+            "keys": {
+             "d": {
+              "do": [
+               {
+                "put": "doomed",
+                "value": "{name}"
+               },
+               {
+                "put": "confirm",
+                "value": true
+               }
+              ]
+             }
+            }
+           },
+           {
+            "type": "list",
+            "id": "trash",
+            "bind": "trash",
+            "title": "trash",
+            "size": "30%",
+            "item": "<d>{name}</>",
+            "empty": "Nothing deleted yet."
+           },
+           {
+            "type": "text",
+            "title": "only when wide",
+            "size": 30,
+            "when": "$screen.width>=150",
+            "pad": [
+             1,
+             0
+            ],
+            "text": "This pane shows only while your terminal is at least 150 columns wide:\n\n<accent>\"when\": \"$screen.width>=150\"</>\n\nMake the window narrower and watch it go."
+           }
+          ]
+         },
+         {
+          "type": "col",
+          "id": "ask",
+          "title": "Delete?",
+          "modal": true,
+          "when": "confirm",
+          "variant": "alert",
+          "float": {
+           "width": 44,
+           "height": 8
+          },
+          "pad": [
+           2,
+           1
+          ],
+          "keys": {
+           "esc": {
+            "put": "confirm",
+            "value": false
+           }
+          },
+          "children": [
+           {
+            "type": "text",
+            "text": "Delete <b>{.}</> for good?",
+            "bind": "doomed",
+            "size": 2
+           },
+           {
+            "type": "row",
+            "size": 1,
+            "gap": 2,
+            "children": [
+             {
+              "type": "button",
+              "id": "yes",
+              "label": "Delete",
+              "click": {
+               "do": [
+                {
+                 "append": "trash",
+                 "value": {
+                  "name": "{store.doomed}"
+                 }
+                },
+                {
+                 "remove": "files",
+                 "where": {
+                  "name": "{store.doomed}"
+                 }
+                },
+                {
+                 "put": "confirm",
+                 "value": false
+                },
+                {
+                 "toast": "Deleted {store.doomed}",
+                 "tone": "neg"
+                }
+               ]
+              }
+             },
+             {
+              "type": "button",
+              "id": "no",
+              "label": "Keep it",
+              "click": {
+               "do": [
+                {
+                 "put": "confirm",
+                 "value": false
+                },
+                {
+                 "toast": "Kept it"
+                }
+               ]
+              }
+             }
+            ]
+           }
+          ]
+         }
+        ]
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "type": "row",
+    "size": 1,
+    "children": [
+     {
+      "type": "text",
+      "text": " <b>n</> <d>next</>  <b>p</> <d>back</>  <b>tab</> <d>move</>  <b>esc</> <d>leaves a field</>  <b>t</> <d>theme</>  <b>a</> <d>apps</>  <b>q</> <d>quit</>"
+     },
+     {
+      "type": "text",
+      "text": "<d>{fps} fps · {msgs} msg/s · {draw_ms} ms a frame</> ",
+      "bind": "$stats",
+      "align": "right",
+      "size": 44
+     }
+    ]
+   }
+  ]
+ },
+ "keys": {
+  "t": {
+   "theme": "next"
+  },
+  "a": {
+   "load": "home.json"
+  },
+  "n": {
+   "load": "tour-6-themes.json"
+  },
+  "p": {
+   "load": "tour-4-store.json"
+  }
+ },
+ "store": {
+  "seen": "",
+  "plan": [
+   {
+    "id": "launch",
+    "text": "Launch the tour",
+    "children": [
+     {
+      "id": "post",
+      "text": "Write the post"
+     },
+     {
+      "id": "demo",
+      "text": "Record the demo",
+      "children": [
+       {
+        "id": "script",
+        "text": "Script it",
+        "done": true
+       },
+       {
+        "id": "shoot",
+        "text": "Shoot it"
+       }
+      ]
+     },
+     {
+      "id": "ship",
+      "text": "Ship it"
+     }
+    ]
+   },
+   {
+    "id": "rest",
+    "text": "Rest",
+    "children": [
+     {
+      "id": "walk",
+      "text": "A long walk"
+     },
+     {
+      "id": "read",
+      "text": "A short book"
+     }
+    ]
+   },
+   {
+    "id": "later",
+    "text": "Someday",
+    "children": [
+     {
+      "id": "sail",
+      "text": "Learn to sail"
+     }
+    ]
+   }
+  ],
+  "items": [
+   {
+    "name": "Coffee beans",
+    "qty": "1",
+    "done": true
+   },
+   {
+    "name": "Oat milk",
+    "qty": "2",
+    "done": false
+   },
+   {
+    "name": "Lemons",
+    "qty": "6",
+    "done": false
+   }
+  ],
+  "files": [
+   {
+    "name": "notes.md"
+   },
+   {
+    "name": "draft-v1.md"
+   },
+   {
+    "name": "draft-v2.md"
+   },
+   {
+    "name": "draft-final.md"
+   },
+   {
+    "name": "draft-final-FINAL.md"
+   },
+   {
+    "name": "todo.txt"
+   },
+   {
+    "name": "screenshot.png"
+   }
+  ],
+  "trash": [],
+  "confirm": false,
+  "doomed": "",
+  "agent_done": false,
+  "agent_tasks": [
+   {
+    "id": "read",
+    "text": "Read the screen",
+    "done": false
+   },
+   {
+    "id": "write",
+    "text": "Write a note",
+    "done": false
+   },
+   {
+    "id": "point",
+    "text": "Point at something",
+    "done": false
+   },
+   {
+    "id": "theme",
+    "text": "Try a theme",
+    "done": false
+   }
+  ],
+  "item_name": "",
+  "item_qty": "",
+  "items_q": "",
+  "big_q": "",
+  "agentpad": ""
+ },
+ "status_bar": false,
+ "layers": [
+  {
+   "on": "files",
+   "row": 3,
+   "title": "Try it",
+   "text": "Press d to delete a file.",
+   "arrow": true,
+   "place": [
+    "right",
+    "below"
+   ],
+   "width": 26,
+   "by": "tour",
+   "when": "!trash & !confirm"
+  }
+ ]
+}

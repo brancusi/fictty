@@ -1,0 +1,467 @@
+{
+ "root": {
+  "type": "col",
+  "children": [
+   {
+    "type": "row",
+    "size": 1,
+    "children": [
+     {
+      "type": "text",
+      "text": " <accent+b>fictty</> <d>tour</>",
+      "size": 14
+     },
+     {
+      "type": "text",
+      "text": "<pos>◆</>",
+      "size": 2,
+      "when": "seen=Saturn"
+     },
+     {
+      "type": "text",
+      "text": "<d>◇</>",
+      "size": 2,
+      "when": "!seen=Saturn"
+     },
+     {
+      "type": "text",
+      "text": "<pos>◆</>",
+      "size": 2,
+      "when": "plan.0.children.0.done"
+     },
+     {
+      "type": "text",
+      "text": "<d>◇</>",
+      "size": 2,
+      "when": "!plan.0.children.0.done"
+     },
+     {
+      "type": "text",
+      "text": "<pos>◆</>",
+      "size": 2,
+      "when": "items.3"
+     },
+     {
+      "type": "text",
+      "text": "<d>◇</>",
+      "size": 2,
+      "when": "!items.3"
+     },
+     {
+      "type": "text",
+      "text": "<pos>◆</>",
+      "size": 2,
+      "when": "trash"
+     },
+     {
+      "type": "text",
+      "text": "<d>◇</>",
+      "size": 2,
+      "when": "!trash"
+     },
+     {
+      "type": "text",
+      "text": "<accent+b>◆</>",
+      "size": 2,
+      "when": "$theme.name!=glass"
+     },
+     {
+      "type": "text",
+      "text": "<accent+b>◇</>",
+      "size": 2,
+      "when": "!$theme.name!=glass"
+     },
+     {
+      "type": "text",
+      "text": "<pos>◆</>",
+      "size": 2,
+      "when": "agent_done"
+     },
+     {
+      "type": "text",
+      "text": "<d>◇</>",
+      "size": 2,
+      "when": "!agent_done"
+     },
+     {
+      "type": "text",
+      "text": "<pos>◆</>",
+      "size": 2,
+      "when": "big_q"
+     },
+     {
+      "type": "text",
+      "text": "<d>◇</>",
+      "size": 2,
+      "when": "!big_q"
+     },
+     {
+      "type": "text",
+      "text": "<d>6/9</>  <b>Themes</> ",
+      "align": "right"
+     }
+    ]
+   },
+   {
+    "type": "text",
+    "text": "<border>{*─}</>",
+    "size": 1
+   },
+   {
+    "type": "row",
+    "children": [
+     {
+      "type": "col",
+      "title": "6 · Themes",
+      "size": 44,
+      "variant": "card",
+      "children": [
+       {
+        "type": "text",
+        "text": "Screens ask for <b>meanings</>, never colours: a <b>variant</> (card, quiet, alert) and a <b>tone</> (pos, neg, warn). A theme says what those look like.\n\nSo one key restyles everything, every screen, at once, and an agent never picks a colour.",
+        "pad": [
+         1,
+         0
+        ]
+       },
+       {
+        "type": "text",
+        "text": "\n<accent+b>Try</>\n<d>›</> <b>t</> cycles glass, paper and phosphor\n<d>›</> the theme stays when you change chapter",
+        "pad": [
+         1,
+         0
+        ],
+        "size": 5
+       },
+       {
+        "type": "col",
+        "size": 5,
+        "edge": "rounded",
+        "children": [
+         {
+          "type": "text",
+          "text": "<pos+b>◆ Quest done.</>\n<b>n</> for the next chapter.",
+          "when": "$theme.name!=glass",
+          "pad": [
+           1,
+           0
+          ]
+         },
+         {
+          "type": "text",
+          "text": "<warn+b>◇ Quest</>\nPress <b>t</> to change the theme.",
+          "when": "!$theme.name!=glass",
+          "pad": [
+           1,
+           0
+          ]
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "type": "row",
+      "children": [
+       {
+        "type": "col",
+        "gap": 1,
+        "children": [
+         {
+          "type": "text",
+          "text": "Now: <accent+b>{name}</>   <d>of {names}</>",
+          "bind": "$theme",
+          "size": 1,
+          "pad": [
+           1,
+           0
+          ]
+         },
+         {
+          "type": "row",
+          "size": 4,
+          "gap": 1,
+          "children": [
+           {
+            "type": "text",
+            "variant": "card",
+            "title": "card",
+            "pad": [
+             1,
+             0
+            ],
+            "text": "variant <b>card</>"
+           },
+           {
+            "type": "text",
+            "variant": "quiet",
+            "title": "quiet",
+            "pad": [
+             1,
+             0
+            ],
+            "text": "variant <b>quiet</>"
+           },
+           {
+            "type": "text",
+            "variant": "hero",
+            "title": "hero",
+            "pad": [
+             1,
+             0
+            ],
+            "text": "variant <b>hero</>"
+           },
+           {
+            "type": "text",
+            "variant": "alert",
+            "title": "alert",
+            "pad": [
+             1,
+             0
+            ],
+            "text": "variant <b>alert</>"
+           }
+          ]
+         },
+         {
+          "type": "text",
+          "text": "<accent>● accent</>  <pos>● pos</>  <neg>● neg</>  <warn>● warn</>  <violet>● violet</>  <dim>● dim</>",
+          "size": 1,
+          "pad": [
+           1,
+           0
+          ]
+         },
+         {
+          "type": "row",
+          "gap": 1,
+          "children": [
+           {
+            "type": "table",
+            "title": "a table",
+            "items": [
+             {
+              "k": "rev",
+              "v": "12"
+             },
+             {
+              "k": "by",
+              "v": "agent"
+             },
+             {
+              "k": "fps",
+              "v": "120"
+             }
+            ],
+            "columns": [
+             {
+              "title": "key",
+              "value": "{k}",
+              "size": 8
+             },
+             {
+              "title": "value",
+              "value": "{v}"
+             }
+            ]
+           },
+           {
+            "type": "col",
+            "children": [
+             {
+              "type": "gauge",
+              "title": "a gauge",
+              "value": "0.6",
+              "size": 3
+             },
+             {
+              "type": "sparkline",
+              "title": "a sparkline",
+              "values": [
+               1,
+               3,
+               2,
+               5,
+               4,
+               7,
+               6,
+               9,
+               7,
+               10
+              ]
+             }
+            ]
+           }
+          ]
+         }
+        ]
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "type": "row",
+    "size": 1,
+    "children": [
+     {
+      "type": "text",
+      "text": " <b>n</> <d>next</>  <b>p</> <d>back</>  <b>tab</> <d>move</>  <b>esc</> <d>leaves a field</>  <b>t</> <d>theme</>  <b>a</> <d>apps</>  <b>q</> <d>quit</>"
+     },
+     {
+      "type": "text",
+      "text": "<d>{fps} fps · {msgs} msg/s · {draw_ms} ms a frame</> ",
+      "bind": "$stats",
+      "align": "right",
+      "size": 44
+     }
+    ]
+   }
+  ]
+ },
+ "keys": {
+  "t": {
+   "theme": "next"
+  },
+  "a": {
+   "load": "home.json"
+  },
+  "n": {
+   "load": "tour-7-agents.json"
+  },
+  "p": {
+   "load": "tour-5-layers.json"
+  }
+ },
+ "store": {
+  "seen": "",
+  "plan": [
+   {
+    "id": "launch",
+    "text": "Launch the tour",
+    "children": [
+     {
+      "id": "post",
+      "text": "Write the post"
+     },
+     {
+      "id": "demo",
+      "text": "Record the demo",
+      "children": [
+       {
+        "id": "script",
+        "text": "Script it",
+        "done": true
+       },
+       {
+        "id": "shoot",
+        "text": "Shoot it"
+       }
+      ]
+     },
+     {
+      "id": "ship",
+      "text": "Ship it"
+     }
+    ]
+   },
+   {
+    "id": "rest",
+    "text": "Rest",
+    "children": [
+     {
+      "id": "walk",
+      "text": "A long walk"
+     },
+     {
+      "id": "read",
+      "text": "A short book"
+     }
+    ]
+   },
+   {
+    "id": "later",
+    "text": "Someday",
+    "children": [
+     {
+      "id": "sail",
+      "text": "Learn to sail"
+     }
+    ]
+   }
+  ],
+  "items": [
+   {
+    "name": "Coffee beans",
+    "qty": "1",
+    "done": true
+   },
+   {
+    "name": "Oat milk",
+    "qty": "2",
+    "done": false
+   },
+   {
+    "name": "Lemons",
+    "qty": "6",
+    "done": false
+   }
+  ],
+  "files": [
+   {
+    "name": "notes.md"
+   },
+   {
+    "name": "draft-v1.md"
+   },
+   {
+    "name": "draft-v2.md"
+   },
+   {
+    "name": "draft-final.md"
+   },
+   {
+    "name": "draft-final-FINAL.md"
+   },
+   {
+    "name": "todo.txt"
+   },
+   {
+    "name": "screenshot.png"
+   }
+  ],
+  "trash": [],
+  "confirm": false,
+  "doomed": "",
+  "agent_done": false,
+  "agent_tasks": [
+   {
+    "id": "read",
+    "text": "Read the screen",
+    "done": false
+   },
+   {
+    "id": "write",
+    "text": "Write a note",
+    "done": false
+   },
+   {
+    "id": "point",
+    "text": "Point at something",
+    "done": false
+   },
+   {
+    "id": "theme",
+    "text": "Try a theme",
+    "done": false
+   }
+  ],
+  "item_name": "",
+  "item_qty": "",
+  "items_q": "",
+  "big_q": "",
+  "agentpad": ""
+ },
+ "status_bar": false
+}

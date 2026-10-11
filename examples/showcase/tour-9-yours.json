@@ -1,0 +1,691 @@
+{
+ "root": {
+  "type": "col",
+  "children": [
+   {
+    "type": "row",
+    "size": 1,
+    "children": [
+     {
+      "type": "text",
+      "text": " <accent+b>fictty</> <d>tour</>",
+      "size": 14
+     },
+     {
+      "type": "text",
+      "text": "<pos>◆</>",
+      "size": 2,
+      "when": "seen=Saturn"
+     },
+     {
+      "type": "text",
+      "text": "<d>◇</>",
+      "size": 2,
+      "when": "!seen=Saturn"
+     },
+     {
+      "type": "text",
+      "text": "<pos>◆</>",
+      "size": 2,
+      "when": "plan.0.children.0.done"
+     },
+     {
+      "type": "text",
+      "text": "<d>◇</>",
+      "size": 2,
+      "when": "!plan.0.children.0.done"
+     },
+     {
+      "type": "text",
+      "text": "<pos>◆</>",
+      "size": 2,
+      "when": "items.3"
+     },
+     {
+      "type": "text",
+      "text": "<d>◇</>",
+      "size": 2,
+      "when": "!items.3"
+     },
+     {
+      "type": "text",
+      "text": "<pos>◆</>",
+      "size": 2,
+      "when": "trash"
+     },
+     {
+      "type": "text",
+      "text": "<d>◇</>",
+      "size": 2,
+      "when": "!trash"
+     },
+     {
+      "type": "text",
+      "text": "<pos>◆</>",
+      "size": 2,
+      "when": "$theme.name!=glass"
+     },
+     {
+      "type": "text",
+      "text": "<d>◇</>",
+      "size": 2,
+      "when": "!$theme.name!=glass"
+     },
+     {
+      "type": "text",
+      "text": "<pos>◆</>",
+      "size": 2,
+      "when": "agent_done"
+     },
+     {
+      "type": "text",
+      "text": "<d>◇</>",
+      "size": 2,
+      "when": "!agent_done"
+     },
+     {
+      "type": "text",
+      "text": "<pos>◆</>",
+      "size": 2,
+      "when": "big_q"
+     },
+     {
+      "type": "text",
+      "text": "<d>◇</>",
+      "size": 2,
+      "when": "!big_q"
+     },
+     {
+      "type": "text",
+      "text": "<d>9/9</>  <b>Your turn</> ",
+      "align": "right"
+     }
+    ]
+   },
+   {
+    "type": "text",
+    "text": "<border>{*─}</>",
+    "size": 1
+   },
+   {
+    "type": "col",
+    "children": [
+     {
+      "type": "text",
+      "text": "",
+      "size": 1
+     },
+     {
+      "type": "row",
+      "size": 6,
+      "children": [
+       {
+        "type": "text",
+        "text": "",
+        "size": "*"
+       },
+       {
+        "type": "text",
+        "text": "  <c1>████</>    <c2>██</>      <c3>████</>      <c4>██</>        <c1>██</>      <c2>██</>  <c2>██</>\n<c1>██</>  <c1+d>░░░░</>    <c2+d>░░</>  <c3>██</>  <c3+d>░░░░</>  <c4>██████</>    <c1>██████</>    <c2>██</><c2+d>░░</><c2>██</><c2+d>░░</>\n<c1>██████</>    <c2>██</>    <c3>██</><c3+d>░░</>        <c4>██</><c4+d>░░░░</>    <c1>██</><c1+d>░░░░</>    <c2>████</><c2+d>░░</>\n<c1>██</><c1+d>░░░░░░</>  <c2>██</><c2+d>░░</>  <c3>██</><c3+d>░░</>        <c4>██</><c4+d>░░</>      <c1>██</><c1+d>░░</>        <c2>██</><c2+d>░░</>\n<c1>██</><c1+d>░░</>      <c2>██</><c2+d>░░</>    <c3>████</>        <c4>██</>        <c1>██</>    <c2>████</>  <c2+d>░░</>\n  <c1+d>░░</>        <c2+d>░░</>      <c3+d>░░░░</>        <c4+d>░░</>        <c1+d>░░</>    <c2+d>░░░░</>",
+        "size": 72
+       },
+       {
+        "type": "text",
+        "text": "",
+        "size": "*"
+       }
+      ]
+     },
+     {
+      "type": "text",
+      "text": "<b>That's all of it.</>  <d>The marks at the top are your quests.</>",
+      "size": 2,
+      "align": "center"
+     },
+     {
+      "type": "row",
+      "children": [
+       {
+        "type": "text",
+        "text": "",
+        "size": "*"
+       },
+       {
+        "type": "col",
+        "size": 110,
+        "variant": "card",
+        "pad": [
+         1,
+         0
+        ],
+        "children": [
+         {
+          "type": "row",
+          "size": 3,
+          "children": [
+           {
+            "type": "text",
+            "text": "<b>Make a screen</>",
+            "size": 18,
+            "pad": [
+             1,
+             1
+            ]
+           },
+           {
+            "type": "text",
+            "text": "<accent>fictty run ui.json --watch</>",
+            "pad": [
+             1,
+             1
+            ]
+           },
+           {
+            "type": "text",
+            "text": "<d>edit the file, the screen follows</>",
+            "size": 36,
+            "pad": [
+             1,
+             1
+            ]
+           }
+          ]
+         },
+         {
+          "type": "row",
+          "size": 3,
+          "children": [
+           {
+            "type": "text",
+            "text": "<b>Push one in</>",
+            "size": 18,
+            "pad": [
+             1,
+             1
+            ]
+           },
+           {
+            "type": "text",
+            "text": "<accent>fictty push ui.json</>",
+            "pad": [
+             1,
+             1
+            ]
+           },
+           {
+            "type": "text",
+            "text": "<d>into the screen that's running</>",
+            "size": 36,
+            "pad": [
+             1,
+             1
+            ]
+           }
+          ]
+         },
+         {
+          "type": "row",
+          "size": 3,
+          "children": [
+           {
+            "type": "text",
+            "text": "<b>See it as text</>",
+            "size": 18,
+            "pad": [
+             1,
+             1
+            ]
+           },
+           {
+            "type": "text",
+            "text": "<accent>fictty render ui.json --size 100x30</>",
+            "pad": [
+             1,
+             1
+            ]
+           },
+           {
+            "type": "text",
+            "text": "<d>no terminal needed</>",
+            "size": 36,
+            "pad": [
+             1,
+             1
+            ]
+           }
+          ]
+         },
+         {
+          "type": "row",
+          "size": 3,
+          "children": [
+           {
+            "type": "text",
+            "text": "<b>Embed it</>",
+            "size": 18,
+            "pad": [
+             1,
+             1
+            ]
+           },
+           {
+            "type": "text",
+            "text": "<accent>fictty::App::new(ui).host(my_app).run()</>",
+            "pad": [
+             1,
+             1
+            ]
+           },
+           {
+            "type": "text",
+            "text": "<d>a Rust library too</>",
+            "size": 36,
+            "pad": [
+             1,
+             1
+            ]
+           }
+          ]
+         }
+        ]
+       },
+       {
+        "type": "text",
+        "text": "",
+        "size": "*"
+       }
+      ]
+     },
+     {
+      "type": "row",
+      "size": 3,
+      "gap": 2,
+      "children": [
+       {
+        "type": "text",
+        "text": "",
+        "size": "*"
+       },
+       {
+        "type": "button",
+        "id": "apps",
+        "label": "Open the apps",
+        "size": 20,
+        "click": {
+         "load": "home.json"
+        }
+       },
+       {
+        "type": "button",
+        "id": "again",
+        "label": "Start over",
+        "size": 18,
+        "click": {
+         "do": [
+          {
+           "put": "seen",
+           "value": ""
+          },
+          {
+           "put": "plan",
+           "value": [
+            {
+             "id": "launch",
+             "text": "Launch the tour",
+             "children": [
+              {
+               "id": "post",
+               "text": "Write the post"
+              },
+              {
+               "id": "demo",
+               "text": "Record the demo",
+               "children": [
+                {
+                 "id": "script",
+                 "text": "Script it",
+                 "done": true
+                },
+                {
+                 "id": "shoot",
+                 "text": "Shoot it"
+                }
+               ]
+              },
+              {
+               "id": "ship",
+               "text": "Ship it"
+              }
+             ]
+            },
+            {
+             "id": "rest",
+             "text": "Rest",
+             "children": [
+              {
+               "id": "walk",
+               "text": "A long walk"
+              },
+              {
+               "id": "read",
+               "text": "A short book"
+              }
+             ]
+            },
+            {
+             "id": "later",
+             "text": "Someday",
+             "children": [
+              {
+               "id": "sail",
+               "text": "Learn to sail"
+              }
+             ]
+            }
+           ]
+          },
+          {
+           "put": "items",
+           "value": [
+            {
+             "name": "Coffee beans",
+             "qty": "1",
+             "done": true
+            },
+            {
+             "name": "Oat milk",
+             "qty": "2",
+             "done": false
+            },
+            {
+             "name": "Lemons",
+             "qty": "6",
+             "done": false
+            }
+           ]
+          },
+          {
+           "put": "files",
+           "value": [
+            {
+             "name": "notes.md"
+            },
+            {
+             "name": "draft-v1.md"
+            },
+            {
+             "name": "draft-v2.md"
+            },
+            {
+             "name": "draft-final.md"
+            },
+            {
+             "name": "draft-final-FINAL.md"
+            },
+            {
+             "name": "todo.txt"
+            },
+            {
+             "name": "screenshot.png"
+            }
+           ]
+          },
+          {
+           "put": "trash",
+           "value": []
+          },
+          {
+           "put": "confirm",
+           "value": false
+          },
+          {
+           "put": "doomed",
+           "value": ""
+          },
+          {
+           "put": "agent_done",
+           "value": false
+          },
+          {
+           "put": "agent_tasks",
+           "value": [
+            {
+             "id": "read",
+             "text": "Read the screen",
+             "done": false
+            },
+            {
+             "id": "write",
+             "text": "Write a note",
+             "done": false
+            },
+            {
+             "id": "point",
+             "text": "Point at something",
+             "done": false
+            },
+            {
+             "id": "theme",
+             "text": "Try a theme",
+             "done": false
+            }
+           ]
+          },
+          {
+           "put": "item_name",
+           "value": ""
+          },
+          {
+           "put": "item_qty",
+           "value": ""
+          },
+          {
+           "put": "items_q",
+           "value": ""
+          },
+          {
+           "put": "big_q",
+           "value": ""
+          },
+          {
+           "put": "agentpad",
+           "value": ""
+          },
+          {
+           "toast": "Back to the start",
+           "tone": "warn"
+          },
+          {
+           "load": "tour-1-hello.json"
+          }
+         ]
+        }
+       },
+       {
+        "type": "button",
+        "id": "bye",
+        "label": "Quit",
+        "size": 10,
+        "click": "quit"
+       },
+       {
+        "type": "text",
+        "text": "",
+        "size": "*"
+       }
+      ]
+     },
+     {
+      "type": "text",
+      "text": "<d>fictty.com · github.com/brancusi/fictty</>",
+      "size": 1,
+      "align": "center"
+     },
+     {
+      "type": "text",
+      "text": "",
+      "size": "*"
+     }
+    ]
+   },
+   {
+    "type": "row",
+    "size": 1,
+    "children": [
+     {
+      "type": "text",
+      "text": " <b>n</> <d>next</>  <b>p</> <d>back</>  <b>tab</> <d>move</>  <b>esc</> <d>leaves a field</>  <b>t</> <d>theme</>  <b>a</> <d>apps</>  <b>q</> <d>quit</>"
+     },
+     {
+      "type": "text",
+      "text": "<d>{fps} fps · {msgs} msg/s · {draw_ms} ms a frame</> ",
+      "bind": "$stats",
+      "align": "right",
+      "size": 44
+     }
+    ]
+   }
+  ]
+ },
+ "keys": {
+  "t": {
+   "theme": "next"
+  },
+  "a": {
+   "load": "home.json"
+  },
+  "p": {
+   "load": "tour-8-speed.json"
+  }
+ },
+ "store": {
+  "seen": "",
+  "plan": [
+   {
+    "id": "launch",
+    "text": "Launch the tour",
+    "children": [
+     {
+      "id": "post",
+      "text": "Write the post"
+     },
+     {
+      "id": "demo",
+      "text": "Record the demo",
+      "children": [
+       {
+        "id": "script",
+        "text": "Script it",
+        "done": true
+       },
+       {
+        "id": "shoot",
+        "text": "Shoot it"
+       }
+      ]
+     },
+     {
+      "id": "ship",
+      "text": "Ship it"
+     }
+    ]
+   },
+   {
+    "id": "rest",
+    "text": "Rest",
+    "children": [
+     {
+      "id": "walk",
+      "text": "A long walk"
+     },
+     {
+      "id": "read",
+      "text": "A short book"
+     }
+    ]
+   },
+   {
+    "id": "later",
+    "text": "Someday",
+    "children": [
+     {
+      "id": "sail",
+      "text": "Learn to sail"
+     }
+    ]
+   }
+  ],
+  "items": [
+   {
+    "name": "Coffee beans",
+    "qty": "1",
+    "done": true
+   },
+   {
+    "name": "Oat milk",
+    "qty": "2",
+    "done": false
+   },
+   {
+    "name": "Lemons",
+    "qty": "6",
+    "done": false
+   }
+  ],
+  "files": [
+   {
+    "name": "notes.md"
+   },
+   {
+    "name": "draft-v1.md"
+   },
+   {
+    "name": "draft-v2.md"
+   },
+   {
+    "name": "draft-final.md"
+   },
+   {
+    "name": "draft-final-FINAL.md"
+   },
+   {
+    "name": "todo.txt"
+   },
+   {
+    "name": "screenshot.png"
+   }
+  ],
+  "trash": [],
+  "confirm": false,
+  "doomed": "",
+  "agent_done": false,
+  "agent_tasks": [
+   {
+    "id": "read",
+    "text": "Read the screen",
+    "done": false
+   },
+   {
+    "id": "write",
+    "text": "Write a note",
+    "done": false
+   },
+   {
+    "id": "point",
+    "text": "Point at something",
+    "done": false
+   },
+   {
+    "id": "theme",
+    "text": "Try a theme",
+    "done": false
+   }
+  ],
+  "item_name": "",
+  "item_qty": "",
+  "items_q": "",
+  "big_q": "",
+  "agentpad": ""
+ },
+ "status_bar": false
+}
