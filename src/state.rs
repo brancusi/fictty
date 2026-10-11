@@ -85,6 +85,9 @@ pub struct State {
     /// `$keys` (`pending`, and `next`: the keys that would finish or continue it).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub chord: Option<String>,
+    /// Where the focus was before it last moved (`{"focus": "$prev"}` goes back there).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub prev_focus: Option<String>,
 }
 
 /// A run of clicks on one cell of an editor (see `State::clicks`).
@@ -291,6 +294,7 @@ pub fn update(st: &mut State, msg: Msg) -> Vec<Effect> {
     // Messages from the person or an agent move selections on purpose: note the rows they're
     // on now, before re-deriving rows makes a selection follow its old row instead.
     let moves = matches!(msg, Msg::Key { .. } | Msg::Click { .. } | Msg::Set { .. } | Msg::Scroll { .. });
+    let was = st.focus.clone();
     let fx = apply(st, msg);
     if moves {
         remember(st);
@@ -302,6 +306,9 @@ pub fn update(st: &mut State, msg: Msg) -> Vec<Effect> {
     }
     // A selection, a write or a new row can point an editor at an entry it hasn't shown yet.
     fields(st);
+    if st.focus != was && was.is_some() {
+        st.prev_focus = was;
+    }
     let mut fx = fx;
     fx.extend(wanted(st));
     if !quiet {
@@ -396,13 +403,14 @@ fn apply(st: &mut State, msg: Msg) -> Vec<Effect> {
             if n.focusable() {
                 st.focus = Some(id.clone());
             }
-            let local = st.local.entry(id).or_default();
+            let local = st.local.entry(id.clone()).or_default();
             if let Some(r) = row {
                 local.selected = r;
             }
             if let Some(t) = tab {
                 local.tab = t;
                 settle(st);
+                into_tab(st, &id);
             }
             match click {
                 Some(a) => act(st, a),
@@ -1119,8 +1127,23 @@ fn act(st: &mut State, a: Action) -> Vec<Effect> {
             vec![Effect::Load(crate::model::fill(&load, &sel))]
         }
         Action::Focus { focus } => {
-            if st.ui.root.find(&focus).is_some_and(Node::focusable) {
-                st.focus = Some(focus);
+            let to = match focus.as_str() {
+                "$prev" => st.prev_focus.clone().unwrap_or_default(),
+                f => crate::model::fill(f, &action_context(st)),
+            };
+            if focus_order(st).contains(&to) {
+                st.focus = Some(to);
+            }
+            vec![]
+        }
+        Action::ShowTab { tab, of } => {
+            match st.ui.root.find(&of).map(|n| &n.kind) {
+                Some(Kind::Tabs { children, .. }) if tab < children.len() => {
+                    st.local.entry(of.clone()).or_default().tab = tab;
+                    settle(st);
+                    into_tab(st, &of);
+                }
+                _ => st.status = Some(format!("tab: {of} has no tab {tab}")),
             }
             vec![]
         }
@@ -1464,6 +1487,20 @@ fn derive_rows(st: &mut State, only: Option<&str>) -> bool {
     changed
 }
 
+/// Move the focus into the shown child of tabs node `id` (its first node that takes focus), so
+/// keys go to what the person just chose to see.
+fn into_tab(st: &mut State, id: &str) {
+    let Some(n) = st.ui.root.find(id) else { return };
+    let Kind::Tabs { children, .. } = &n.kind else { return };
+    let Some(child) = children.get(tab_of(st, n).min(children.len().saturating_sub(1))) else { return };
+    let mut inside = Vec::new();
+    child.walk_shown(&|n| tab_of(st, n), &|n| shown(st, n), &mut inside);
+    let order = focus_order(st);
+    if let Some(f) = inside.into_iter().filter(|n| n.focusable()).filter_map(|n| n.id.clone()).find(|i| order.contains(i)) {
+        st.focus = Some(f);
+    }
+}
+
 /// Show the next or previous child of the focused tabs node.
 fn switch(st: &mut State, dir: isize) -> Vec<Effect> {
     let Some(id) = st.focus.clone() else { return vec![] };
@@ -1533,8 +1570,19 @@ fn settle(st: &mut State) {
     st.ui.root.walk(&mut all);
     let ids: Vec<String> = all.iter().filter_map(|n| n.id.clone()).collect();
     st.local.retain(|k, _| ids.contains(k));
+    // A tabs node's starting tab, until something picks another.
+    let starts: Vec<(String, usize)> =
+        all.iter().filter_map(|n| match (&n.id, &n.kind) { (Some(id), Kind::Tabs { tab: Some(t), .. }) if !st.local.contains_key(id) => Some((id.clone(), *t)), _ => None }).collect();
+    let refocus = !starts.is_empty();
+    for (id, t) in starts {
+        st.local.entry(id).or_default().tab = t;
+    }
+    let order = if refocus { focus_order(st) } else { order };
+    // When the focus has to move (its node went or hid), the first node that takes it, past a
+    // tab bar to the content when there is any.
     if !st.focus.as_ref().is_some_and(|f| order.contains(f)) {
-        st.focus = order.first().cloned();
+        let tabs = |id: &String| st.ui.root.find(id).is_some_and(|n| matches!(n.kind, Kind::Tabs { .. }));
+        st.focus = order.iter().find(|id| !tabs(id)).or(order.first()).cloned();
     }
     // A selection follows its row's key, wherever the row is now.
     let moved: Vec<(String, usize)> = all

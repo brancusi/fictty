@@ -415,3 +415,50 @@ fn min_and_max_bound_a_share() {
     let top = s.screen().lines().next().unwrap().to_string();
     assert!(top.starts_with("╭────────╮╭"), "{top}");
 }
+
+fn views() -> Value {
+    json!({"root": {"type": "tabs", "id": "views", "tab": 1, "tabs": ["Today", "Inbox <b>{n}</>"], "bind": "counts", "children": [
+        {"type": "list", "id": "today", "items": ["a"]},
+        {"type": "col", "children": [
+            {"type": "list", "id": "inbox", "items": ["x", "y"], "keys": {"/": {"do": [{"put": "asking", "value": true}, {"focus": "ask"}]}}},
+            {"type": "input", "id": "ask", "when": "asking", "keys": {"enter": {"do": [{"put": "asking", "value": false}, {"focus": "$prev"}]}}}
+        ]}
+    ]}, "keys": {"1": {"tab": 0, "of": "views"}, "2": {"tab": 1, "of": "views"}},
+    "data": {"counts": {"value": {"n": 2}}}, "store": {"asking": false}})
+}
+
+#[test]
+fn tabs_start_where_they_say_and_choosing_one_moves_the_focus_into_it() {
+    let mut s = screen(views(), 30, 5);
+    assert!(s.screen().contains("x"), "starts on Inbox: {}", s.screen());
+    assert_eq!(s.state().focus.as_deref(), Some("inbox"), "the content, not the tab bar");
+    s.keys(&["1"]);
+    assert_eq!(s.state().focus.as_deref(), Some("today"));
+    s.msg(Msg::Click { id: "views".into(), row: None, tab: Some(1) });
+    assert_eq!(s.state().focus.as_deref(), Some("inbox"));
+    assert!(s.screen().starts_with(" Today   Inbox 2"), "{}", s.screen());
+}
+
+#[test]
+fn focus_goes_back_where_it_was() {
+    let mut s = screen(views(), 30, 6);
+    s.keys(&["/"]);
+    assert_eq!(s.state().focus.as_deref(), Some("ask"));
+    s.keys(&["enter"]);
+    assert_eq!(s.state().focus.as_deref(), Some("inbox"), "$prev");
+    // A template names the node too.
+    let ui = json!({"root": {"type": "col", "children": [{"type": "list", "id": "a", "items": ["1"]}, {"type": "list", "id": "b", "items": ["2"]}]},
+                    "keys": {"g": {"focus": "{store.to}"}}, "store": {"to": "b"}});
+    let mut s = screen(ui, 20, 4);
+    s.keys(&["g"]);
+    assert_eq!(s.state().focus.as_deref(), Some("b"));
+}
+
+#[test]
+fn a_cut_meta_ends_in_an_ellipsis_too() {
+    let ui = json!({"root": {"type": "list", "id": "l", "keep": 12, "mark": "", "lead": "",
+                              "item": "{t}\t{meta}", "items": [{"t": "Water the plants", "meta": "due Oct 18 (in 7d) · !"}]}});
+    let mut s = screen(ui, 30, 2);
+    let line = s.screen().lines().next().unwrap().to_string();
+    assert!(line.ends_with('…') && line.starts_with("Water the p…"), "{line:?}");
+}

@@ -246,12 +246,16 @@ fn draw_parts(buf: &mut Buffer, r: Rect, parts: Vec<Part>, keep: u16) {
     if cut {
         buf[(end - 1, r.y)].set_symbol("…");
     }
+    let cut_right = width(&right) > rw && rw > 1;
     let mut x = r.x + r.width - rw as u16;
     for p in right {
         if let Part::Text(s) = p {
             let (nx, _) = buf.set_span(x, r.y, &s, r.right().saturating_sub(x));
             x = nx;
         }
+    }
+    if cut_right {
+        buf[(r.right() - 1, r.y)].set_symbol("…");
     }
 }
 
@@ -1016,7 +1020,7 @@ fn node(cx: &mut Cx, n: &Node, f: &mut Frame, area: Rect) {
             let at = Rect::new(inner.x, top, inner.width, 3.min(inner.height));
             f.render_widget(Paragraph::new(lines).alignment(align), at);
         }
-        Kind::Tabs { tabs, children, lead, trail } => {
+        Kind::Tabs { tabs, children, lead, trail, .. } => {
             let shown = tab_of(st, n).min(children.len().saturating_sub(1));
             let v = bound(st, n).unwrap_or(&Value::Null);
             let bar = Rect { height: 1.min(inner.height), ..inner };
@@ -1037,9 +1041,8 @@ fn node(cx: &mut Cx, n: &Node, f: &mut Frame, area: Rect) {
             }
             let mut active = None;
             for (k, t) in tabs.iter().enumerate() {
-                let title: String = segments(t, v).into_iter().map(|g| g.text).collect();
-                let label = format!(" {title} ");
-                let w = Span::raw(label.as_str()).width() as u16;
+                // A title is a template, markup and all, padded a cell either side.
+                let w = cx.parts(t, v, Style::default()).iter().map(|p| if let Part::Text(s) = p { s.width() } else { 0 }).sum::<usize>() as u16 + 2;
                 if x + w > end {
                     break;
                 }
@@ -1051,7 +1054,8 @@ fn node(cx: &mut Cx, n: &Node, f: &mut Frame, area: Rect) {
                 } else {
                     cx.look("tabs.idle", Style::default().fg(cx.th.dim))
                 };
-                f.buffer_mut().set_string(r.x, r.y, &label, ts);
+                f.buffer_mut().set_style(r, ts);
+                draw_parts(f.buffer_mut(), Rect { x: r.x + 1, width: w - 1, ..r }, cx.parts(t, v, ts), 0);
                 if !id.is_empty() {
                     cx.hits.push(Hit { rect: r, id: id.clone(), row: Some(1000 + k), tab: Some(k), text: false });
                 }

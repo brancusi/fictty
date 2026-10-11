@@ -390,6 +390,9 @@ pub enum Kind {
     Tabs {
         tabs: Vec<String>,
         children: Vec<Node>,
+        /// The tab shown first (default 0), until the person or an action picks another.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        tab: Option<usize>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         lead: Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -685,7 +688,11 @@ pub enum Action {
     Named(String),
     Run { run: Vec<String> },
     Load { load: String },
+    /// Move the focus to a node: an id, a template (`"{store.from}"`), or `$prev`, wherever
+    /// it was before it last moved.
     Focus { focus: String },
+    /// Show tab `tab` of the tabs node `of`, and move the focus into it.
+    ShowTab { tab: usize, of: String },
     Theme { theme: String },
     Append { append: String, value: Value },
     Put { put: String, value: Value },

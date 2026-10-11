@@ -108,7 +108,10 @@ fictty theme paper                                        # choose a loaded them
   several keys (`"p h"`) is a chord. While fictty has the mouse, hold Shift (Option in some macOS
   terminals) to select text the usual way.
 - **Focus**: Tab and Shift-Tab move it, a UI's `focus` says where it starts when pushed, and Esc
-  leaves a text field (dropping a selection first).
+  leaves a text field (dropping a selection first). `{"focus": …}` takes an id, a template
+  (`"{store.from}"`) or `$prev` (where it was before it last moved). Choosing a tab (a click, or
+  `{"tab": 2, "of": "views"}`) moves the focus into it; a tabs node's `tab` is the one it starts
+  on, and tab titles take markup.
 - **Identity**: view state (selection, folds, carets, scroll) and focus are keyed by node id, so
   they survive a push for any id that's still there (React's `key`).
 - **Problems**: a bound value of the wrong shape, an unknown variant or tone, comes back as a
