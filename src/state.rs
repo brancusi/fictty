@@ -257,8 +257,9 @@ pub fn update(st: &mut State, msg: Msg) -> Vec<Effect> {
     let writes = st.store_writes;
     let quiet = matches!(msg, Msg::Tick { .. } | Msg::Hover { .. } | Msg::Stats { .. } | Msg::Activity { .. } | Msg::Caps { .. } | Msg::Size { .. });
     let fx = apply(st, msg);
-    if !quiet {
-        derive_rows(st);
+    // Rows a tree or a filter shows can change with anything but the quiet messages; when they
+    // do, selections are kept inside them again.
+    if !quiet && derive_rows(st) {
         settle(st);
     }
     // A selection, a write or a new row can point an editor at an entry it hasn't shown yet.
@@ -1253,7 +1254,8 @@ fn flatten(rows: &[Value], at: &str, depth: usize, t: &TreeCx, out: &mut Vec<Val
 }
 
 /// Work out `State::rows`: each tree's shown rows, and each filtered list's or table's matches.
-fn derive_rows(st: &mut State) {
+/// True when they changed.
+fn derive_rows(st: &mut State) -> bool {
     let mut all = Vec::new();
     st.ui.root.walk(&mut all);
     let mut out = BTreeMap::new();
@@ -1281,7 +1283,11 @@ fn derive_rows(st: &mut State) {
             _ => {}
         }
     }
+    if st.rows == out {
+        return false;
+    }
     st.rows = out;
+    true
 }
 
 /// Show the next or previous child of the focused tabs node.
