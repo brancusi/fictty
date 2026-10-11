@@ -13,6 +13,8 @@ publish = false
 [features]
 # The fuzz driver (`fictty::fuzz`), for an app's tests.
 fuzz = ["dep:vt100"]
+# A screen in a pseudo-terminal with an emulator on the other end (`fictty::sim`), for tests.
+sim = ["dep:vt100"]
 
 [[bin]]
 name = "fictty"
@@ -35,4 +37,4 @@ vt100 = { version = "0.16", optional = true }
 
 [dev-dependencies]
 # The tests use the fuzz driver.
-fictty = { path = ".", features = ["fuzz"] }
+fictty = { path = ".", features = ["fuzz", "sim"] }

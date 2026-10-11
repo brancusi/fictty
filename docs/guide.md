@@ -238,6 +238,16 @@ fictty::App::new(ui)
   fewest acts and prints them with the focused editor in the editing notation
   (`Hello ⟦wor▮⟧ld`), and `fuzz::replay(make, "key d-a; paste \"x\"", …)` runs a printed one
   again. See `tests/fuzz.rs`, which fuzzes every chapter of the tour.
+- **A real terminal, without one** (the `sim` feature): `fictty::sim::Sim::spawn(&["fictty",
+  "run", "ui.json"], 80, 24)` runs any fictty screen in a pseudo-terminal with a vt100 emulator on
+  the other end. Keys go in as the bytes a terminal sends (`keys(&["d-z"])` is `ESC[122;9u` once
+  the screen has pushed the kitty keyboard flags; legacy escapes in a terminal that doesn't speak
+  the protocol), so crossterm's own decoder reads them. The mouse goes in as SGR reports, pastes
+  bracketed, and `resize` changes the pty's size. Each step waits until the screen is still and
+  has answered on its socket. `check()` says whether the terminal shows exactly the frame;
+  `state()` and `request()` reach the socket. `FICTTY_SIM_TRACE=1` prints every byte each way.
+  `tests/sim.rs` plays random acts on a headless screen and through the pty, and checks that both
+  end the same.
 - **Store entries the host keeps**: `Host::keys` names prefixes (`page/`). Such an entry is never
   seeded: when something first shows it the screen asks `Host::load` (a spinner meanwhile, the
   reason if it fails), and once it has changed and been still for half a second it goes back

@@ -402,6 +402,10 @@ fn play(make: &dyn Fn() -> Headless, acts: &[Act], checks: &mut [Check], cfg: &C
             }
         }
         before = after;
+        // A running screen would have ended here: nothing after it happens.
+        if s.quit() {
+            break;
+        }
     }
     let end = before;
     // The state the acts left, before an end check acts on the screen.

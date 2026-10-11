@@ -1364,6 +1364,12 @@ impl Headless {
         self.wire.as_ref().map(Wire::text).unwrap_or_default()
     }
 
+    /// Whether the screen has quit (a `quit` action, or Ctrl-C outside a text field): a running
+    /// one would have ended here.
+    pub fn quit(&self) -> bool {
+        self.d.quit
+    }
+
     /// The screen's size in cells.
     pub fn size(&self) -> (u16, u16) {
         let a = self.term.backend().buffer().area;

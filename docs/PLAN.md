@@ -118,8 +118,10 @@ run in process, at Headless speed.
       a running screen knows its size before the first push, as a headless one does; host
       actions with `wait` hold keys until they and what they refresh have landed; a list bound to
       its own selection reads nothing and says so, instead of overflowing the stack
-- [ ] `fictty-sim`: any fictty binary in a pty with an emulator on the other end, keys encoded
-      under the keyboard flags the app pushed, so crossterm's own decoder is fuzzed too
+- [x] `fictty::sim` (the `sim` feature): any fictty binary in a pty with vt100 on the other end,
+      answering the terminal's queries, keys encoded under the keyboard flags the app pushed (so
+      crossterm's own decoder reads them), SGR mouse, bracketed paste, resize; random acts
+      through it end where they end on a headless screen
 
 ## 1 · Land the prototype (now)
 

@@ -17,6 +17,8 @@ pub mod lists;
 pub mod model;
 pub mod runtime;
 pub mod setup;
+#[cfg(feature = "sim")]
+pub mod sim;
 pub mod state;
 pub mod store;
 pub mod view;

@@ -38,13 +38,15 @@ These come first; every review checks them.
 - `src/lists.rs`: Markdown lists as text: renumbering, styles by depth (pure, text to edits)
 - `src/fuzz.rs`: the fuzz driver (the `fuzz` feature): generated acts on `Headless`, properties,
   shrinking, replay
+- `src/sim.rs`: a screen in a pseudo-terminal with a vt100 emulator (the `sim` feature): keys as
+  a terminal's bytes, the mouse, pastes, resizes
 - `src/host.rs`: `Host`, what an embedding app provides (sources, actions, kept store entries),
   and the `Notifier` it talks back with
 - `src/main.rs`: the CLI, one subcommand per socket operation
 - `tests/`: the library from outside: `components.rs` (each component, driven and read back),
   `editing.rs` (the editing-keys contract), `host.rs` (an embedding app), `fuzz.rs` (random
   input over editors and every chapter of the tour; `FUZZ_RUNS=2000` in a release build to go
-  deeper)
+  deeper), `sim.rs` (the binary in a pty)
 - `examples/`: UIs and their feeds. `showcase/` is the demo the one-liners run (the tour's chapters
   are written by `tour.py`; `autopilot.sh` is its agent); `stress/` and
   `finance/` are standalone; `thc/` and `pixels/` need Thought Control installed (they move to
