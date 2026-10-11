@@ -1,0 +1,31 @@
+# On a version tag (v0.1.0), build fictty for macOS and Linux and attach each as
+# fictty-<target>.tar.gz to the release. https://fictty.com/try.sh downloads these, and builds
+# from source on machines without one.
+name: release
+on:
+  push:
+    tags: ["v*"]
+permissions:
+  contents: write
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: macos-14, target: aarch64-apple-darwin }
+          - { os: macos-13, target: x86_64-apple-darwin }
+          - { os: ubuntu-22.04, target: x86_64-unknown-linux-gnu }
+          - { os: ubuntu-22.04-arm, target: aarch64-unknown-linux-gnu }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - run: rustup toolchain install stable --profile minimal && rustup default stable
+      - run: cargo build --release --locked
+      - run: tar -czf fictty-${{ matrix.target }}.tar.gz -C target/release fictty
+      - env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 ||
+            gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --notes "Try it: curl -fsSL https://fictty.com/try.sh | sh" || true
+          gh release upload "$GITHUB_REF_NAME" fictty-${{ matrix.target }}.tar.gz --clobber

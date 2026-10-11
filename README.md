@@ -29,6 +29,14 @@ It sits between [caretline](https://caretline.app), the text-editing engine, and
 
 ## Try it
 
+One line fetches fictty into `~/.fictty`, builds it, and opens the showcase:
+
+```sh
+curl -fsSL https://fictty.com/try.sh | sh
+```
+
+From a checkout:
+
 ```sh
 examples/showcase/play.sh       # a menu of screens: notes, a ledger, a live market, a gallery
 examples/showcase/tour.sh       # in another terminal: watch an agent drive it
