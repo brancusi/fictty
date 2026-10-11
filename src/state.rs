@@ -712,6 +712,9 @@ fn apply(st: &mut State, msg: Msg) -> Vec<Effect> {
                     indent(st, &id, key == "tab");
                     return vec![];
                 }
+                if key == "enter" && continue_list(st, &id) {
+                    return vec![];
+                }
                 let fx = type_into(st, &id, &key);
                 return editor_effects(st, fx);
             }
@@ -1055,6 +1058,61 @@ fn edit_lines(st: &mut State, id: &str, changes: Vec<(usize, usize, String)>) {
             r
         });
     }
+}
+
+/// Enter in a Markdown list item: the next line starts as the next item (`- `, `2. `, an open
+/// `[ ] ` after a task, at the same indent), the text after the caret going with it. Enter on an
+/// empty item outdents it, or at the left edge ends the list. False when it isn't a list item
+/// (or there's a selection), for Enter to do what it always does.
+fn continue_list(st: &mut State, id: &str) -> bool {
+    let Some(f) = st.ui.root.find(id).and_then(|n| n.field()) else { return false };
+    if !f.markdown || f.readonly {
+        return false;
+    }
+    let Some((key, view)) = field_view(st, id) else { return false };
+    let r = view.selection.primary();
+    if r.anchor != r.head {
+        return false;
+    }
+    let Some(Entry { body: Body::Text { doc }, .. }) = st.store.get(&key) else { return false };
+    let text = &doc.text;
+    let at = r.head.min(text.len_chars());
+    let l = text.char_to_line(at);
+    let start = text.line_to_char(l);
+    let line = text.line(l).to_string();
+    let line = line.trim_end_matches(['\n', '\r']);
+    let chars: Vec<char> = line.chars().collect();
+    let indent = chars.iter().take_while(|c| **c == ' ').count();
+    let rest: String = chars[indent..].iter().collect();
+    let (marker, next) = if let Some(b) = ["- ", "* ", "+ "].iter().find(|b| rest.starts_with(**b)) {
+        (b.len(), b.to_string())
+    } else {
+        let d = rest.chars().take_while(char::is_ascii_digit).count();
+        if d == 0 || !rest[d..].starts_with(". ") {
+            return false;
+        }
+        let n: u64 = rest[..d].parse().unwrap_or(0);
+        (d + 2, format!("{}. ", n + 1))
+    };
+    let tasky = rest[marker..].starts_with("[ ] ") || rest[marker..].starts_with("[x] ") || rest[marker..].starts_with("[X] ");
+    let prefix = indent + marker + if tasky { 4 } else { 0 };
+    let col = at - start;
+    if col < prefix {
+        return false;
+    }
+    let content_empty = chars.len() == prefix;
+    let changes = if content_empty {
+        if indent >= 2 {
+            vec![(start, start + 2, String::new())]
+        } else {
+            vec![(start, start + prefix, String::new())]
+        }
+    } else {
+        let task = if tasky { "[ ] " } else { "" };
+        vec![(at, at, format!("\n{}{next}{task}", " ".repeat(indent)))]
+    };
+    edit_lines(st, id, changes);
+    true
 }
 
 /// Where editor `id`'s caret is: its line, and its column in that line.

@@ -328,3 +328,32 @@ fn ctrl_t_makes_tasks() {
     check("- [x] task▮", json!({"syntax": "markdown", "tasks": "cycle"}), "task▮");
     check("  - [x] ▮task", json!({"syntax": "markdown", "tasks": "cycle"}), "  ▮task");
 }
+
+/// Enter in a Markdown list continues it (Thought Control's harness, round 3).
+#[test]
+fn enter_continues_a_markdown_list() {
+    let check = |from: &str, to: &str| {
+        let mut s = editor_with(from, json!({"syntax": "markdown"}));
+        s.keys(&["enter"]);
+        assert_eq!(shown(&mut s), to, "{from}");
+        s.keys(&["d-z"]);
+        assert_eq!(parse(&shown(&mut s)).0, parse(from).0, "{from}: one undo");
+    };
+    check("- item▮", "- item\n- ▮");
+    check("* item▮", "* item\n* ▮");
+    check("- [ ] task▮", "- [ ] task\n- [ ] ▮");
+    check("- [x] done▮", "- [x] done\n- [ ] ▮");
+    check("1. one▮", "1. one\n2. ▮");
+    check("  - nested▮", "  - nested\n  - ▮");
+    check("- spl▮it", "- spl\n- ▮it");
+    // An empty item: outdented, or at the left edge the list ends.
+    check("- a\n  - ▮", "- a\n- ▮");
+    check("- a\n- ▮", "- a\n▮");
+    check("- [ ] ▮", "▮");
+    // Not a list: Enter is Enter.
+    check("plain▮", "plain\n▮");
+    // Without Markdown, no lists.
+    let mut s = editor("- item▮");
+    s.keys(&["enter"]);
+    assert_eq!(shown(&mut s), "- item\n▮");
+}
