@@ -32,6 +32,12 @@ def visible(raw: bytes) -> str:
     return re.sub(r"\x1b\[[0-9;?]*[A-Za-z]|\x1b[\]_P][^\x07\x1b]*(\x07|\x1b\\)?", "", text)
 
 
+def drew(want: str, raw: bytes) -> bool:
+    """Whether the text was drawn. Spaces don't count: the screen only redraws cells that
+    changed, so a space already there is skipped and words run together in the output."""
+    return want.replace(" ", "") in re.sub(r"\s", "", visible(raw))
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("script", help="a URL or a local file")
@@ -53,7 +59,7 @@ def main():
     try:
         for i, want in enumerate(expects):
             end = time.time() + a.timeout
-            while want not in visible(seen) and time.time() < end:
+            while not drew(want, seen) and time.time() < end:
                 r, _, _ = select.select([fd], [], [], 0.2)
                 if r:
                     try:
@@ -65,14 +71,14 @@ def main():
                     seen += chunk
                     if b"\x1b[6n" in chunk:
                         os.write(fd, b"\x1b[1;1R")
-            if want not in visible(seen):
+            if not drew(want, seen):
                 ok = False
                 print(f"✗ never drew {want!r}. Last output:\n{visible(seen)[-1500:]}")
                 break
             print(f"✓ drew {want!r}")
             seen = b""
             if i < len(a.key):
-                time.sleep(0.5)
+                time.sleep(1.2)  # let the screen settle: keys sent during its startup probe are lost
                 for k in a.key[i].split(","):
                     os.write(fd, KEYS.get(k, k.encode()))
                     time.sleep(0.3)

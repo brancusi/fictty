@@ -3,9 +3,9 @@
 #
 #   curl -fsSL https://fictty.com/try/settling-the-stack.sh | sh
 #
-# It runs fictty as it was at commit a7378267c49d. Don't edit this file by hand: it's the
+# It runs fictty as it was at release v0.1.0 (de8a99b). Don't edit this file by hand: it's the
 # post's demo. Regenerate it with scripts/freeze-demo.sh, with a note, if it must change.
-# Changed: 2026-10-11, moved from 7c918e6 to a737826: the same showcase, plus a socket of its own and click-to-copy commands on the Agent screen, so a second terminal can drive it.
+# Changed: 2026-10-11, moved from a737826 to release v0.1.0 (the same showcase; no source change since): readers on macOS and Linux get a ready-made binary instead of needing Rust.
 #
 # Try the fictty showcase in one line:
 #
@@ -21,18 +21,29 @@
 # Blog posts link a frozen copy of this script pinned to one commit (https://fictty.com/try/),
 # so the demo a post shows stays exactly that demo.
 #
-# Needs git, and cargo (https://rustup.rs) when there's no release binary for this machine.
+# Needs git. Release tags have binaries for macOS and Linux; anything else builds with cargo
+# (https://rustup.rs). Without cargo, the latest (`main`) falls back to the newest release.
 # python3 runs the ledger's and the market's helpers. FICTTY_NO_RUN=1 sets up without running.
 set -eu
 
-ref="${1:-${FICTTY_REF:-a7378267c49d0756d68601d895175e62b5844475}}"
+ref="${1:-${FICTTY_REF:-v0.1.0}}"
 repo=https://github.com/brancusi/fictty
 home="${FICTTY_HOME:-$HOME/.fictty}"
-src="$home/$(printf '%s' "$ref" | tr -c 'A-Za-z0-9._-' '-' | cut -c1-40)"
-bin="$src/target/release/fictty"
 
 say() { printf '\033[36m▸\033[0m %s\n' "$1" >&2; }
 die() { printf '\033[31m✗\033[0m %s\n' "$1" >&2; exit 1; }
+
+# The latest without Rust: main can only be built, so take the newest release, which has binaries.
+if [ "$ref" = main ] && ! command -v cargo >/dev/null 2>&1 && command -v curl >/dev/null 2>&1; then
+  latest=$(curl -fsSL https://api.github.com/repos/brancusi/fictty/releases/latest 2>/dev/null |
+    sed -n 's/.*"tag_name": *"\([^"]*\)".*/\1/p' | head -1)
+  if [ -n "$latest" ]; then
+    say "Rust isn't installed, so this runs the latest release, $latest, instead of building main"
+    ref=$latest
+  fi
+fi
+src="$home/$(printf '%s' "$ref" | tr -c 'A-Za-z0-9._-' '-' | cut -c1-40)"
+bin="$src/target/release/fictty"
 
 command -v git >/dev/null 2>&1 || die "fictty needs git. Install it, then run this again."
 

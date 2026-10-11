@@ -6,14 +6,17 @@ const SITE = 'https://fictty.com';
 const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 const day = (d) => new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
 
-/** name, date (ISO), script (a path on the site: try.sh, try/slug.sh), commit (pinned) or latest */
+/** name, date (ISO), script (a path on the site: try.sh, try/slug.sh), commit (pinned: a full
+ * commit, or a release tag like v0.1.0) or latest, needs (what a reader must have installed) */
 export function demoHtml({ name, date, script, commit = '', latest = false, needs = 'git and Rust', compact = false }) {
   const cmd = `curl -fsSL ${SITE}/${script.replace(/^\//, '')} | sh`;
   const version = latest
     ? `<span class="dl-tag dl-latest">latest</span>`
-    : commit
-      ? `<span class="dl-tag">pinned · <a href="https://github.com/brancusi/fictty/commit/${esc(commit)}" rel="noopener">${esc(commit.slice(0, 7))}</a></span>`
-      : '';
+    : /^v\d/.test(commit)
+      ? `<span class="dl-tag">pinned · <a href="https://github.com/brancusi/fictty/releases/tag/${esc(commit)}" rel="noopener">${esc(commit)}</a></span>`
+      : commit
+        ? `<span class="dl-tag">pinned · <a href="https://github.com/brancusi/fictty/commit/${esc(commit)}" rel="noopener">${esc(commit.slice(0, 7))}</a></span>`
+        : '';
   return `<div class="demo-link${compact ? ' dl-compact' : ''}" role="group" aria-label="${esc(`Demo: ${name}`)}">
 <div class="dl-head"><span class="dl-label">Demo</span><b class="dl-name">${esc(name)}</b>${date ? `<time class="dl-date" datetime="${esc(date)}">${esc(day(date))}</time>` : ''}${version}</div>
 <div class="dl-cmd"><code><span class="d">$ </span>${esc(cmd)}</code><button type="button" data-copy="${esc(cmd)}" aria-label="Copy the demo command">copy</button></div>
