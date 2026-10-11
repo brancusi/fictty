@@ -5,6 +5,7 @@
 //! - `store`: the app's data, shared by the person and agents, apart from the UI.
 //! - `view`: state in, frame out.
 //! - `runtime`: the terminal, the control socket, child processes; `App` runs a screen.
+//! - `setup`: setting terminals up for fictty (WezTerm's ⌘ keys).
 //! - `host`: what an app that embeds fictty provides (sources and actions in process).
 //! - `gfx`: pictures (cards, plots, images) placed with the kitty graphics protocol.
 
@@ -12,6 +13,7 @@ pub mod gfx;
 pub mod host;
 pub mod model;
 pub mod runtime;
+pub mod setup;
 pub mod state;
 pub mod store;
 pub mod view;

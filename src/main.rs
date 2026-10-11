@@ -222,8 +222,8 @@ fn main() -> Result<()> {
         }
         Cmd::Setup { terminal, print } => {
             match (terminal.as_str(), print) {
-                ("wezterm", true) => print!("{}", runtime::WEZTERM_LUA),
-                ("wezterm", false) => println!("{}", runtime::setup_wezterm()?),
+                ("wezterm", true) => print!("{}", fictty::setup::wezterm_lua()),
+                ("wezterm", false) => println!("{}", fictty::setup::wezterm()?),
                 (other, _) => anyhow::bail!("nothing to set up for {other:?}: wezterm needs it; Ghostty and kitty send ⌘ keys themselves"),
             }
             return Ok(());

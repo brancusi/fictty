@@ -1261,28 +1261,6 @@ fn refusal(reply: &Value) -> String {
     }
 }
 
-/// The WezTerm module that sends ⌘ keys to fictty screens (see `src/wezterm.lua`).
-pub const WEZTERM_LUA: &str = include_str!("wezterm.lua");
-
-/// Install the WezTerm module beside the person's wezterm.lua (`$XDG_CONFIG_HOME/wezterm`, else
-/// `~/.config/wezterm`), and say the one line their config needs. Returns what to tell them.
-pub fn setup_wezterm() -> Result<String> {
-    let base = std::env::var_os("XDG_CONFIG_HOME").map(PathBuf::from).or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".config")));
-    let dir = base.context("no HOME to find the WezTerm config in")?.join("wezterm");
-    std::fs::create_dir_all(&dir)?;
-    let file = dir.join("fictty.lua");
-    std::fs::write(&file, WEZTERM_LUA)?;
-    let config = [dir.join("wezterm.lua"), PathBuf::from(std::env::var_os("HOME").unwrap_or_default()).join(".wezterm.lua")];
-    let wired = config.iter().any(|c| std::fs::read_to_string(c).is_ok_and(|t| t.contains("require('fictty')") || t.contains("require 'fictty'") || t.contains("require(\"fictty\")")));
-    let mut out = format!("wrote {}\n", file.display());
-    if wired {
-        out.push_str("your wezterm.lua already applies it; WezTerm reloads it on save");
-    } else {
-        out.push_str("add this to your wezterm.lua, after the config is made and before it's returned:\n\n    require('fictty').apply(config)\n");
-    }
-    Ok(out)
-}
-
 /// macOS can't wait on input from the generic `/dev/tty` (kqueue refuses it), so a screen whose
 /// input is `/dev/tty` would spin on its first read. Say so instead; the terminal's own device
 /// (`/dev/ttys003`) works.
