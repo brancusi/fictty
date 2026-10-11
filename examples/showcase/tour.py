@@ -403,7 +403,14 @@ def pages():
         {"kind": "wiki", "click": open_beside, "s-click": {"put": "here", "value": "{$match}"}},
         {"kind": "tag", "click": {"toast": "#{$match}: tags are links too", "tone": "violet"}},
     ]
+    names = [{"id": n} for n in PAGES]
+    picker = {"type": "list", "id": "pagelist", "size": 6, "title": "pages · enter goes · o opens beside", "items": names,
+              "item": "{id}", "keys": {
+                  "enter": {"do": [{"put": "here", "value": "{id}"}, {"focus": "here_page"}]},
+                  "o": {"do": [{"remove": "open", "where": {"id": "{id}"}}, {"append": "open", "value": {"id": "{id}"}},
+                               {"put": "flash", "value": "{id}", "for_ms": 2500}, {"toast": "Opened {id} beside", "tone": "accent"}]}}}
     main = {"type": "col", "children": [
+        picker,
         text("<b>{.}</>", bind="here", size=1, pad=[1, 0]),
         text("<d>wide: the sidebar is closed, so this pane has the room</>", size=1, pad=[1, 0], when="$width>=72"),
         text("<d>narrow: the sidebar took room, and this pane switched on its own width</>", size=1, pad=[1, 0], when="$width<72"),
@@ -425,8 +432,8 @@ def pages():
         "action, here: open it beside, as one more panel in a sidebar made with <b>each</> "
         "(a template per open page). Two editors on one page are one text with one undo.\n\n"
         "The main pane's layout reads <b>$width</>, its own width, not the screen's.",
-        ["click a <b>[[link]]</>, shift-click to go there", "<b>Tab</> nests a line, <b>Enter</> continues a list", "type in either copy of a page"],
-        [main, side]), focus="here_page")
+        ["<b>enter</> on a page, then click a <b>[[link]]</>", "<b>Tab</> nests a line, <b>Enter</> continues a list", "<b>esc</> leaves the page for the list"],
+        [main, side]), focus="pagelist")
 
 
 # ---- 9 · Speed ----------------------------------------------------------------------------

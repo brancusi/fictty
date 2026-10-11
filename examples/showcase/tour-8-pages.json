@@ -138,7 +138,7 @@
        },
        {
         "type": "text",
-        "text": "\n<accent+b>Try</>\n<d>›</> click a <b>[[link]]</>, shift-click to go there\n<d>›</> <b>Tab</> nests a line, <b>Enter</> continues a list\n<d>›</> type in either copy of a page",
+        "text": "\n<accent+b>Try</>\n<d>›</> <b>enter</> on a page, then click a <b>[[link]]</>\n<d>›</> <b>Tab</> nests a line, <b>Enter</> continues a list\n<d>›</> <b>esc</> leaves the page for the list",
         "pad": [
          1,
          0
@@ -178,6 +178,65 @@
        {
         "type": "col",
         "children": [
+         {
+          "type": "list",
+          "id": "pagelist",
+          "size": 6,
+          "title": "pages · enter goes · o opens beside",
+          "items": [
+           {
+            "id": "Home"
+           },
+           {
+            "id": "Groceries"
+           },
+           {
+            "id": "Ideas"
+           },
+           {
+            "id": "Trip"
+           }
+          ],
+          "item": "{id}",
+          "keys": {
+           "enter": {
+            "do": [
+             {
+              "put": "here",
+              "value": "{id}"
+             },
+             {
+              "focus": "here_page"
+             }
+            ]
+           },
+           "o": {
+            "do": [
+             {
+              "remove": "open",
+              "where": {
+               "id": "{id}"
+              }
+             },
+             {
+              "append": "open",
+              "value": {
+               "id": "{id}"
+              }
+             },
+             {
+              "put": "flash",
+              "value": "{id}",
+              "for_ms": 2500
+             },
+             {
+              "toast": "Opened {id} beside",
+              "tone": "accent"
+             }
+            ]
+           }
+          }
+         },
          {
           "type": "text",
           "text": "<b>{.}</>",
@@ -534,5 +593,5 @@
   "agentpad": ""
  },
  "status_bar": false,
- "focus": "here_page"
+ "focus": "pagelist"
 }
