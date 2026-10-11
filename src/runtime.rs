@@ -200,6 +200,15 @@ impl Driver {
             match fx {
                 Effect::Quit => self.quit = true,
                 Effect::Reply(_) => {}
+                // The terminal puts it on the clipboard (OSC 52); a headless render has none.
+                Effect::Copy(text) if !self.blocking => {
+                    use base64::Engine;
+                    let b64 = base64::engine::general_purpose::STANDARD.encode(text.as_bytes());
+                    let mut out = std::io::stdout();
+                    let _ = write!(out, "\x1b]52;c;{b64}\x07");
+                    let _ = out.flush();
+                }
+                Effect::Copy(_) => {}
                 Effect::Load(path) => match load(Path::new(&path)) {
                     Ok(ui) => queue.extend(update(st, Msg::Push { ui })),
                     Err(e) => st.status = Some(format!("{e:#}")),
@@ -437,6 +446,10 @@ pub fn run(file: Option<PathBuf>, watch: bool, socket: PathBuf, restore: Option<
     // A restored state's clock carries on from where it was.
     d.started = Instant::now().checked_sub(Duration::from_millis(st.now_ms)).unwrap_or_else(Instant::now);
     d.apply(&mut st, Msg::Push { ui });
+    let here = file.as_deref().and_then(|f| std::fs::canonicalize(f).ok()).and_then(|f| f.parent().map(Path::to_path_buf)).unwrap_or_default();
+    let bin = std::env::current_exe().map(|p| p.display().to_string()).unwrap_or_else(|_| "fictty".into());
+    let sock = std::fs::canonicalize(&socket).unwrap_or_else(|_| socket.clone());
+    d.apply(&mut st, Msg::Host { bin, socket: sock.display().to_string(), dir: here.display().to_string() });
     let caps = |sizing: bool| Msg::Caps { caps: crate::gfx::Caps::detect(), text_sizing: sizing };
     let mut kitty = crate::gfx::Kitty::default();
     let mut seen = file.as_deref().and_then(mtime);

@@ -77,7 +77,6 @@ mkdir -p "$home/bin"
 printf '#!/bin/sh\nFICTTY_SOCKET="${FICTTY_SOCKET:-%s}" exec "%s" "$@"\n' "$FICTTY_SOCKET" "$bin" >"$home/bin/fictty"
 printf '#!/bin/sh\nFICTTY_SOCKET="${FICTTY_SOCKET:-%s}" exec "%s" "$@"\n' "$FICTTY_SOCKET" "$src/examples/showcase/tour.sh" >"$home/bin/fictty-tour"
 chmod +x "$home/bin/fictty" "$home/bin/fictty-tour"
-other="export PATH=\"$home/bin:\$PATH\""
 
 if [ "${FICTTY_NO_RUN:-}" = 1 ]; then
   say "Ready. Run it with: FICTTY_SOCKET=$FICTTY_SOCKET FICTTY_SHOWCASE_STORE=$FICTTY_SHOWCASE_STORE $src/examples/showcase/play.sh"
@@ -92,9 +91,8 @@ if size=$(stty size </dev/tty 2>/dev/null); then
   fi
 fi
 say "Starting the showcase: arrows and Enter to open a screen, t for the theme, Esc back, q to quit"
-say "From a second terminal, paste:  $other"
-say "  then: fictty-tour (an agent drives it), or fictty read note/welcome, fictty theme paper"
-sleep 3
+say "To drive it from a second terminal: open the Agent screen and click a command to copy it"
+sleep 2
 # Hand the showcase the terminal's own device. Under `curl | sh` our input is the pipe, and the
 # generic /dev/tty won't do: macOS can't wait on it (kqueue), so the screen would hang on its
 # first read. ps names the real one (ttys003, pts/1).

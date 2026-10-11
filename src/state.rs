@@ -168,6 +168,10 @@ pub enum Msg {
     Layers { layers: Vec<LayerSpec> },
     /// What the terminal can draw.
     Caps { caps: crate::gfx::Caps, text_sizing: bool },
+    /// Where this screen runs: its binary, its socket, the folder its UI came from. Bindable as
+    /// `$self`, with `cli` (a command line that reaches this screen from any terminal), `env` (a
+    /// line that sets a terminal up so `fictty`, and the scripts beside the UI, reach it) and `dir`.
+    Host { bin: String, socket: String, dir: String },
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -177,6 +181,8 @@ pub enum Effect {
     Run(Vec<String>),
     Load(String),
     Quit,
+    /// Put this text on the system clipboard.
+    Copy(String),
     /// The answer to the request that sent the message (a write: its new revision, or why not).
     Reply(Value),
 }
@@ -354,6 +360,17 @@ fn apply(st: &mut State, msg: Msg) -> Vec<Effect> {
             st.data.insert("$caps".into(), Slot::Ready { value });
             vec![]
         }
+        Msg::Host { bin, socket, dir } => {
+            let q = |s: &str| format!("'{}'", s.replace('\'', r"'\''"));
+            let bin_dir = std::path::Path::new(&bin).parent().map(|p| p.display().to_string()).unwrap_or_default();
+            let value = serde_json::json!({
+                "bin": bin, "socket": socket, "dir": q(&dir),
+                "cli": format!("FICTTY_SOCKET={} {}", q(&socket), q(&bin)),
+                "env": format!("export PATH={}:{}:\"$PATH\" FICTTY_SOCKET={}", q(&bin_dir), q(&dir), q(&socket)),
+            });
+            st.data.insert("$self".into(), Slot::Ready { value });
+            vec![]
+        }
         Msg::Key { key } => {
             if let Some(why) = not_a_number(st, &key) {
                 st.status = Some(why);
@@ -393,6 +410,9 @@ fn action_context(st: &State) -> Value {
     ctx["store"] = Value::Object(store);
     let next: u64 = st.store.values().map(|e| e.rev).sum::<u64>() + 1;
     ctx["$id"] = format!("{next:x}").into();
+    if let Some(Slot::Ready { value }) = st.data.get("$self") {
+        ctx["$self"] = value.clone();
+    }
     ctx
 }
 
@@ -759,6 +779,10 @@ fn act(st: &mut State, a: Action) -> Vec<Effect> {
             }
             settle(st);
             vec![]
+        }
+        Action::Copy { copy } => {
+            let text = crate::model::fill(&copy, &action_context(st));
+            vec![Effect::Copy(text)]
         }
         Action::Remove { remove } => {
             let Some(id) = st.focus.clone() else { return vec![] };
@@ -1286,6 +1310,17 @@ mod tests {
         assert_eq!(text_of(&st, "q"), "ab", "enter adds no line");
         keys(&mut st, &["esc"]);
         assert_eq!(st.focus.as_deref(), Some("l"));
+    }
+
+    #[test]
+    fn copy_puts_a_command_for_this_screen_on_the_clipboard() {
+        let mut st = State::default();
+        update(&mut st, Msg::Push { ui: ui(json!({"root": {"type": "list", "id": "l", "items": [{"cmd": "fictty theme paper"}],
+            "keys": {"enter": {"copy": "{$self.cli} {cmd}"}}}})) });
+        update(&mut st, Msg::Host { bin: "/opt/it's/fictty".into(), socket: "/tmp/f.sock".into(), dir: "/srv/ui".into() });
+        assert_eq!(update(&mut st, Msg::Key { key: "enter".into() }), vec![Effect::Copy("FICTTY_SOCKET='/tmp/f.sock' '/opt/it'\\''s/fictty' fictty theme paper".into())]);
+        let Some(Slot::Ready { value }) = st.data.get("$self") else { panic!("no $self") };
+        assert_eq!(value["env"], "export PATH='/opt/it'\\''s':'/srv/ui':\"$PATH\" FICTTY_SOCKET='/tmp/f.sock'");
     }
 
     #[test]

@@ -35,9 +35,10 @@ One line fetches fictty into `~/.fictty`, builds it, and opens the showcase:
 curl -fsSL https://fictty.com/try.sh | sh
 ```
 
-It prints one line to paste into a second terminal (`export PATH="$HOME/.fictty/bin:$PATH"`); then
-`fictty-tour` has an agent drive the showcase, and `fictty read`, `put`, `theme` and the rest talk
-to it. `… | sh -s -- <tag or commit>` runs a given version, each in its own folder and store.
+To drive it from a second terminal, open the Agent screen and click a command (or select it and
+press Enter): it's copied ready to paste, and it sets that terminal up so `fictty` reaches the
+showcase. `tour.sh` there has an agent drive the whole thing. `… | sh -s -- <tag or commit>` runs a
+given version, each in its own folder and store.
 
 From a checkout:
 

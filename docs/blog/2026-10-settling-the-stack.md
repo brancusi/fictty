@@ -170,8 +170,8 @@ process reads the store and streams back the balance, the categories and the run
 It's pinned to the commit this post describes, so it shows what you see here even after fictty
 moves on. It fetches that version into `~/.fictty`, builds it (you'll need
 [Rust](https://rustup.rs)), and opens the menu. Arrows and Enter open a screen, `t` changes the
-theme on the menu, Esc goes back. To watch an agent drive it, paste the one line it prints into a
-second terminal, then run `fictty-tour`. For the latest fictty instead, use
+theme on the menu, Esc goes back. To watch an agent drive it, open the Agent screen, click
+`tour.sh` to copy it, and paste it into a second terminal. For the latest fictty instead, use
 `https://fictty.com/try.sh`.
 
 ## The morning: one number worth the night

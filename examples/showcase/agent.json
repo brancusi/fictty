@@ -15,8 +15,22 @@
            {"title": "by", "value": "{by|person=<accent>person</>;seed=<d>seed</>;*=<amber>$</>}", "size": 8},
            {"title": "holds", "value": "<d>{holds}</>", "size": 17}
          ]},
-        {"type": "text", "title": "Try it from another terminal", "variant": "quiet", "size": 14, "pad": [2, 1],
-         "text": "<d>Started from the one-liner? Paste this first:</>\n<accent>export PATH=\"$HOME/.fictty/bin:$PATH\"</>\n\n<accent>fictty read note/standup</>\n<accent>echo '\"hi\"' | fictty put draft -</>\n<accent>fictty theme paper</>\n<accent>fictty get --state</>\n\nWrites take <b>--if-rev N</>: if anyone wrote since\nrevision N, the write is refused, with what's there."}
+        {"type": "list", "id": "try", "title": "Try it from another terminal: click to copy", "variant": "quiet", "size": 7,
+         "item": " <accent>{cmd}</>\t<d>{about}</>  <b>⧉</> ",
+         "mark": "▌", "lead": " ",
+         "items": [
+           {"cmd": "tour.sh", "about": "an agent drives this showcase"},
+           {"cmd": "fictty read note/standup", "about": "read a note"},
+           {"cmd": "echo '\"hi\"' | fictty put draft -", "about": "write the new-note field"},
+           {"cmd": "fictty theme paper", "about": "change the theme"},
+           {"cmd": "fictty get --state", "about": "everything, as JSON"}
+         ],
+         "click": {"do": [{"copy": "{$self.env} && {cmd}"}, {"put": "copied", "value": {"cmd": "{cmd}"}}]},
+         "keys": {"enter": {"do": [{"copy": "{$self.env} && {cmd}"}, {"put": "copied", "value": {"cmd": "{cmd}"}}]}}},
+        {"type": "text", "bind": "copied", "size": 1, "pad": [2, 0],
+         "text": "<pos+b>✓ copied</> <d>· paste it in another terminal ·</> {cmd}"},
+        {"type": "text", "size": 4, "pad": [2, 0],
+         "text": "<d>Each line sets that terminal up for this screen first, so plain <b>fictty</> works there after.\nWrites take <b>--if-rev N</>: if anyone wrote since revision N, the write is refused.</>"}
       ]}
     ]},
     {"type": "text", "size": 1, "pad": 1,

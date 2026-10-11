@@ -62,14 +62,21 @@ fictty theme paper                                        # choose a loaded them
   literal `value`; `path` narrows the JSON, `every` re-fetches. Sources are disposable: a push
   fetches them again. Built in: `$stats`, `$caps`, `$theme`, `$store` (every entry, by revision)
   and `$log` (what agents did over the socket, newest first, at the local clock time; a write
-  that was refused shows as `refused`, with why).
+  that was refused shows as `refused`, with why). `$self` says where the screen runs: `bin`,
+  `socket`, `dir` (its UI's folder), `cli` (a command line that reaches this screen from any
+  terminal) and `env` (a line that sets a terminal up so `fictty`, and the scripts beside the UI,
+  reach it).
 - **Binds and templates**: `bind` names a store entry or a source, then a path (`books.running`);
   `@id` is the selected row of another list. Text and columns are templates over the bound
   value: `"{text} · {due}"`, `<accent+b>styled</>`, `{±change}` coloured by sign.
 - **Actions** on keys: `quit`, `up`, `down`, `top`, `bottom`, `focus_next`, `focus_prev`, `refresh`,
   `{"run": [argv with {field} of the selected row]}`, `{"load": "{file}"}`, `{"focus": "id"}`,
-  `{"theme": "next"}`, and store actions: `append`, `put`, `remove`, `do`. A focused node's keys
-  win over the UI's, which win over the defaults.
+  `{"theme": "next"}`, `{"copy": "text"}` (onto the system clipboard, through the terminal's
+  OSC 52; a template over the selected row, `store` and `$self`), and store actions: `append`,
+  `put`, `remove`, `do`. A node's `click` runs an action too, after the click selects the row, so a
+  list of commands people click to copy is `"click": {"copy": "{$self.env} && {cmd}"}`. A focused
+  node's keys win over the UI's, which win over the defaults. While fictty has the mouse, hold
+  Shift (Option in some macOS terminals) to select text the usual way.
 - **Identity**: view state (selection, carets, scroll) and focus are keyed by node id, so they
   survive a push for any id that's still there (React's `key`).
 - **Problems**: a bound value of the wrong shape, an unknown variant or tone, comes back as a

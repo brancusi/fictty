@@ -98,7 +98,9 @@ theme.
 - [ ] Markdown rendered (not only styled in an editor), code with syntax colour, a diff view
 - [ ] An embedded terminal for live command output (tui-term)
 - [ ] Motion: transitions on push and theme change (tachyonfx)
-- [ ] Editors: dragging to select, the system clipboard (OSC 52), search
+- [x] A `copy` action onto the system clipboard (OSC 52), and `$self`, so a screen can hand out
+      commands that reach it from any terminal
+- [ ] Editors: dragging to select, copy and paste with the system clipboard, search
 - [ ] Project components: JSON with named parameters, loaded from the project, `{"use": "kpi", …}`
 - [ ] Review the drawing-only components (`gauge`, `big`, `bars`, `sparkline`, `chart`, `map`):
       keep what's compact and degrades well, move the rest to recipes

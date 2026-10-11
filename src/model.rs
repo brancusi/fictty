@@ -530,6 +530,9 @@ pub enum Action {
     Append { append: String, value: Value },
     Put { put: String, value: Value },
     Remove { remove: String },
+    /// Put text on the system clipboard (through the terminal, OSC 52). A template over the
+    /// selected row, `store` and `$self`, like the store actions.
+    Copy { copy: String },
     Do {
         #[serde(rename = "do")]
         steps: Vec<Action>,
