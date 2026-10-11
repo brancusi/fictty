@@ -29,13 +29,17 @@ scroll), and the **theme** is the person's or the project's. The reasons are in
 
 ## Try it
 
-The quickest way to see everything is the showcase: a menu of screens (notes, a ledger, a live
-market, a gallery of components, an agent's log), each one JSON, sharing one store and three
-themes.
+The quickest way to see everything is the showcase. It opens on a tour of nine chapters, each a
+lesson, something to play with and a quest: a screen and its JSON side by side, every component,
+the store with live revisions, a dialog over a stack, themes, an autopilot driving the screen
+while you watch, and a firehose beside 100,000 rows that filter on every key. The apps (notes, a
+ledger, a live market, a gallery of components, an agent's log) are one key away. Every screen is
+JSON, sharing one store and three themes.
 
 ```sh
-examples/showcase/play.sh       # builds fictty if needed; t switches theme, esc goes back
-examples/showcase/tour.sh       # in another terminal: an agent drives the showcase
+examples/showcase/play.sh       # builds fictty if needed; n/p move through the tour, a the apps
+examples/showcase/tour.sh       # in another terminal: an agent drives the apps
+python3 examples/showcase/tour.py   # rewrites the tour's chapters from one script
 ```
 
 And by hand:
@@ -56,31 +60,57 @@ fictty theme paper                                        # choose a loaded them
 
 ## The model
 
-- **Components** (a closed set): `col`, `row`, `text`, `list`, `table` (with column `total`s),
-  `sparkline`, `chart`, `bars` (up, or `horizontal`), `gauge`, `big`, `tabs`, `editor`, `input`,
-  and the pixel ones below. Every node can have `id`, `size` (`12`, `"30%"`, `"*"`, `"2*"`),
-  `title`, `border`, `pad`, `variant`, `tone`, `style`, `bind` and `keys`.
-- **Sources** in `data`: `cmd` (argv), `shell`, `stream` (a command printing JSON lines) or a
-  literal `value`; `path` narrows the JSON, `every` re-fetches. Sources are disposable: a push
-  fetches them again. Built in: `$stats`, `$caps`, `$theme`, `$store` (every entry, by revision)
-  and `$log` (what agents did over the socket, newest first, at the local clock time; a write
-  that was refused shows as `refused`, with why). `$self` says where the screen runs: `bin`,
-  `socket`, `dir` (its UI's folder), `cli` (a command line that reaches this screen from any
-  terminal) and `env` (a line that sets a terminal up so `fictty`, and the scripts beside the UI,
-  reach it).
+- **Components** (a closed set): layout `col`, `row` (both with a `gap`) and `stack` (children
+  over each other); `text`, `big`, `spinner`; `list`, `tree`, `table` (with column `total`s);
+  `editor`, `input`, `button`; `tabs`; `sparkline`, `chart`, `bars` (up, or `horizontal`), `gauge`;
+  and the pixel ones below. Every node can have `id`, `size` (`12`, `"30%"`, `"*"`, `"2*"`) with
+  `min` and `max`, `title`, `border`, `pad`, `variant`, `tone`, `style`, `bind`, `keys`, `click`,
+  `when`, and in a stack `float` and `modal`.
+- **Lists and trees** share their row options: `item` (a template), `row_variant` and `variants`
+  (a template per kind of row) with `skip` (rows that can't be selected), `mark` and `lead`,
+  `selected` (a style), `lines` (rows of several lines), `keep` (cells the left side keeps before
+  the right side, after a tab, is cut), `key` (default `id`: the selection follows its row when
+  rows come and go) and `filter` (a store entry whose words every shown row must contain). A
+  `tree` nests rows under each row's `nest` (default `children`), folds with ←/→ and space, keeps
+  its folds by key, and gives templates `{$depth}`, `{$kids}` and `{$open}`; its `leaf` is the
+  glyph for rows with nothing under them. A shown row carries `$ptr`, where it sits in the bound
+  entry, so store actions reach it through a filter or deep in a tree.
+- **Overlays**: a `stack` draws its children over each other, the last on top; one with
+  `float` (`width`, `height`, `at` an edge or corner, `margin`) sits where it says, and a `modal`
+  one dims what's behind it, swallows clicks there and keeps the focus. **`when`** shows a node only
+  while a condition holds: a bind that's set (`"dialog"`), not set (`"!dialog"`), compared
+  (`"mode=edit"`, `"$screen.width>=120"`), or several joined by ` & `. A hidden node takes no
+  room and no focus. Layers take `when` too. **Toasts** show in the corner for a while: the
+  `toast` action, `fictty toast`, and failed commands and host actions.
+- **Sources** in `data`: `cmd` (argv), `shell`, `stream` (a command printing JSON lines), a
+  literal `value`, or `host` (the embedding app's, with `args` that are templates over the state,
+  so `{"host": "detail", "args": {"id": "{@list.id}"}}` refetches as the selection moves); `path`
+  narrows the JSON, `every` re-fetches. Sources are disposable: a push fetches them again. Built
+  in: `$stats`, `$caps`, `$theme`, `$screen` (the terminal's `width` and `height`), `$keys` (a
+  chord's keys so far), `$store` (every entry, by revision) and `$log` (what agents did over the
+  socket, newest first, at the local clock time; a write that was refused shows as `refused`,
+  with why). `$self` says where the screen runs: `bin`, `socket`, `dir` (its UI's folder), `cli`
+  (a command line that reaches this screen from any terminal) and `env` (a line that sets a
+  terminal up so `fictty`, and the scripts beside the UI, reach it).
 - **Binds and templates**: `bind` names a store entry or a source, then a path (`books.running`);
   `@id` is the selected row of another list. Text and columns are templates over the bound
-  value: `"{text} · {due}"`, `<accent+b>styled</>`, `{±change}` coloured by sign.
-- **Actions** on keys: `quit`, `up`, `down`, `top`, `bottom`, `focus_next`, `focus_prev`, `refresh`,
-  `{"run": [argv with {field} of the selected row]}`, `{"load": "{file}"}`, `{"focus": "id"}`,
-  `{"theme": "next"}`, `{"copy": "text"}` (onto the system clipboard, through the terminal's
-  OSC 52; a template over the selected row, `store` and `$self`), and store actions: `append`,
-  `put`, `remove`, `do`. A node's `click` runs an action too, after the click selects the row, so a
-  list of commands people click to copy is `"click": {"copy": "{$self.env} && {cmd}"}`. A focused
-  node's keys win over the UI's, which win over the defaults. While fictty has the mouse, hold
-  Shift (Option in some macOS terminals) to select text the usual way.
-- **Identity**: view state (selection, carets, scroll) and focus are keyed by node id, so they
-  survive a push for any id that's still there (React's `key`).
+  value: `"{text} · {due}"`, `<accent+b>styled</>` (or any theme part: `<link>`), `<<` for a
+  literal `<`, `{±change}` coloured by sign, `{name:12}` fitted to 12 cells (`{n:>6}`
+  right-aligned), maps (`{done|true=☑;*=☐}`), and a tab right-aligns the rest of a line.
+- **Actions** on keys: `quit`, `up`, `down`, `top`, `bottom`, `focus_next`, `focus_prev`,
+  `refresh`, `{"run": [argv with {field} of the selected row]}`, `{"load": "{file}"}`,
+  `{"focus": "id"}`, `{"theme": "next"}`, `{"copy": "text"}` (onto the system clipboard, through
+  the terminal's OSC 52), `{"toast": "Saved", "tone": "pos"}`, `{"host": "name", "args": {…}}`,
+  and store actions: `append`, `put`, `remove` (the selected row, or with `where` every row that
+  matches), `toggle` (a true/false field of the selected row: a checkbox), `do`. A node's `click`
+  runs an action too, after the click selects the row; a `button` runs its click on Enter and
+  Space. A focused node's keys win over the UI's, which win over the defaults; a binding of
+  several keys (`"p h"`) is a chord. While fictty has the mouse, hold Shift (Option in some macOS
+  terminals) to select text the usual way.
+- **Focus**: Tab and Shift-Tab move it, a UI's `focus` says where it starts when pushed, and Esc
+  leaves a text field (dropping a selection first).
+- **Identity**: view state (selection, folds, carets, scroll) and focus are keyed by node id, so
+  they survive a push for any id that's still there (React's `key`).
 - **Problems**: a bound value of the wrong shape, an unknown variant or tone, comes back as a
   sentence in `problems` (in `get --state`, in replies, on the status line).
 
@@ -102,9 +132,18 @@ document with its undo history), each with a revision (`rev`) and who wrote it l
   the entry its template names from the selected note, so a list and an editor make a notes app.
   An editor takes every key but Tab, Shift-Tab and Esc; `input` is the one-line version, and
   Enter runs its `keys.enter`. `"accept": "number"` makes an input refuse typing that can't make
-  a number, and its keys wait until the text is a whole one (the status says why). A click places the caret; `"syntax": "markdown"` styles headings,
-  list markers, quotes and inline code (theme parts `md.heading`, `md.bullet`, `md.quote`,
-  `md.code`) while the text stays plain.
+  a number, and its keys wait until the text is a whole one (the status says why).
+  `"syntax": "markdown"` styles headings, list markers, quotes, inline code and task items
+  (theme parts `md.heading`, `md.bullet`, `md.quote`, `md.code`, `md.task`, `md.done`) while the
+  text stays plain; Ctrl-T or a click on a `[ ]` ticks it. `"readonly": true` shows a text to
+  read, scroll, select and copy, never change.
+- **Editing keys** follow the Mac text field, each with a twin for terminals that don't send ⌘:
+  ⌘C/⌘X/⌘V (Ctrl), ⌘A (⌥A), ⌘Z and ⇧⌘Z (Ctrl-Z, Ctrl-Y), ⌘←/→ (Home/End, Ctrl-A/E), ⌘↑/↓
+  (Ctrl-Home/End), ⌥←/→ (⌥B/F), Shift with any of them to select, ⌘⌫ (Ctrl-U), ⌥⌫ (Ctrl-W),
+  ⌥Del (⌥D). The screen turns on the kitty keyboard protocol where the terminal has it, so ⌘ keys
+  arrive (as `d-`); copy and cut go to the system clipboard; a paste types. The mouse places the
+  caret, Shift-click extends, a drag selects, a double click takes a word and a triple the line.
+  `tests/editing.rs` is the contract.
 
 ## Themes
 
@@ -142,14 +181,20 @@ fictty::App::new(ui)
 - **Tests without a terminal**: `App::new(ui).host(h).headless(80, 24)?` gives a screen to send
   `keys(&["j", "x"])` and messages to, and to read back as text (`screen()`, `ansi()`) or state
   (`state()`). Sources are fetched and actions done inline. See `tests/host.rs`.
+- **Store entries the host keeps**: `Host::keys` names prefixes (`page/`). Such an entry is never
+  seeded: when something first shows it the screen asks `Host::load` (a spinner meanwhile, the
+  reason if it fails), and once it has changed and been still for half a second it goes back
+  through `Host::save`. `Notifier::reload(key)` loads it again when it changed at the host; text
+  comes in as an edit, so the person's carets and undo carry on. The `--store` file leaves these
+  entries out.
 - **Upgrade** re-runs the same command line as the new binary with `FICTTY_RESTORE` pointing at
   the saved state, so an embedding app keeps its state across `fictty upgrade` like the binary.
 
 ## Not yet
 
 A policy on what a pushed UI may `run` (today: anything you could run yourself, over a socket
-only you can open), flexbox layout, collections keyed by id and writes by path, `watch`,
-history. The order is in [PLAN.md](PLAN.md).
+only you can open), flexbox layout, writes by path with a revision per record, `watch`, a widget
+registry for embedding apps, history. The order is in [PLAN.md](PLAN.md).
 
 ## Stress demos
 

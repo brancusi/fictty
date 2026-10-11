@@ -55,12 +55,36 @@ here with its history.
 - [x] A Tokens panel on posts (`scripts/blog-tokens.py`), and the `blog-post` and `ship` skills
 - [x] A release workflow that builds macOS and Linux binaries on a version tag
 
+### The kit, the library and the tour (2026-10-11)
+
+Thought Control started building its screens on fictty in a second session, and asked for what it
+needed as behaviour; what was generic landed here, what was app-specific stayed there.
+
+- [x] fictty as a library: `App` (a UI value or file, a socket, a store, themes), `Host` (sources
+      and actions in process, a `Notifier` to say the world changed), `Headless` for tests;
+      upgrade re-runs the same command line, so an embedding app survives it
+- [x] Store entries the host keeps (pages in a vault): loaded when shown, saved when settled,
+      reloaded as an edit when they change at the host
+- [x] `tree` (folds, filters, `$ptr` so store actions reach nested rows), `toggle`, `filter` on
+      lists, tables and trees; lists and trees share their row options (`Rows`): marks, row
+      variants, `lines`, `keep`, and a selection that follows its row's `key`
+- [x] `stack` with `float` and `modal` (dialogs), `when` on nodes and layers (`$screen` makes
+      panes responsive), `button`, toasts, `spinner`, scroll bars, `gap`, `min`/`max`
+- [x] Editors: Markdown task items, `readonly`; the Mac editing keys with twins, the kitty
+      keyboard protocol, bracketed paste, the mouse (shift-click, drag, double and triple click),
+      the system clipboard; `tests/editing.rs` is the contract Thought Control wrote
+- [x] Templates: `{key:11}` widths, `<<`, theme parts as tags, tabs from `|markup` values; tab
+      titles as templates with a lead and a trail; chords (`"p h"`, `$keys`); a UI's `focus`;
+      Esc leaves a field; `remove` with `where`; host source `args` from the selection and store
+- [x] The tour: the one-liner opens nine chapters with a quest each, an autopilot and a firehose
+      (114 fps at 12,000 messages a second beside a filtered 100,000-row list, release build)
+
 ## 1 · Land the prototype (now)
 
 - [x] Review and merge `store-theme-prototype` into `main`
 - [ ] Errors about a field show on the field (its border and title), not only on the status line,
       which screens may hide
-- [ ] An escape for `<` in template markup
+- [x] An escape for `<` in template markup (`<<`)
 - [ ] Problem checks only for nodes whose bind or data changed, to win back the 13% of flat-out
       push speed they cost
 - [x] The first release, `v0.1.0`: binaries for macOS and Linux (Intel Macs cross-built), so the
@@ -94,11 +118,11 @@ The live session showed both gaps: the agent couldn't know the person had typed 
 
 ## 3 · Records
 
-- [ ] Collections keyed by id with an `order`; lists and tables bind to them, and selection
-      follows the id, so an insert or a removal doesn't move it
+- [ ] Collections keyed by id with an `order`; lists and tables bind to them (selection already
+      follows a row's `key`, so an insert or a removal doesn't move it)
 - [ ] Writes by JSON Pointer path, with a revision per record, so two writers on different rows
       don't collide
-- [ ] Store actions that address a record (`put` and `remove` by id, not the selected row only)
+- [ ] Store actions that address a record: `remove` with `where` is done; `put` by id next
 - [ ] More `accept` kinds where a form needs them: a date, one of a list, required
 - [ ] JSON Patch (RFC 6902) as the patch dialect for values
 
@@ -109,19 +133,21 @@ theme.
 
 - [ ] Layout on flexbox (a subset, via `taffy`): direction, size, grow, gap, padding, alignment,
       so the dense screens work at 80×24 as well as 160×46
-- [ ] Popups and dialogs on layers (confirm, a picker, a toast)
-- [ ] Scroll views for long text and logs; scrollbars
+- [x] Popups and dialogs (a `stack` with a floating, `modal` child), toasts
+- [x] Scroll bars on lists, tables and trees; `readonly` editors for long text and logs
 - [ ] Markdown rendered (not only styled in an editor), code with syntax colour, a diff view
 - [ ] An embedded terminal for live command output (tui-term)
 - [ ] Motion: transitions on push and theme change (tachyonfx)
 - [x] A `copy` action onto the system clipboard (OSC 52), and `$self`, so a screen can hand out
       commands that reach it from any terminal
-- [ ] Editors: dragging to select, copy and paste with the system clipboard, search
+- [x] Editors: dragging to select, copy and paste with the system clipboard
+- [ ] Editors: search
 - [ ] Project components: JSON with named parameters, loaded from the project, `{"use": "kpi", …}`
 - [ ] Review the drawing-only components (`gauge`, `big`, `bars`, `sparkline`, `chart`, `map`):
       keep what's compact and degrades well, move the rest to recipes
 - [ ] A catalog: what this screen can render (alphabet, project components, registered widgets)
-- [ ] Widget registry: any ratatui widget, registered by an embedding app (the escape hatch)
+- [ ] Widget registry: any ratatui widget, registered by an embedding app (the escape hatch);
+      waits until Thought Control finds something the kit can't do
 - [ ] Rasterise pictures on a worker thread (a 15 Hz plot costs ~7 ms a frame on the main thread)
 
 ## 5 · Design system
@@ -159,7 +185,7 @@ The store's revisions and the `$log` are the first pieces of it.
 
 - [ ] Put the showcase beside a browser artifact for the same task, in front of a few people who
       supervise agents: do they want this in the terminal?
-- [ ] Thought Control builds a screen on fictty
+- [ ] Thought Control builds a screen on fictty (under way: nine views on `App` and `Host`)
 - [ ] ownpurse's walkthrough runs on fictty
-- [ ] fictty as a library crate an app embeds, not only a binary
+- [x] fictty as a library crate an app embeds, not only a binary
 - [ ] Publish the crate
