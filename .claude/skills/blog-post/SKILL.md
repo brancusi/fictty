@@ -109,6 +109,44 @@ by `web/src/styles/prose.css`, so the `.md` stays the source of truth.
 - Links inside raw HTML aren't rewritten to site routes, so put links in Markdown text, not in
   captions.
 
+## The Tokens panel
+
+Every post carries a **Tokens** panel under its date: one line (tokens through the model, tokens
+written, the models used) that opens into a table by phase. It's the `Tokens` component
+(`web/src/components/Tokens.astro`), fed by a `tokens:` block in the front matter. Make the block
+with the script, from the session transcript(s) the post covers:
+
+```sh
+scripts/blog-tokens.py ~/.claude/projects/<project>/<session>.jsonl \
+  --phase "first words of the message that started phase 1=Phase one" \
+  --phase "first words of the message that started phase 2=Phase two" \
+  --end "first words of the first message after the post's work"
+```
+
+- Phases follow the post's own sections, named the way the post names them; 5–9 is plenty.
+- A phase starts at Aram's message (typed, or queued mid-turn) that begins with the given words.
+  Subagents and workflows in the session's folder that ran inside the window count too.
+- Paste the printed YAML into the front matter. Add `note:` for anything the count leaves out
+  (context compactions aren't in the transcript; work in another session needs its file too, so
+  run the script on each and add the phases).
+- The panel works out the totals, the share bars and model names (`claude-opus-5-5` shows as
+  Claude Opus 5.5). Don't add a cost: prices change, and the panel is about scope.
+
+## Let readers try it
+
+If the post shows something runnable, give readers one line to run it, the way the stack post
+does:
+
+```sh
+curl -fsSL https://fictty.com/try.sh | sh
+```
+
+`web/public/try.sh` fetches fictty into `~/.fictty`, uses a release binary or builds from source,
+and runs the showcase. When a post is about a different demo, extend `try.sh` (a demo name as an
+argument, defaulting to the showcase) rather than writing a second script, test it from an empty
+`FICTTY_HOME` with `FICTTY_NO_RUN=1`, and say in the post what it needs (Rust, until releases
+exist; python3 for helper processes).
+
 ## Links
 
 Link docs relatively (`../design/state-and-theme.md`, `2026-10-why-the-terminal.md`); the site
@@ -119,7 +157,8 @@ the sitemap and `scripts/links.mjs`).
 
 ## Check, then publish
 
-1. `cd web && npm run build && npm run links`: the build passes and every link resolves.
+1. `cd web && npm run build && npm run links`: the build passes and every link resolves. Open the
+   Tokens panel and check its numbers against the script's output.
 2. Read it as a stranger would: is every section a moment that matters? Cut the rest.
 3. Look at it: serve `web/dist` and screenshot the post at desktop and phone widths. Check that
    every speaker turn holds the right paragraphs, figures load, and charts read in light and dark.

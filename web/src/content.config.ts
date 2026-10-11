@@ -9,7 +9,14 @@ import { z } from 'astro/zod';
 export const collections = {
   blog: defineCollection({
     loader: glob({ pattern: '*.md', base: '../docs/blog', generateId: ({ entry }) => entry.replace(/\.md$/, '').replace(/^\d{4}-\d{2}-/, '') }),
-    schema: z.object({ title: z.string(), description: z.string(), date: z.coerce.date(), kicker: z.string().optional() }),
+    schema: z.object({
+      title: z.string(), description: z.string(), date: z.coerce.date(), kicker: z.string().optional(),
+      // what the work took, for the Tokens panel (scripts/blog-tokens.py writes it)
+      tokens: z.object({
+        models: z.array(z.string()), from: z.string().optional(), to: z.string().optional(), note: z.string().optional(),
+        phases: z.array(z.object({ name: z.string(), calls: z.number(), input: z.number(), cached: z.number(), output: z.number() })),
+      }).optional(),
+    }),
   }),
   docs: defineCollection({
     loader: glob({ pattern: 'guide.md', base: '../docs' }),

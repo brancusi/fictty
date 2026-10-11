@@ -1,0 +1,82 @@
+---
+// The "Tokens" panel at the top of a post: one line (how many tokens the work took, on which
+// models), and a toggle that opens the detail by phase. The numbers are the post's `tokens:` front
+// matter, made by scripts/blog-tokens.py from the session transcripts.
+interface Phase { name: string; calls: number; input: number; cached: number; output: number }
+interface Props { tokens: { models: string[]; from?: string; to?: string; phases: Phase[]; note?: string } }
+const { tokens } = Astro.props;
+const sum = (k: keyof Omit<Phase, 'name'>) => tokens.phases.reduce((n, p) => n + p[k], 0);
+const total = { calls: sum('calls'), input: sum('input'), cached: sum('cached'), output: sum('output') };
+const all = total.input + total.cached + total.output;
+const short = (n: number) => (n >= 1e6 ? `${(n / 1e6).toFixed(1).replace(/\.0$/, '')}M` : n >= 1e3 ? `${Math.round(n / 1e3)}k` : `${n}`);
+// claude-opus-5-5 → Claude Opus 5.5; anything else as it is
+const model = (id: string) => {
+  const m = id.match(/^claude-([a-z]+)-(\d+)-(\d+)/);
+  return m ? `Claude ${m[1][0].toUpperCase()}${m[1].slice(1)} ${m[2]}.${m[3]}` : id;
+};
+const models = tokens.models.map(model).join(', ');
+const when = (s?: string) => (s ? new Date(s).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: 'UTC' }) : '');
+const widest = Math.max(...tokens.phases.map((p) => p.input + p.cached + p.output));
+---
+<details class="tokens">
+  <summary>
+    <span class="tk-label">Tokens</span>
+    <span class="tk-line"><b>≈{short(all)}</b> through the model · <b>{short(total.output)}</b> written · {models}</span>
+    <span class="tk-more" aria-hidden="true">details</span>
+  </summary>
+  <div class="tk-body">
+    <p class="tk-lede">
+      What the work in this post took, from {when(tokens.from)} to {when(tokens.to)} UTC: {total.calls.toLocaleString('en')} model calls on {models}.
+      Most of it is <b>cache reads</b>: every call re-sends the conversation so far, and the cache serves it. <b>New input</b> is what was added (messages, files read, tool output), and <b>output</b> is what the model wrote, its thinking included.
+    </p>
+    <div class="tk-table" role="table" aria-label="Tokens by phase">
+      <div class="tk-row tk-head" role="row"><span role="columnheader">Phase</span><span role="columnheader">Share</span><span role="columnheader">Calls</span><span role="columnheader">New input</span><span role="columnheader">Cache reads</span><span role="columnheader">Output</span></div>
+      {tokens.phases.map((p) => (
+        <div class="tk-row" role="row">
+          <span role="cell">{p.name}</span>
+          <span role="cell" class="tk-bar" style={`--w:${((p.input + p.cached + p.output) / widest) * 100}%`}><i style={`--a:${(p.cached / (p.input + p.cached + p.output)) * 100}%`}></i></span>
+          <span role="cell">{p.calls}</span>
+          <span role="cell">{short(p.input)}</span>
+          <span role="cell">{short(p.cached)}</span>
+          <span role="cell">{short(p.output)}</span>
+        </div>
+      ))}
+      <div class="tk-row tk-total" role="row"><span role="cell">Total</span><span role="cell">{short(all)}</span><span role="cell">{total.calls}</span><span role="cell">{short(total.input)}</span><span role="cell">{short(total.cached)}</span><span role="cell">{short(total.output)}</span></div>
+    </div>
+    <p class="tk-foot">
+      <span class="tk-key"><i class="k-cached"></i>cache reads</span><span class="tk-key"><i class="k-rest"></i>new input and output</span>
+      {tokens.note && <span>{tokens.note}</span>}
+      Counted from the session transcripts with <a href="https://github.com/brancusi/fictty/blob/main/scripts/blog-tokens.py">scripts/blog-tokens.py</a>, each response once.
+    </p>
+  </div>
+</details>
+<style>
+  .tokens { max-width: 760px; border: 1px solid var(--line); border-radius: 6px; background: color-mix(in srgb, var(--raised) 55%, transparent); font: 400 13px/1.45 var(--mono); }
+  .tokens summary { list-style: none; display: flex; align-items: center; gap: 12px; padding: 10px 14px; cursor: pointer; flex-wrap: wrap; }
+  .tokens summary::-webkit-details-marker { display: none; }
+  .tk-label { font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink); display: inline-flex; align-items: center; gap: 7px; }
+  .tk-label::before { content: ""; width: 7px; height: 14px; border-radius: 1px; background: var(--glass-violet); mix-blend-mode: var(--blend); box-shadow: 0 0 calc(10px * var(--glow)) var(--glass-violet); }
+  .tk-line { color: var(--ink-2); flex: 1 1 300px; }
+  .tk-line b { color: var(--ink); font-weight: 500; }
+  .tk-more { color: var(--focus); display: inline-flex; align-items: center; gap: 6px; }
+  .tk-more::after { content: "▾"; transition: transform 0.15s; }
+  .tokens[open] .tk-more::after { transform: rotate(180deg); }
+  .tokens summary:hover .tk-more { text-decoration: underline; }
+  .tk-body { padding: 4px 14px 14px; display: grid; gap: 12px; border-top: 1px solid var(--line); }
+  .tk-lede { font: 400 14px/1.6 var(--sans); color: var(--ink-2); margin-top: 10px; }
+  .tk-lede b { color: var(--ink); font-weight: 600; }
+  .tk-table { display: grid; overflow-x: auto; }
+  .tk-row { display: grid; grid-template-columns: minmax(150px, 1.6fr) minmax(70px, 1fr) 46px 72px 84px 64px; gap: 10px; align-items: center; padding: 6px 0; border-bottom: 1px solid color-mix(in srgb, var(--line) 70%, transparent); min-width: 560px; }
+  .tk-row span:nth-child(n + 3) { text-align: right; color: var(--ink-2); }
+  .tk-head span { font-size: 11px; letter-spacing: 0.05em; text-transform: uppercase; color: var(--ink-3) !important; }
+  .tk-total { border-bottom: 0; color: var(--ink); font-weight: 500; }
+  .tk-total span { color: var(--ink) !important; }
+  .tk-bar { display: block; height: 10px; }
+  .tk-bar i { display: block; height: 100%; width: var(--w); min-width: 2px; border-radius: 2px; background: linear-gradient(90deg, var(--glass-cyan) var(--a), var(--glass-amber) var(--a)); mix-blend-mode: var(--blend); }
+  .tk-foot { color: var(--ink-3); font-size: 12px; display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; }
+  .tk-foot a { color: var(--focus); }
+  .tk-key { display: inline-flex; align-items: center; gap: 6px; }
+  .tk-key i { width: 10px; height: 10px; border-radius: 2px; }
+  .k-cached { background: var(--glass-cyan); }
+  .k-rest { background: var(--glass-amber); }
+</style>

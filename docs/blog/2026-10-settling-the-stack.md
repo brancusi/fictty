@@ -3,6 +3,20 @@ title: "Kicking the tyres: how fictty found its stack"
 description: "Aram nearly shelved fictty. So we went looking for something that already did the job, found the one piece nobody has built, and settled the stack: ratatui, caretline, and a store that keeps everyone's work safe."
 date: 2026-10-11T09:00:00Z
 kicker: milestone
+tokens:
+  models: [claude-opus-5-5]
+  from: 2026-10-10T18:39Z
+  to: 2026-10-11T05:23Z
+  note: The two context compactions in this window aren't in the transcript, so they aren't counted.
+  phases:
+    - { name: "Explore the options", calls: 73, input: 140879, cached: 8604896, output: 55878 }
+    - { name: "Proof of concept and editor", calls: 76, input: 116329, cached: 17694377, output: 55077 }
+    - { name: "The store: who owns what", calls: 29, input: 60425, cached: 9402228, output: 44210 }
+    - { name: "Theme and store design", calls: 3, input: 4810, cached: 1055349, output: 4556 }
+    - { name: "Proposal and overnight showcase", calls: 118, input: 208230, cached: 55899023, output: 139979 }
+    - { name: "Morning play and four fixes", calls: 36, input: 79262, cached: 2943810, output: 20581 }
+    - { name: "Notes and roadmap", calls: 20, input: 53175, cached: 2772413, output: 17526 }
+    - { name: "Merge, post, skill, deploy", calls: 53, input: 90275, cached: 11011062, output: 49537 }
 ---
 
 *A conversation between Aram ([@brancusi](https://github.com/brancusi)), who is building fictty, and
@@ -148,6 +162,17 @@ process reads the store and streams back the balance, the categories and the run
 </div>
 <figcaption><b>Same JSON, other themes,</b> and a made-up live market four times a second.</figcaption>
 </figure>
+
+**Tilde:** You can run this exact showcase yourself, in one line:
+
+```sh
+curl -fsSL https://fictty.com/try.sh | sh
+```
+
+It fetches fictty into `~/.fictty`, builds it (you'll need [Rust](https://rustup.rs) until there
+are prebuilt binaries), and opens the menu. Arrows and Enter open a screen, `t` changes the theme,
+Esc goes back. To watch an agent drive it, run `~/.fictty/src/examples/showcase/tour.sh` in a
+second terminal.
 
 ## The morning: one number worth the night
 

@@ -1,6 +1,7 @@
 ---
 import { getCollection, render } from 'astro:content';
 import Base from '../../layouts/Base.astro';
+import Tokens from '../../components/Tokens.astro';
 import '../../styles/prose.css';
 
 export async function getStaticPaths() {
@@ -20,6 +21,7 @@ const toc = headings.filter((h) => h.depth === 2);
       <h1>{post.data.title}</h1>
       <p class="lede">{post.data.description}</p>
       <p class="meta"><time datetime={post.data.date.toISOString()}>{fmt(post.data.date)}</time><span>{Math.max(1, Math.round(words / 230))} min read</span></p>
+      {post.data.tokens && <Tokens tokens={post.data.tokens} />}
     </header>
     <div class="layout">
       {toc.length > 2 && (
