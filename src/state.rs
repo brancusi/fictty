@@ -1540,14 +1540,9 @@ pub fn source_now(st: &State, name: &str) -> Option<crate::model::Source> {
 fn fill_from_state(st: &State, v: &Value) -> Value {
     let read = |path: &str| -> Option<Value> {
         let path = path.trim();
-        let (key, rest) = match path.strip_prefix("store.") {
-            Some(p) => (p, true),
-            None => (path, false),
-        };
-        if rest || st.store.contains_key(split_bind(key).0) {
-            if let Some(Body::Text { doc }) = st.store.get(key).map(|e| &e.body) {
-                return Some(Value::String(doc.text.to_string()));
-            }
+        let key = path.strip_prefix("store.").unwrap_or(path);
+        if let Some(Body::Text { doc }) = st.store.get(key).map(|e| &e.body) {
+            return Some(Value::String(doc.text.to_string()));
         }
         value_of(st, key).cloned()
     };
