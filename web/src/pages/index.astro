@@ -49,7 +49,6 @@ const BLOCKS: [string, string, string, string, boolean?][] = [
 
     <div class="site-in">
       <section class="hero" aria-labelledby="hero-h">
-        <DemoLink name="The fictty showcase" script="try.sh" latest compact />
         <div class="hero-art">
           <canvas id="heroCanvas" role="img" aria-label="Twenty panes of tinted glass that assemble into the fictty wordmark, then come apart into a row of tubes and regroup as a terminal screen. Click to step through."></canvas>
           <noscript><Wordmark class="hero-static" id="hero-ns" /></noscript>
@@ -62,9 +61,10 @@ const BLOCKS: [string, string, string, string, boolean?][] = [
         <h1 id="hero-h">Terminal screens agents write, patch and read&nbsp;back.</h1>
         <p class="sub">fictty is a terminal screen an agent writes as one JSON value, edits live by id, and reads back exactly, while its data streams straight from your commands, never through the model.</p>
         <div class="cta">
-          <Install />
+          <DemoLink name="The fictty showcase" script="try.sh" latest compact />
           <div class="cta-links">
             <a class="btn primary" href="/docs/">Read the guide</a>
+            <a class="btn" href="#install">Install</a>
             <a class="btn" href={GH} rel="noopener">GitHub</a>
           </div>
         </div>
@@ -153,7 +153,7 @@ const BLOCKS: [string, string, string, string, boolean?][] = [
         </a>
       </section>
 
-      <section class="close" aria-labelledby="close-h">
+      <section class="close" id="install" aria-labelledby="close-h">
         <Wordmark class="close-wm" id="close-wm" />
         <h2 id="close-h" class="sr-only">Get fictty</h2>
         <p class="fictile"><i>fictile</i>, adj.: capable of being moulded. Plus <i>tty</i>, the terminal.</p>

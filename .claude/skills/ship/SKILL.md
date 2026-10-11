@@ -77,9 +77,11 @@ The landing page's demo link, above the fold, is the global one: `https://fictty
 runs `main` as it is, not a pinned commit. It should show a good range of fictty, so the showcase
 on `main` is the one to keep growing: new features join it (step 2.1), old ones stay.
 
-- `web/src/pages/index.astro` renders `<DemoLink … script="try.sh" latest compact />` at the top of
-  the hero; its date is `main`'s last commit at build time. Check it's there and above the fold at
-  1300×900 (a screenshot).
+- `web/src/pages/index.astro` renders `<DemoLink … script="try.sh" latest compact />` in the hero,
+  under the title and description, above the buttons (the build-from-source command lives in the
+  `#install` section at the bottom). Its date is `main`'s last commit at build time. Check it's
+  there in a screenshot at 1300×900, and that its copy button gets the click (nothing, like the
+  hero canvas, sits over it: `document.elementFromPoint` on the button).
 - After pushing, test the live latest link from an empty home:
 
   ```sh
