@@ -1,0 +1,538 @@
+{
+ "root": {
+  "type": "col",
+  "children": [
+   {
+    "type": "row",
+    "size": 1,
+    "children": [
+     {
+      "type": "text",
+      "text": " <accent+b>fictty</> <d>tour</>",
+      "size": 14
+     },
+     {
+      "type": "text",
+      "text": "<pos>◆</>",
+      "size": 2,
+      "when": "seen=Saturn"
+     },
+     {
+      "type": "text",
+      "text": "<d>◇</>",
+      "size": 2,
+      "when": "!seen=Saturn"
+     },
+     {
+      "type": "text",
+      "text": "<pos>◆</>",
+      "size": 2,
+      "when": "plan.0.children.0.done"
+     },
+     {
+      "type": "text",
+      "text": "<d>◇</>",
+      "size": 2,
+      "when": "!plan.0.children.0.done"
+     },
+     {
+      "type": "text",
+      "text": "<pos>◆</>",
+      "size": 2,
+      "when": "items.3"
+     },
+     {
+      "type": "text",
+      "text": "<d>◇</>",
+      "size": 2,
+      "when": "!items.3"
+     },
+     {
+      "type": "text",
+      "text": "<pos>◆</>",
+      "size": 2,
+      "when": "trash"
+     },
+     {
+      "type": "text",
+      "text": "<d>◇</>",
+      "size": 2,
+      "when": "!trash"
+     },
+     {
+      "type": "text",
+      "text": "<pos>◆</>",
+      "size": 2,
+      "when": "$theme.name!=glass"
+     },
+     {
+      "type": "text",
+      "text": "<d>◇</>",
+      "size": 2,
+      "when": "!$theme.name!=glass"
+     },
+     {
+      "type": "text",
+      "text": "<pos>◆</>",
+      "size": 2,
+      "when": "agent_done"
+     },
+     {
+      "type": "text",
+      "text": "<d>◇</>",
+      "size": 2,
+      "when": "!agent_done"
+     },
+     {
+      "type": "text",
+      "text": "<accent+b>◆</>",
+      "size": 2,
+      "when": "open"
+     },
+     {
+      "type": "text",
+      "text": "<accent+b>◇</>",
+      "size": 2,
+      "when": "!open"
+     },
+     {
+      "type": "text",
+      "text": "<pos>◆</>",
+      "size": 2,
+      "when": "big_q"
+     },
+     {
+      "type": "text",
+      "text": "<d>◇</>",
+      "size": 2,
+      "when": "!big_q"
+     },
+     {
+      "type": "text",
+      "text": "<d>8/10</>  <b>Pages</> ",
+      "align": "right"
+     }
+    ]
+   },
+   {
+    "type": "text",
+    "text": "<border>{*─}</>",
+    "size": 1
+   },
+   {
+    "type": "row",
+    "children": [
+     {
+      "type": "col",
+      "title": "8 · Pages",
+      "size": 44,
+      "variant": "card",
+      "children": [
+       {
+        "type": "text",
+        "text": "Pages are store entries; links between them are data. A click on <b>[[Page]]</> runs an action, here: open it beside, as one more panel in a sidebar made with <b>each</> (a template per open page). Two editors on one page are one text with one undo.\n\nThe main pane's layout reads <b>$width</>, its own width, not the screen's.",
+        "pad": [
+         1,
+         0
+        ]
+       },
+       {
+        "type": "text",
+        "text": "\n<accent+b>Try</>\n<d>›</> click a <b>[[link]]</>, shift-click to go there\n<d>›</> <b>Tab</> nests a line, <b>Enter</> continues a list\n<d>›</> type in either copy of a page",
+        "pad": [
+         1,
+         0
+        ],
+        "size": 6
+       },
+       {
+        "type": "col",
+        "size": 5,
+        "edge": "rounded",
+        "children": [
+         {
+          "type": "text",
+          "text": "<pos+b>◆ Quest done.</>\n<b>n</> for the next chapter.",
+          "when": "open",
+          "pad": [
+           1,
+           0
+          ]
+         },
+         {
+          "type": "text",
+          "text": "<warn+b>◇ Quest</>\nClick <b>[[Groceries]]</> to open it beside.",
+          "when": "!open",
+          "pad": [
+           1,
+           0
+          ]
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "type": "row",
+      "children": [
+       {
+        "type": "col",
+        "children": [
+         {
+          "type": "text",
+          "text": "<b>{.}</>",
+          "bind": "here",
+          "size": 1,
+          "pad": [
+           1,
+           0
+          ]
+         },
+         {
+          "type": "text",
+          "text": "<d>wide: the sidebar is closed, so this pane has the room</>",
+          "size": 1,
+          "pad": [
+           1,
+           0
+          ],
+          "when": "$width>=72"
+         },
+         {
+          "type": "text",
+          "text": "<d>narrow: the sidebar took room, and this pane switched on its own width</>",
+          "size": 1,
+          "pad": [
+           1,
+           0
+          ],
+          "when": "$width<72"
+         },
+         {
+          "type": "editor",
+          "id": "here_page",
+          "bind": "here",
+          "doc": "page/{.}",
+          "syntax": "markdown",
+          "tab": "indent-lines",
+          "caret": "end",
+          "links": [
+           {
+            "kind": "wiki",
+            "click": {
+             "do": [
+              {
+               "remove": "open",
+               "where": {
+                "id": "{$match}"
+               }
+              },
+              {
+               "append": "open",
+               "value": {
+                "id": "{$match}"
+               }
+              },
+              {
+               "put": "flash",
+               "value": "{$match}",
+               "for_ms": 2500
+              },
+              {
+               "toast": "Opened {$match} beside",
+               "tone": "accent"
+              }
+             ]
+            },
+            "s-click": {
+             "put": "here",
+             "value": "{$match}"
+            }
+           },
+           {
+            "kind": "tag",
+            "click": {
+             "toast": "#{$match}: tags are links too",
+             "tone": "violet"
+            }
+           }
+          ],
+          "border": true
+         }
+        ]
+       },
+       {
+        "type": "col",
+        "size": 40,
+        "when": "open",
+        "children": [
+         {
+          "type": "text",
+          "text": "<accent>• {.} just opened</>",
+          "bind": "flash",
+          "size": 1,
+          "when": "flash",
+          "pad": [
+           1,
+           0
+          ]
+         },
+         {
+          "type": "each",
+          "id": "beside",
+          "bind": "open",
+          "template": {
+           "type": "col",
+           "id": "panel-{$item.id}",
+           "title": "{$item.id}",
+           "children": [
+            {
+             "type": "button",
+             "id": "close-{$item.id}",
+             "label": "close",
+             "size": 1,
+             "align": "right",
+             "click": {
+              "remove": "open",
+              "where": {
+               "id": "{$item.id}"
+              }
+             }
+            },
+            {
+             "type": "editor",
+             "id": "side-{$item.id}",
+             "doc": "page/{$item.id}",
+             "syntax": "markdown",
+             "tab": "indent-lines",
+             "links": [
+              {
+               "kind": "wiki",
+               "click": {
+                "do": [
+                 {
+                  "remove": "open",
+                  "where": {
+                   "id": "{$match}"
+                  }
+                 },
+                 {
+                  "append": "open",
+                  "value": {
+                   "id": "{$match}"
+                  }
+                 },
+                 {
+                  "put": "flash",
+                  "value": "{$match}",
+                  "for_ms": 2500
+                 },
+                 {
+                  "toast": "Opened {$match} beside",
+                  "tone": "accent"
+                 }
+                ]
+               },
+               "s-click": {
+                "put": "here",
+                "value": "{$match}"
+               }
+              },
+              {
+               "kind": "tag",
+               "click": {
+                "toast": "#{$match}: tags are links too",
+                "tone": "violet"
+               }
+              }
+             ]
+            }
+           ]
+          }
+         }
+        ]
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "type": "stack",
+    "size": 1,
+    "children": [
+     {
+      "type": "row",
+      "children": [
+       {
+        "type": "text",
+        "text": " <b>n</> <d>next</>  <b>p</> <d>back</>  <b>tab</> <d>move</>  <b>esc</> <d>leaves a field</>  <b>t</> <d>theme</>  <b>a</> <d>apps</>  <b>q</> <d>quit</>"
+       },
+       {
+        "type": "text",
+        "text": "<d>{fps} fps · {msgs} msg/s · {draw_ms} ms a frame</> ",
+        "bind": "$stats",
+        "align": "right",
+        "size": 44
+       }
+      ]
+     },
+     {
+      "type": "toasts"
+     }
+    ]
+   }
+  ]
+ },
+ "keys": {
+  "t": {
+   "theme": "next"
+  },
+  "a": {
+   "load": "home.json"
+  },
+  "n": {
+   "load": "tour-9-speed.json"
+  },
+  "p": {
+   "load": "tour-7-agents.json"
+  }
+ },
+ "store": {
+  "seen": "",
+  "plan": [
+   {
+    "id": "launch",
+    "text": "Launch the tour",
+    "children": [
+     {
+      "id": "post",
+      "text": "Write the post"
+     },
+     {
+      "id": "demo",
+      "text": "Record the demo",
+      "children": [
+       {
+        "id": "script",
+        "text": "Script it",
+        "done": true
+       },
+       {
+        "id": "shoot",
+        "text": "Shoot it"
+       }
+      ]
+     },
+     {
+      "id": "ship",
+      "text": "Ship it"
+     }
+    ]
+   },
+   {
+    "id": "rest",
+    "text": "Rest",
+    "children": [
+     {
+      "id": "walk",
+      "text": "A long walk"
+     },
+     {
+      "id": "read",
+      "text": "A short book"
+     }
+    ]
+   },
+   {
+    "id": "later",
+    "text": "Someday",
+    "children": [
+     {
+      "id": "sail",
+      "text": "Learn to sail"
+     }
+    ]
+   }
+  ],
+  "items": [
+   {
+    "name": "Coffee beans",
+    "qty": "1",
+    "done": true
+   },
+   {
+    "name": "Oat milk",
+    "qty": "2",
+    "done": false
+   },
+   {
+    "name": "Lemons",
+    "qty": "6",
+    "done": false
+   }
+  ],
+  "files": [
+   {
+    "name": "notes.md"
+   },
+   {
+    "name": "draft-v1.md"
+   },
+   {
+    "name": "draft-v2.md"
+   },
+   {
+    "name": "draft-final.md"
+   },
+   {
+    "name": "draft-final-FINAL.md"
+   },
+   {
+    "name": "todo.txt"
+   },
+   {
+    "name": "screenshot.png"
+   }
+  ],
+  "trash": [],
+  "confirm": false,
+  "doomed": "",
+  "agent_done": false,
+  "agent_tasks": [
+   {
+    "id": "read",
+    "text": "Read the screen",
+    "done": false
+   },
+   {
+    "id": "write",
+    "text": "Write a note",
+    "done": false
+   },
+   {
+    "id": "point",
+    "text": "Point at something",
+    "done": false
+   },
+   {
+    "id": "theme",
+    "text": "Try a theme",
+    "done": false
+   }
+  ],
+  "here": "Home",
+  "open": [],
+  "flash": "",
+  "page/Home": "# Home\n\nA tiny notebook. Click a link to open it beside this one: [[Groceries]], [[Ideas]], [[Trip]].\nShift-click opens it here instead. Tags are links too: #fictty #demo\n\n- Tab nests a line under the one above it\n- Enter on a list item starts the next one\n- [ ] Ctrl-T ticks a task, or makes a line one",
+  "page/Groceries": "# Groceries\n\n- [ ] Oat milk\n- [ ] Lemons\n- [x] Coffee beans\n\nBack to [[Home]].",
+  "page/Ideas": "# Ideas\n\n- A screen that is one value\n  - agents write it\n  - people type in it\n- More in [[Trip]]",
+  "page/Trip": "# Trip\n\n1. Pack light\n2. Train at nine\n3. Read [[Ideas]] on the way",
+  "item_name": "",
+  "item_qty": "",
+  "items_q": "",
+  "big_q": "",
+  "agentpad": ""
+ },
+ "status_bar": false,
+ "focus": "here_page"
+}

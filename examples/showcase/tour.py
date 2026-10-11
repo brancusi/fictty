@@ -25,8 +25,9 @@ CHAPTERS = [
     ("tour-5-layers.json", "Layers", "trash", "Delete a file, and say yes."),
     ("tour-6-themes.json", "Themes", "$theme.name!=glass", "Press <b>t</> to change the theme."),
     ("tour-7-agents.json", "Agents", "agent_done", "Run the autopilot and keep your hands off."),
-    ("tour-8-speed.json", "Speed", "big_q", "Filter the 100,000 rows."),
-    ("tour-9-yours.json", "Your turn", None, None),
+    ("tour-8-pages.json", "Pages", "open", "Click <b>[[Groceries]]</> to open it beside."),
+    ("tour-9-speed.json", "Speed", "big_q", "Filter the 100,000 rows."),
+    ("tour-10-yours.json", "Your turn", None, None),
 ]
 QUESTS = [c for c in CHAPTERS if c[2]]
 
@@ -67,6 +68,17 @@ SEEDS = {
 }
 TEXT_SEEDS = {"item_name": "", "item_qty": "", "items_q": "", "big_q": "", "agentpad": ""}
 
+# The Pages chapter's notebook: pages are store entries, links between them open them.
+PAGES = {
+    "Home": "# Home\n\nA tiny notebook. Click a link to open it beside this one: [[Groceries]], [[Ideas]], [[Trip]].\nShift-click opens it here instead. Tags are links too: #fictty #demo\n\n"
+            "- Tab nests a line under the one above it\n- Enter on a list item starts the next one\n- [ ] Ctrl-T ticks a task, or makes a line one",
+    "Groceries": "# Groceries\n\n- [ ] Oat milk\n- [ ] Lemons\n- [x] Coffee beans\n\nBack to [[Home]].",
+    "Ideas": "# Ideas\n\n- A screen that is one value\n  - agents write it\n  - people type in it\n- More in [[Trip]]",
+    "Trip": "# Trip\n\n1. Pack light\n2. Train at nine\n3. Read [[Ideas]] on the way",
+}
+SEEDS.update({"here": "Home", "open": [], "flash": ""})
+SEEDS.update({f"page/{k}": v for k, v in PAGES.items()})
+
 
 def text(t, **kw):
     return {"type": "text", "text": t, **kw}
@@ -90,9 +102,13 @@ def header(i):
 
 
 def footer():
-    return {"type": "row", "size": 1, "children": [
-        text(" <b>n</> <d>next</>  <b>p</> <d>back</>  <b>tab</> <d>move</>  <b>esc</> <d>leaves a field</>  <b>t</> <d>theme</>  <b>a</> <d>apps</>  <b>q</> <d>quit</>"),
-        text("<d>{fps} fps · {msgs} msg/s · {draw_ms} ms a frame</> ", bind="$stats", align="right", size=44),
+    """The keys and the meter, and the toasts over them while one shows."""
+    return {"type": "stack", "size": 1, "children": [
+        {"type": "row", "children": [
+            text(" <b>n</> <d>next</>  <b>p</> <d>back</>  <b>tab</> <d>move</>  <b>esc</> <d>leaves a field</>  <b>t</> <d>theme</>  <b>a</> <d>apps</>  <b>q</> <d>quit</>"),
+            text("<d>{fps} fps · {msgs} msg/s · {draw_ms} ms a frame</> ", bind="$stats", align="right", size=44),
+        ]},
+        {"type": "toasts"},
     ]}
 
 
@@ -375,7 +391,45 @@ def agents():
         [left, log]), focus="go")
 
 
-# ---- 8 · Speed ----------------------------------------------------------------------------
+# ---- 8 · Pages ----------------------------------------------------------------------------
+
+def pages():
+    open_beside = {"do": [
+        {"remove": "open", "where": {"id": "{$match}"}},
+        {"append": "open", "value": {"id": "{$match}"}},
+        {"put": "flash", "value": "{$match}", "for_ms": 2500},
+        {"toast": "Opened {$match} beside", "tone": "accent"}]}
+    links = [
+        {"kind": "wiki", "click": open_beside, "s-click": {"put": "here", "value": "{$match}"}},
+        {"kind": "tag", "click": {"toast": "#{$match}: tags are links too", "tone": "violet"}},
+    ]
+    main = {"type": "col", "children": [
+        text("<b>{.}</>", bind="here", size=1, pad=[1, 0]),
+        text("<d>wide: the sidebar is closed, so this pane has the room</>", size=1, pad=[1, 0], when="$width>=72"),
+        text("<d>narrow: the sidebar took room, and this pane switched on its own width</>", size=1, pad=[1, 0], when="$width<72"),
+        {"type": "editor", "id": "here_page", "bind": "here", "doc": "page/{.}", "syntax": "markdown",
+         "tab": "indent-lines", "caret": "end", "links": links, "border": True},
+    ]}
+    panel = {"type": "col", "id": "panel-{$item.id}", "title": "{$item.id}", "children": [
+        {"type": "button", "id": "close-{$item.id}", "label": "close", "size": 1, "align": "right",
+         "click": {"remove": "open", "where": {"id": "{$item.id}"}}},
+        {"type": "editor", "id": "side-{$item.id}", "doc": "page/{$item.id}", "syntax": "markdown",
+         "tab": "indent-lines", "links": links},
+    ]}
+    side = {"type": "col", "size": 40, "when": "open", "children": [
+        text("<accent>• {.} just opened</>", bind="flash", size=1, when="flash", pad=[1, 0]),
+        {"type": "each", "id": "beside", "bind": "open", "template": panel},
+    ]}
+    return chapter(7, body(7,
+        "Pages are store entries; links between them are data. A click on <b>[[Page]]</> runs an "
+        "action, here: open it beside, as one more panel in a sidebar made with <b>each</> "
+        "(a template per open page). Two editors on one page are one text with one undo.\n\n"
+        "The main pane's layout reads <b>$width</>, its own width, not the screen's.",
+        ["click a <b>[[link]]</>, shift-click to go there", "<b>Tab</> nests a line, <b>Enter</> continues a list", "type in either copy of a page"],
+        [main, side]), focus="here_page")
+
+
+# ---- 9 · Speed ----------------------------------------------------------------------------
 
 FIREHOSE = r"""
 BEGIN {
@@ -428,7 +482,7 @@ def speed():
         {"type": "input", "id": "big_q", "size": 3, "title": "filter", "placeholder": "filter 100,000 rows: try ada kyoto"},
         {"type": "list", "id": "big", "bind": "big", "filter": "big_q", "title": "100,000 rows", "item": "<d>{n}</> {who} <d>in</> {city}\t<d>{likes}</>"},
     ]}
-    return chapter(7, body(7,
+    return chapter(8, body(8,
         "Updates are messages; the screen draws only when something changed, at most 120 times a second, "
         "and only the newest value of a busy source is drawn.\n\n"
         "The table on the right is fed by one <b>awk</> process printing JSON lines as fast as it can. "
@@ -438,7 +492,7 @@ def speed():
         extra={"data": {"fire": {"stream": ["awk", FIREHOSE]}, "big": {"cmd": ["awk", BIGLIST]}}})
 
 
-# ---- 9 · Your turn ------------------------------------------------------------------------
+# ---- 10 · Your turn ------------------------------------------------------------------------
 
 def yours():
     reset = {"do": [*[{"put": k, "value": v} for k, v in SEEDS.items()], *[{"put": k, "value": ""} for k in TEXT_SEEDS],
@@ -466,11 +520,11 @@ def yours():
         text("<d>fictty.com · github.com/brancusi/fictty</>", size=1, align="center"),
         text("", size="*"),
     ]}
-    return chapter(8, stage)
+    return chapter(9, stage)
 
 
 def main():
-    for (f, *_), make in zip(CHAPTERS, [hello, value, parts, store, layers, themes, agents, speed, yours]):
+    for (f, *_), make in zip(CHAPTERS, [hello, value, parts, store, layers, themes, agents, pages, speed, yours]):
         with open(os.path.join(HERE, f), "w") as out:
             json.dump(make(), out, indent=1, ensure_ascii=False)
             out.write("\n")

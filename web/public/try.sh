@@ -6,7 +6,7 @@
 #
 # It fetches that version of fictty into ~/.fictty/<version> (or $FICTTY_HOME/<version>), uses
 # the release binary when the version is a release tag and builds from source with cargo
-# otherwise, then runs the showcase: a tour of nine chapters, then notes, a ledger, a live market,
+# otherwise, then runs the showcase: a tour of ten chapters, then notes, a ledger, a live market,
 # a gallery and an agent's log.
 # Each version keeps its own folder and its own store, so an old demo never mixes with a new one.
 # Nothing is installed anywhere else; delete ~/.fictty to remove everything.

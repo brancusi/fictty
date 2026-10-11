@@ -29,10 +29,10 @@ scroll), and the **theme** is the person's or the project's. The reasons are in
 
 ## Try it
 
-The quickest way to see everything is the showcase. It opens on a tour of nine chapters, each a
+The quickest way to see everything is the showcase. It opens on a tour of ten chapters, each a
 lesson, something to play with and a quest: a screen and its JSON side by side, every component,
 the store with live revisions, a dialog over a stack, themes, an autopilot driving the screen
-while you watch, and a firehose beside 100,000 rows that filter on every key. The apps (notes, a
+while you watch, a notebook of linked pages with a sidebar, and a firehose beside 100,000 rows that filter on every key. The apps (notes, a
 ledger, a live market, a gallery of components, an agent's log) are one key away. Every screen is
 JSON, sharing one store and three themes.
 

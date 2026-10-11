@@ -87,6 +87,18 @@
       "type": "text",
       "text": "<pos>◆</>",
       "size": 2,
+      "when": "open"
+     },
+     {
+      "type": "text",
+      "text": "<d>◇</>",
+      "size": 2,
+      "when": "!open"
+     },
+     {
+      "type": "text",
+      "text": "<pos>◆</>",
+      "size": 2,
       "when": "big_q"
      },
      {
@@ -97,7 +109,7 @@
      },
      {
       "type": "text",
-      "text": "<d>6/9</>  <b>Themes</> ",
+      "text": "<d>6/10</>  <b>Themes</> ",
       "align": "right"
      }
     ]
@@ -344,19 +356,27 @@
     ]
    },
    {
-    "type": "row",
+    "type": "stack",
     "size": 1,
     "children": [
      {
-      "type": "text",
-      "text": " <b>n</> <d>next</>  <b>p</> <d>back</>  <b>tab</> <d>move</>  <b>esc</> <d>leaves a field</>  <b>t</> <d>theme</>  <b>a</> <d>apps</>  <b>q</> <d>quit</>"
+      "type": "row",
+      "children": [
+       {
+        "type": "text",
+        "text": " <b>n</> <d>next</>  <b>p</> <d>back</>  <b>tab</> <d>move</>  <b>esc</> <d>leaves a field</>  <b>t</> <d>theme</>  <b>a</> <d>apps</>  <b>q</> <d>quit</>"
+       },
+       {
+        "type": "text",
+        "text": "<d>{fps} fps · {msgs} msg/s · {draw_ms} ms a frame</> ",
+        "bind": "$stats",
+        "align": "right",
+        "size": 44
+       }
+      ]
      },
      {
-      "type": "text",
-      "text": "<d>{fps} fps · {msgs} msg/s · {draw_ms} ms a frame</> ",
-      "bind": "$stats",
-      "align": "right",
-      "size": 44
+      "type": "toasts"
      }
     ]
    }
@@ -499,6 +519,13 @@
     "done": false
    }
   ],
+  "here": "Home",
+  "open": [],
+  "flash": "",
+  "page/Home": "# Home\n\nA tiny notebook. Click a link to open it beside this one: [[Groceries]], [[Ideas]], [[Trip]].\nShift-click opens it here instead. Tags are links too: #fictty #demo\n\n- Tab nests a line under the one above it\n- Enter on a list item starts the next one\n- [ ] Ctrl-T ticks a task, or makes a line one",
+  "page/Groceries": "# Groceries\n\n- [ ] Oat milk\n- [ ] Lemons\n- [x] Coffee beans\n\nBack to [[Home]].",
+  "page/Ideas": "# Ideas\n\n- A screen that is one value\n  - agents write it\n  - people type in it\n- More in [[Trip]]",
+  "page/Trip": "# Trip\n\n1. Pack light\n2. Train at nine\n3. Read [[Ideas]] on the way",
   "item_name": "",
   "item_qty": "",
   "items_q": "",

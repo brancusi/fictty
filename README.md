@@ -30,9 +30,9 @@ It sits between [caretline](https://caretline.app), the text-editing engine, and
 
 ## Try it
 
-One line fetches fictty into `~/.fictty` and opens a tour of it: nine short chapters, each with
-something to play with and a quest, from a screen and its JSON side by side to an agent driving
-the screen while you watch and a firehose of updates. It builds `main` if you have Rust, and
+One line fetches fictty into `~/.fictty` and opens a tour of it: ten short chapters, each with
+something to play with and a quest, from a screen and its JSON side by side to a notebook of
+linked pages, an agent driving the screen while you watch, and a firehose of updates. It builds `main` if you have Rust, and
 otherwise runs the latest release's binary (macOS and Linux):
 
 ```sh

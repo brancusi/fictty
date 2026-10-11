@@ -79,6 +79,26 @@ needed as behaviour; what was generic landed here, what was app-specific stayed 
 - [x] The tour: the one-liner opens nine chapters with a quest each, an autopilot and a firehose
       (114 fps at 12,000 messages a second beside a filtered 100,000-row list, release build)
 
+### Built for a real app (2026-10-11)
+
+Thought Control ran its screens on fictty in a real terminal (WezTerm, through a harness of over a
+hundred scenarios with real key and mouse bytes) and sent what was missing, round by round.
+
+- [x] `fictty setup wezterm` (and `fictty::setup`): WezTerm drops ⌘, so a module sends ⌘ keys
+      as kitty bytes to panes running a fictty screen (a terminal user var), for any app on fictty
+- [x] The wheel scrolls a list's view and leaves its selection
+- [x] `each`: a template per item of a bound list (`{$item.path}`), for panels and sidebars
+- [x] Container queries: `$width` and `$height` in `when` are the node's own area
+- [x] Links in editors (`wiki`, `tag`, `url`; click, Shift-click, `{$link}`, `md.link`)
+- [x] Markdown editing: `tab` (`indent`, `indent-lines`), Enter continues a list, Ctrl-T makes
+      a line a task (`tasks: "cycle"`), `caret: "end"`
+- [x] Writes that last (`for_ms`, expiring on the screen's clock), toasts in a `toasts` node with
+      a part per tone, `$toasting`
+- [x] Tabs that take the focus in, `{"tab": N, "of": id}`, `$prev` and templated focus,
+      selection by key (`Set { key }`, `select`), socket writes that set off their effects,
+      typed-ahead keys while a page loads, a push that keeps unchanged sources
+- [x] v0.2.0 with binaries; the tour's Pages chapter shows the new pieces together
+
 ## 1 · Land the prototype (now)
 
 - [x] Review and merge `store-theme-prototype` into `main`
