@@ -18,11 +18,16 @@ terminal). Each post does three jobs at once:
 
 ## Voice
 
+- **Snippets, not a transcript.** Readers want the moments that changed something: the doubt, the
+  finding, the insight, the decision, the surprise. Skip the play-by-play (how a demo was launched,
+  which window opened, each request in order, every reply). A few quoted lines per section, with
+  short narration between them, carry the story; a typical post has a dozen or so turns, not
+  fifty. If a turn doesn't change what the reader knows or feels, cut it.
 - **Conversational, positive, curious.** The tone is exploration: questions, tries, surprises,
   small wins, honest dead ends. Enjoy the problem.
-- **Keep the conversation true.** Aram's lines are his own words from the session. Fix spelling,
-  grammar and punctuation, and cut filler ("so, um, like"), but never change what he asked or
-  meant, and never invent a line for him. Tilde's lines are condensed from what was actually
+- **Keep the conversation true.** Aram's lines are Aram's own words from the session. Fix spelling,
+  grammar and punctuation, cut filler ("so, um, like"), and trim a quote to the part that
+  matters, but never change what was asked or meant, and never invent a line for Aram. Tilde's lines are condensed from what was actually
   answered; don't add claims that weren't made, and correct anything later found wrong in the
   narration rather than rewriting history.
 - **Short turns.** One idea per turn. If an answer runs past two paragraphs, turn the rest into a
@@ -30,7 +35,7 @@ terminal). Each post does three jobs at once:
 - **Show, then tell.** Lead with what happened (a demo, a number, a screenshot), then what it means.
 - **Plain words.** Follow the house style: specific nouns, no hype, no jargon that a curious
   developer wouldn't know without a gloss.
-- **Not overwhelming.** Aim for a 10–15 minute read. Leave detail to the design docs and link them.
+- **Not overwhelming.** Aim for a 5–8 minute read (about 1,200–1,600 words). Leave detail to the design docs and link them.
 
 ## Where the material comes from
 
@@ -115,9 +120,10 @@ the sitemap and `scripts/links.mjs`).
 ## Check, then publish
 
 1. `cd web && npm run build && npm run links`: the build passes and every link resolves.
-2. Look at it: serve `web/dist` and screenshot the post at desktop and phone widths. Check that
+2. Read it as a stranger would: is every section a moment that matters? Cut the rest.
+3. Look at it: serve `web/dist` and screenshot the post at desktop and phone widths. Check that
    every speaker turn holds the right paragraphs, figures load, and charts read in light and dark.
-3. Fact-check every number and quote against the transcript and the docs.
-4. `scripts/preflight.sh --staged` before committing (stage explicit paths).
-5. **Ask Aram before publishing.** Pushing to `main` puts the Markdown on GitHub; `npm run deploy`
-   in `web/` puts it on fictty.com. Both are public, so neither happens without his yes.
+4. Fact-check every number and quote against the transcript and the docs.
+5. `scripts/preflight.sh --staged` before committing (stage explicit paths).
+6. **Ask Aram before publishing.** Pushing to `main` puts the Markdown on GitHub; `npm run deploy`
+   in `web/` puts it on fictty.com. Both are public, so neither happens without Aram's yes.
