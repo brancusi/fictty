@@ -31,14 +31,14 @@ fn outline() -> Value {
 fn a_tree_shows_nested_rows_and_folds_them() {
     let mut s = screen(outline(), 40, 8);
     let text = s.screen();
-    assert!(text.contains(" ▾ [ ] Launch"), "{text}");
-    assert!(text.contains("     ▸ [ ] Record the demo") || text.contains("   ▾ [ ] Record the demo"), "{text}");
-    assert!(text.contains("     · [ ] Script it"), "open by default: {text}");
+    assert!(text.starts_with("▾ [ ] Launch"), "{text}");
+    assert!(text.contains("\n  ▾ [ ] Record the demo"), "{text}");
+    assert!(text.contains("\n    · [ ] Script it"), "open by default: {text}");
     // ← on an open row folds it; the rows under it go.
     s.keys(&["left"]);
     let text = s.screen();
     assert!(!text.contains("Write the post"), "{text}");
-    assert!(text.contains(" ▸ [ ] Launch"), "{text}");
+    assert!(text.starts_with("▸ [ ] Launch"), "{text}");
     // → opens it again, and a second → goes to its first child.
     s.keys(&["right", "right"]);
     assert_eq!(s.state().local["t"].selected, 1);
@@ -305,4 +305,49 @@ fn a_list_keeps_its_row_variants_and_its_look_through_json() {
     assert_eq!(back["root"]["row_variant"], "kind");
     let mut s = screen(ui, 20, 4);
     assert_eq!(s.state().local["l"].selected, 1, "the header can't be selected");
+}
+
+#[test]
+fn a_selection_stays_on_its_row_when_rows_arrive_above_it() {
+    let ui = json!({"root": {"type": "list", "id": "l", "bind": "rows", "item": "{text}"},
+                    "store": {"rows": [{"id": "a", "text": "A"}, {"id": "b", "text": "B"}, {"id": "c", "text": "C"}]}});
+    let mut s = screen(ui, 20, 6);
+    s.keys(&["j"]);
+    let rows = json!([{"id": "z", "text": "Z"}, {"id": "y", "text": "Y"}, {"id": "a", "text": "A"}, {"id": "b", "text": "B"}, {"id": "c", "text": "C"}]);
+    s.msg(Msg::Write { key: "rows".into(), write: serde_json::from_value(json!({"write": "put", "value": rows})).unwrap(), if_rev: None, by: "agent".into() });
+    assert_eq!(s.state().local["l"].selected, 3, "still on B");
+    // Without a key it's the place that stays.
+    let ui = json!({"root": {"type": "list", "id": "l", "bind": "rows"}, "store": {"rows": ["a", "b"]}});
+    let mut s = screen(ui, 20, 6);
+    s.keys(&["j"]);
+    s.msg(Msg::Write { key: "rows".into(), write: serde_json::from_value(json!({"write": "put", "value": ["z", "a", "b"]})).unwrap(), if_rev: None, by: "agent".into() });
+    assert_eq!(s.state().local["l"].selected, 1);
+}
+
+#[test]
+fn keep_holds_room_for_the_text_before_the_meta() {
+    let ui = json!({"root": {"type": "list", "id": "l", "keep": 12, "mark": "", "lead": "",
+                              "item": "{t}\t{meta}", "items": [{"t": "Water the plants", "meta": "Tue 14:00 · tilde · from the agent"}]}});
+    let mut s = screen(ui, 30, 2);
+    let line = s.screen().lines().next().unwrap().to_string();
+    assert!(line.starts_with("Water the p…"), "{line:?}");
+}
+
+#[test]
+fn rows_can_take_two_lines() {
+    let ui = json!({"root": {"type": "list", "id": "l", "lines": 2, "item": "<b>{at}</> {op}\n{what}",
+                              "items": [{"at": "09:00", "op": "put", "what": "notes"}, {"at": "09:01", "op": "edit", "what": "page/home"}]}});
+    let mut s = screen(ui, 30, 6);
+    let text = s.screen();
+    assert!(text.starts_with("▸ 09:00 put\n  notes\n  09:01 edit\n  page/home"), "{text}");
+    s.keys(&["j"]);
+    assert_eq!(s.state().local["l"].selected, 1);
+}
+
+#[test]
+fn a_tree_takes_a_mark_and_a_leaf_glyph_like_a_list() {
+    let ui = json!({"root": {"type": "tree", "id": "t", "mark": "▌", "lead": " ", "leaf": "", "item": "{text}",
+                              "items": [{"id": "a", "text": "A", "children": [{"id": "b", "text": "B"}]}]}});
+    let mut s = screen(ui, 20, 3);
+    assert!(s.screen().starts_with("▌▾ A\n   B"), "{}", s.screen());
 }

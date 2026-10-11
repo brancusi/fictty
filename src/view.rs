@@ -196,7 +196,7 @@ enum Part {
 
 /// One line of parts into `r`: the left side from `r.x`, anything after a tab right-aligned to
 /// the end (the left side is cut to leave a cell between them), and a fill taking what's left.
-fn draw_parts(buf: &mut Buffer, r: Rect, parts: Vec<Part>) {
+fn draw_parts(buf: &mut Buffer, r: Rect, parts: Vec<Part>, keep: u16) {
     let (mut left, mut right, mut seen_tab) = (Vec::new(), Vec::new(), false);
     for p in parts {
         match p {
@@ -207,7 +207,8 @@ fn draw_parts(buf: &mut Buffer, r: Rect, parts: Vec<Part>) {
         }
     }
     let width = |ps: &[Part]| ps.iter().map(|p| if let Part::Text(s) = p { s.width() } else { 0 }).sum::<usize>();
-    let rw = width(&right).min(r.width as usize);
+    // The right side yields to `keep` cells of the left side (and the cell between them).
+    let rw = width(&right).min(r.width as usize).min(r.width.saturating_sub(keep.saturating_add(1)) as usize);
     let room = (r.width as usize).saturating_sub(if rw > 0 { rw + 1 } else { 0 });
     let fixed = width(&left);
     let fills = left.iter().any(|p| matches!(p, Part::Fill(..)));
@@ -658,7 +659,7 @@ fn node(cx: &mut Cx, n: &Node, f: &mut Frame, area: Rect) {
             let v = bound(st, n).unwrap_or(&Value::Null);
             let mut parts = vec![Part::Text(Span::styled(format!("{} ", spin(cx)), cx.look("spinner", style.fg(cx.th.accent))))];
             parts.extend(cx.parts(text, v, style));
-            draw_parts(f.buffer_mut(), Rect { height: 1.min(inner.height), ..inner }, parts);
+            draw_parts(f.buffer_mut(), Rect { height: 1.min(inner.height), ..inner }, parts, 0);
         }
         Kind::Button { label } => {
             let v = bound(st, n).unwrap_or(&Value::Null);
@@ -710,7 +711,7 @@ fn node(cx: &mut Cx, n: &Node, f: &mut Frame, area: Rect) {
             if text.contains('\t') || text.contains("{*") {
                 for (k, l) in shown.iter().enumerate().take(inner.height as usize) {
                     let r = Rect::new(inner.x, inner.y + k as u16, inner.width, 1);
-                    draw_parts(f.buffer_mut(), r, cx.parts(l, v, style));
+                    draw_parts(f.buffer_mut(), r, cx.parts(l, v, style), 0);
                 }
             } else {
                 let lines: Vec<Line> = shown.iter().map(|l| Line::from(cx.spans(l, v, style))).collect();
@@ -767,91 +768,86 @@ fn node(cx: &mut Cx, n: &Node, f: &mut Frame, area: Rect) {
                 f.buffer_mut().set_string(inner.x, y, g.repeat(inner.width as usize), ls);
             }
         }
-        Kind::List { item, empty, variant, variants, mark, lead, selected: sel_spec, .. } => {
+        Kind::List { rows: look, .. } | Kind::Tree { rows: look, .. } => {
+            // A tree's rows start with their indent and a fold glyph (or `leaf`).
+            let leaf = match &n.kind {
+                Kind::Tree { leaf, .. } => Some(leaf.as_deref().unwrap_or("· ")),
+                _ => None,
+            };
             let rows = items(st, n);
             if rows.is_empty() {
-                let e = empty.clone().unwrap_or_else(|| "(nothing)".into());
+                let e = look.empty.clone().unwrap_or_else(|| "(nothing)".into());
                 let es = cx.look("empty", Style::default().fg(cx.th.dim));
                 return f.render_widget(Paragraph::new(e).style(es).wrap(Wrap { trim: true }), inner);
             }
+            let per = look.lines.unwrap_or(1).max(1) as usize;
+            let fit = (inner.height as usize / per).max(1);
             let sel = n.id.as_ref().map(|id| selected(st, id));
-            let (from, _) = window(sel, inner.height as usize);
-            scrollbar(cx, f.buffer_mut(), inner, from, rows.len());
-            let over = (rows.len() > inner.height as usize) as u16;
-            for (k, r) in rows.iter().enumerate().skip(from).take(inner.height as usize) {
-                let y = inner.y + (k - from) as u16;
-                let line = Rect::new(inner.x, y, inner.width.saturating_sub(over), 1);
+            let (from, _) = window(sel, fit);
+            scrollbar(cx, f.buffer_mut(), Rect { height: (fit * per).min(inner.height as usize) as u16, ..inner }, from * per, rows.len() * per);
+            let over = (rows.len() > fit) as u16;
+            let guide = cx.look("tree.guide", style.fg(cx.th.dim));
+            let (mark, lead) = match leaf {
+                Some(_) => (look.mark.as_deref().unwrap_or(""), look.lead.as_deref().unwrap_or("")),
+                None => (look.mark.as_deref().unwrap_or("▸ "), look.lead.as_deref().unwrap_or("  ")),
+            };
+            let keep = look.keep.unwrap_or(0);
+            for (k, r) in rows.iter().enumerate().skip(from).take(fit) {
+                let y = inner.y + ((k - from) * per) as u16;
+                if y >= inner.bottom() {
+                    break;
+                }
+                let block = Rect::new(inner.x, y, inner.width.saturating_sub(over), (per as u16).min(inner.bottom() - y));
                 let mut rs = style;
                 if cx.hovered(&id, k) {
                     rs = rs.bg(cx.th.hover);
                 }
-                let picked = variant.as_ref().and_then(|p| variants.get(&scalar(lookup(r, p))));
+                let picked = look.variant.as_ref().and_then(|p| look.variants.get(&scalar(lookup(r, p))));
                 let is_sel = sel == Some(k) && !n.skips(r);
                 if is_sel {
-                    rs = match sel_spec {
+                    rs = match &look.selected {
                         Some(spec) => cx.spec(spec, rs),
                         None if focused => rs.patch(cx.look("row.selected", Style::default().add_modifier(Modifier::REVERSED))),
                         None => rs.patch(cx.look("row.selected.blur", Style::default().add_modifier(Modifier::BOLD))),
                     };
                 }
-                f.buffer_mut().set_style(line, rs);
-                let mut parts = Vec::new();
+                f.buffer_mut().set_style(block, rs);
+                let mut first = Vec::new();
                 if picked.is_none() || !n.skips(r) {
-                    let lead_t = if is_sel { mark.as_deref().unwrap_or("▸ ") } else { lead.as_deref().unwrap_or("  ") };
-                    parts.extend(cx.parts(lead_t, r, rs));
+                    first.extend(cx.parts(if is_sel { mark } else { lead }, r, rs));
                 }
-                match picked.or(item.as_ref()) {
-                    Some(t) => parts.extend(cx.parts(t, r, rs)),
-                    None => parts.push(Part::Text(Span::styled(scalar(Some(r)), rs))),
-                }
-                draw_parts(f.buffer_mut(), line, parts);
-                if !id.is_empty() {
-                    cx.mark(&id, Some(k), None, line);
-                }
-            }
-        }
-        Kind::Tree { item, empty, .. } => {
-            let rows = items(st, n);
-            if rows.is_empty() {
-                let e = empty.clone().unwrap_or_else(|| "(nothing)".into());
-                let es = cx.look("empty", Style::default().fg(cx.th.dim));
-                return f.render_widget(Paragraph::new(e).style(es).wrap(Wrap { trim: true }), inner);
-            }
-            let sel = n.id.as_ref().map(|id| selected(st, id));
-            let (from, _) = window(sel, inner.height as usize);
-            scrollbar(cx, f.buffer_mut(), inner, from, rows.len());
-            let over = (rows.len() > inner.height as usize) as u16;
-            let guide = cx.look("tree.guide", style.fg(cx.th.dim));
-            for (k, r) in rows.iter().enumerate().skip(from).take(inner.height as usize) {
-                let y = inner.y + (k - from) as u16;
-                let line = Rect::new(inner.x, y, inner.width.saturating_sub(over), 1);
-                let mut rs = style;
-                if cx.hovered(&id, k) {
-                    rs = rs.bg(cx.th.hover);
-                }
-                if sel == Some(k) {
-                    rs = if focused {
-                        rs.patch(cx.look("row.selected", Style::default().add_modifier(Modifier::REVERSED)))
-                    } else {
-                        rs.patch(cx.look("row.selected.blur", Style::default().add_modifier(Modifier::BOLD)))
+                if let Some(leaf) = leaf {
+                    let depth = r["$depth"].as_u64().unwrap_or(0) as usize;
+                    let glyph = match (r["$kids"].as_u64().unwrap_or(0) > 0, r["$open"].as_bool().unwrap_or(false)) {
+                        (true, true) => "▾ ",
+                        (true, false) => "▸ ",
+                        _ => leaf,
                     };
+                    let gs = if is_sel { rs } else { guide.patch(Style { bg: rs.bg, ..Style::default() }) };
+                    first.push(Part::Text(Span::styled(format!("{}{glyph}", "  ".repeat(depth)), gs)));
                 }
-                f.buffer_mut().set_style(line, rs);
-                let depth = r["$depth"].as_u64().unwrap_or(0) as usize;
-                let arrow = match (r["$kids"].as_u64().unwrap_or(0) > 0, r["$open"].as_bool().unwrap_or(false)) {
-                    (true, true) => "▾ ",
-                    (true, false) => "▸ ",
-                    _ => "· ",
+                // Lines after the first line up under the first's text.
+                let indent: usize = first.iter().map(|p| if let Part::Text(s) = p { s.width() } else { 0 }).sum();
+                let template = picked.or(look.item.as_ref());
+                let plain = match template {
+                    None if leaf.is_some() => scalar(lookup(r, "text").or(Some(r))),
+                    None => scalar(Some(r)),
+                    Some(_) => String::new(),
                 };
-                let gs = if sel == Some(k) { rs } else { guide.patch(Style { bg: rs.bg, ..Style::default() }) };
-                let mut parts = vec![Part::Text(Span::styled(format!(" {}{arrow}", "  ".repeat(depth)), gs))];
-                match item {
-                    Some(t) => parts.extend(cx.parts(t, r, rs)),
-                    None => parts.push(Part::Text(Span::styled(scalar(lookup(r, "text").or(Some(r))), rs))),
+                let lines: Vec<&str> = match template {
+                    Some(t) => t.split('\n').collect(),
+                    None => vec![plain.as_str()],
+                };
+                for (i, line) in lines.iter().enumerate().take(block.height as usize) {
+                    let mut parts = if i == 0 { std::mem::take(&mut first) } else { vec![Part::Text(Span::styled(" ".repeat(indent), rs))] };
+                    match template {
+                        Some(_) => parts.extend(cx.parts(line, r, rs)),
+                        None => parts.push(Part::Text(Span::styled(line.to_string(), rs))),
+                    }
+                    draw_parts(f.buffer_mut(), Rect::new(block.x, block.y + i as u16, block.width, 1), parts, keep);
                 }
-                draw_parts(f.buffer_mut(), line, parts);
                 if !id.is_empty() {
-                    cx.mark(&id, Some(k), None, line);
+                    cx.mark(&id, Some(k), None, block);
                 }
             }
         }

@@ -263,57 +263,30 @@ pub enum Kind {
     },
     /// Text. `{field}` placeholders fill from the bound value (`{a.b}` reaches in).
     Text { text: String },
-    /// A selectable list of `items`, or of the bound array. `item` formats each one; with
-    /// `row_variant` (a path), a row whose value there is a key of `variants` uses that template
-    /// instead (a section header, a blank). Rows whose variant is in `skip` aren't selectable.
-    /// (`variant`, as on every node, is the node's look from the theme.)
-    /// `mark` and `lead` start the selected and the other rows (default `▸ ` and two spaces);
-    /// `selected` styles the selected row (a style spec; default reverse when focused).
+    /// A selectable list of `items`, or of the bound array, drawn as `Rows` say.
     List {
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         items: Vec<Value>,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        item: Option<String>,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        empty: Option<String>,
-        #[serde(default, rename = "row_variant", skip_serializing_if = "Option::is_none")]
-        variant: Option<String>,
-        #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-        variants: BTreeMap<String, String>,
-        #[serde(default, skip_serializing_if = "Vec::is_empty")]
-        skip: Vec<String>,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        mark: Option<String>,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        lead: Option<String>,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        selected: Option<String>,
-        /// Show only the rows matching the text in this store entry (or bind): every word of it,
-        /// in any case, somewhere in the row's values.
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        filter: Option<String>,
+        #[serde(flatten)]
+        rows: Rows,
     },
     /// An outline over the bound array (or `items`): each row's `nest` (default `children`) holds
-    /// the rows under it. Rows fold and unfold (←/→, space, a click on the arrow); `open: false`
-    /// starts them folded. `item` formats a row as in a list, and can read `{$depth}`, `{$kids}`
-    /// (how many rows are under it) and `{$open}`. A row's identity (what stays folded across
-    /// updates) is its `key` (default `id`), else its place. Store actions on the selected row
+    /// the rows under it. Rows fold and unfold (←/→, space); `open: false` starts them folded.
+    /// Rows are drawn as `Rows` say, after their indent and a fold glyph (`▾`, `▸`, or `leaf`
+    /// for a row with nothing under it, default `· `), and templates can read `{$depth}`,
+    /// `{$kids}` (how many rows are under it) and `{$open}`. Store actions on the selected row
     /// reach it where it sits (`$ptr`, a JSON Pointer into the bound entry).
     Tree {
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         items: Vec<Value>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
-        item: Option<String>,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
         nest: Option<String>,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        key: Option<String>,
         #[serde(default = "yes", skip_serializing_if = "Clone::clone")]
         open: bool,
         #[serde(default, skip_serializing_if = "Option::is_none")]
-        empty: Option<String>,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        filter: Option<String>,
+        leaf: Option<String>,
+        #[serde(flatten)]
+        rows: Rows,
     },
     /// A line filling the node: `glyph` (default `│` when taller than wide, else `─`).
     Rule {
@@ -446,6 +419,51 @@ pub enum Kind {
 
 fn yes() -> bool {
     true
+}
+
+/// How a list or a tree draws its rows, and which row is which.
+///
+/// - `item` formats a row (a template over it); with `row_variant` (a path), a row whose value
+///   there is a key of `variants` uses that template instead (a section header, a blank), and
+///   rows whose variant is in `skip` can't be selected. (`variant`, as on every node, is the
+///   node's look from the theme.)
+/// - `mark` and `lead` start the selected and the other rows (a list's default `▸ ` and two
+///   spaces; a tree's none); `selected` styles the selected row (a style spec; default reverse
+///   while focused).
+/// - `lines`: every row takes this many lines (the template's lines), the selection all of them.
+/// - `keep`: the left side of a row keeps at least this many cells before its right side (after
+///   a tab) is cut.
+/// - `key` (default `id`): the path that names a row, so the selection stays on it when rows
+///   come and go, and a tree's folds stay with it.
+/// - `filter`: show only the rows matching the text in this store entry (or bind): every word
+///   of it, in any case, somewhere in the row's values.
+/// - `empty`: what shows when there are no rows.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct Rows {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub item: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub empty: Option<String>,
+    #[serde(default, rename = "row_variant", skip_serializing_if = "Option::is_none")]
+    pub variant: Option<String>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub variants: BTreeMap<String, String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub skip: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mark: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lead: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub selected: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lines: Option<u16>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub keep: Option<u16>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub key: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub filter: Option<String>,
 }
 
 /// A pixel panel: `fill` (and `fill2` for a vertical gradient), `border`, a corner `radius` and a
@@ -694,7 +712,9 @@ impl Node {
     /// Whether row `r` (`v`) can't be selected: its variant is in the list's `skip`.
     pub fn skips(&self, v: &Value) -> bool {
         match &self.kind {
-            Kind::List { variant: Some(p), skip, .. } if !skip.is_empty() => skip.contains(&scalar(lookup(v, p))),
+            Kind::List { rows: Rows { variant: Some(p), skip, .. }, .. } | Kind::Tree { rows: Rows { variant: Some(p), skip, .. }, .. } if !skip.is_empty() => {
+                skip.contains(&scalar(lookup(v, p)))
+            }
             _ => false,
         }
     }
@@ -713,10 +733,24 @@ impl Node {
         }
     }
 
+    /// How a list or a tree draws its rows.
+    pub fn rows(&self) -> Option<&Rows> {
+        match &self.kind {
+            Kind::List { rows, .. } | Kind::Tree { rows, .. } => Some(rows),
+            _ => None,
+        }
+    }
+
+    /// The path that names a row of a list, tree or table (`key`, default `id`).
+    pub fn row_key(&self) -> &str {
+        self.rows().and_then(|r| r.key.as_deref()).unwrap_or("id")
+    }
+
     /// The filter a list, table or tree has: the bind its query text is read from.
     pub fn filter(&self) -> Option<&str> {
         match &self.kind {
-            Kind::List { filter, .. } | Kind::Table { filter, .. } | Kind::Tree { filter, .. } => filter.as_deref(),
+            Kind::List { rows, .. } | Kind::Tree { rows, .. } => rows.filter.as_deref(),
+            Kind::Table { filter, .. } => filter.as_deref(),
             _ => None,
         }
     }

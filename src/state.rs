@@ -145,6 +145,10 @@ pub struct Local {
     /// A tree's rows (by key) folded or opened against its default.
     #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
     pub toggled: BTreeSet<String>,
+    /// The selected row's key (a list's or tree's `key`, default `id`), so the selection stays
+    /// on that row when rows come and go above it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub key: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -280,7 +284,13 @@ pub fn update(st: &mut State, msg: Msg) -> Vec<Effect> {
         Msg::Data { name, .. } => Some(name.clone()),
         _ => None,
     };
+    // Messages from the person or an agent move selections on purpose: note the rows they're
+    // on now, before re-deriving rows makes a selection follow its old row instead.
+    let moves = matches!(msg, Msg::Key { .. } | Msg::Click { .. } | Msg::Set { .. } | Msg::Scroll { .. });
     let fx = apply(st, msg);
+    if moves {
+        remember(st);
+    }
     // Rows a tree or a filter shows can change with anything but the quiet messages; when they
     // do, selections are kept inside them again.
     if !quiet && derive_rows(st, only.as_deref()) {
@@ -1378,10 +1388,10 @@ fn derive_rows(st: &mut State, only: Option<&str>) -> bool {
         let query = n.filter().map(|f| query_text(st, f)).unwrap_or_default();
         let terms: Vec<String> = query.split_whitespace().map(str::to_lowercase).collect();
         let rows = match &n.kind {
-            Kind::Tree { nest, key, open, .. } => {
+            Kind::Tree { nest, open, .. } => {
                 let t = TreeCx {
                     nest: nest.as_deref().unwrap_or("children"),
-                    key: key.as_deref().unwrap_or("id"),
+                    key: n.row_key(),
                     open: *open,
                     toggled: st.local.get(id).map(|l| &l.toggled),
                     terms: &terms,
@@ -1479,6 +1489,24 @@ fn settle(st: &mut State) {
     if !st.focus.as_ref().is_some_and(|f| order.contains(f)) {
         st.focus = order.first().cloned();
     }
+    // A selection follows its row's key, wherever the row is now.
+    let moved: Vec<(String, usize)> = all
+        .iter()
+        .filter(|n| n.focusable() && n.rows().is_some())
+        .filter_map(|n| {
+            let id = n.id.clone()?;
+            let want = st.local.get(&id)?.key.as_ref()?;
+            let rows = items(st, n);
+            let at = selected(st, &id);
+            if rows.get(at).and_then(|r| key_of(n, r)).as_ref() == Some(want) {
+                return None;
+            }
+            rows.iter().position(|r| key_of(n, r).as_ref() == Some(want)).map(|k| (id, k))
+        })
+        .collect();
+    for (id, k) in moved {
+        st.local.entry(id).or_default().selected = k;
+    }
     let lens: Vec<(String, usize)> =
         all.iter().filter(|n| n.focusable()).map(|n| (n.id.clone().unwrap(), items(st, n).len())).collect();
     for (id, len) in lens {
@@ -1502,6 +1530,36 @@ fn settle(st: &mut State) {
         .collect();
     for (id, k) in fix {
         st.local.entry(id).or_default().selected = k;
+    }
+    remember(st);
+}
+
+/// A row's key in a list or tree: its `key` path's value (a tree's own `$key`), if it has one.
+fn key_of(n: &Node, r: &Value) -> Option<String> {
+    let k = match &n.kind {
+        Kind::Tree { .. } => lookup(r, "$key"),
+        _ => lookup(r, n.row_key()),
+    };
+    Some(crate::model::scalar(k)).filter(|k| !k.is_empty())
+}
+
+/// Note each list's and tree's selected row's key, for `settle` to follow.
+fn remember(st: &mut State) {
+    let mut all = Vec::new();
+    st.ui.root.walk(&mut all);
+    let keys: Vec<(String, Option<String>)> = all
+        .iter()
+        .filter(|n| n.focusable() && n.rows().is_some())
+        .filter_map(|n| {
+            let id = n.id.clone()?;
+            let k = items(st, n).get(selected(st, &id)).and_then(|r| key_of(n, r));
+            Some((id, k))
+        })
+        .collect();
+    for (id, k) in keys {
+        if st.local.get(&id).is_some_and(|l| l.key != k) || (k.is_some() && !st.local.contains_key(&id)) {
+            st.local.entry(id).or_default().key = k;
+        }
     }
 }
 
