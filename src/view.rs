@@ -432,6 +432,9 @@ struct Markdown {
     code: Style,
     task: Style,
     done: Style,
+    link: Style,
+    /// The kinds of link the editor has (`wiki`, `tag`, `url`), styled as `link`.
+    links: Vec<String>,
 }
 
 /// A text cell's Markdown style: its line's kind (a heading, a quote), the list marker at the
@@ -439,7 +442,13 @@ struct Markdown {
 fn md_style(md: &Markdown, line: &str, col: usize, base: Style) -> Style {
     let t = line.trim_start();
     let indent = line.len() - t.len();
-    if t.starts_with('#') {
+    if !md.links.is_empty() {
+        let kinds: Vec<&str> = md.links.iter().map(String::as_str).collect();
+        if crate::model::links_in(line, &kinds).iter().any(|(a, b, ..)| (*a..*b).contains(&col)) {
+            return md.link;
+        }
+    }
+    if t.starts_with('#') && !(md.links.iter().any(|k| k == "tag") && t.chars().nth(1).is_some_and(|c| c.is_alphanumeric())) {
         return md.heading;
     }
     if t.starts_with("> ") || t == ">" {
@@ -834,6 +843,8 @@ fn node(cx: &mut Cx, n: &Node, f: &mut Frame, area: Rect) {
                     code: cx.look("md.code", style.fg(cx.th.pos)),
                     task: cx.look("md.task", style.fg(cx.th.accent).add_modifier(Modifier::BOLD)),
                     done: cx.look("md.done", style.fg(cx.th.dim).add_modifier(Modifier::CROSSED_OUT)),
+                    link: cx.look("md.link", style.fg(cx.th.accent).add_modifier(Modifier::UNDERLINED)),
+                    links: field.links.iter().map(|l| l.kind.clone()).collect(),
                 }),
             };
             // An input is one row, in the middle of what it's given.
@@ -1894,7 +1905,10 @@ mod tests {
             code: Style::default().fg(Color::Green),
             task: Style::default().fg(Color::Yellow),
             done: Style::default().fg(Color::DarkGray),
+            link: Style::default().fg(Color::Magenta),
+            links: vec!["wiki".into()],
         };
+        assert_eq!(md_style(&md, "see [[Home]] now", 6, base), md.link, "a link");
         let base = Style::default();
         assert_eq!(md_style(&md, "- [x] shipped", 3, base), md.task, "the box");
         assert_eq!(md_style(&md, "- [x] shipped", 7, base), md.done, "a ticked task's text");

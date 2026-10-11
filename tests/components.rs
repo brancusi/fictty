@@ -703,3 +703,35 @@ fn when_can_read_the_width_a_node_is_laid_out_in() {
     assert!(frame.contains("WIDE TABLE") && !frame.contains("NARROW"), "alone: {frame}");
     assert_eq!(s.state().focus.as_deref(), Some("wide"));
 }
+
+#[test]
+fn links_in_an_editor_act_on_a_click_and_a_key() {
+    let ui = json!({
+        "root": {"type": "editor", "id": "page", "syntax": "markdown",
+                 "text": "See [[Home Page]] and #ideas\nnothing here",
+                 "links": [
+                     {"kind": "wiki", "click": {"put": "opened", "value": "{$match}"}, "s-click": {"put": "aside", "value": "{$match}"}},
+                     {"kind": "tag", "click": {"put": "tag", "value": "{$match}"}}],
+                 "keys": {"a-o": {"put": "opened", "value": "{$link}"}}},
+        "store": {"opened": "", "aside": "", "tag": ""}
+    });
+    let mut s = screen(ui, 40, 4);
+    let value = |s: &mut fictty::Headless, k: &str| s.state().store[k].read()["value"].clone();
+    s.msg(Msg::Point { id: "page".into(), col: 8, row: 0, extend: false });
+    assert_eq!(value(&mut s, "opened"), "Home Page");
+    s.msg(Msg::Tick { now_ms: 5000 });
+    s.msg(Msg::Point { id: "page".into(), col: 10, row: 0, extend: true });
+    assert_eq!(value(&mut s, "aside"), "Home Page");
+    s.msg(Msg::Tick { now_ms: 10000 });
+    s.msg(Msg::Point { id: "page".into(), col: 24, row: 0, extend: false });
+    assert_eq!(value(&mut s, "tag"), "ideas");
+    // A click elsewhere places the caret and nothing more.
+    s.msg(Msg::Tick { now_ms: 15000 });
+    s.msg(Msg::Point { id: "page".into(), col: 2, row: 1, extend: false });
+    assert_eq!(value(&mut s, "tag"), "ideas");
+    // ⌥O opens the link at the caret.
+    s.keys(&["c-home", "right", "right", "right", "right", "right"]);
+    s.msg(Msg::Write { key: "opened".into(), write: serde_json::from_value(json!({"write": "put", "value": ""})).unwrap(), if_rev: None, by: "t".into(), for_ms: None });
+    s.keys(&["a-o"]);
+    assert_eq!(value(&mut s, "opened"), "Home Page");
+}

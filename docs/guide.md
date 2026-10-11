@@ -158,7 +158,10 @@ document with its undo history), each with a revision (`rev`) and who wrote it l
   (theme parts `md.heading`, `md.bullet`, `md.quote`, `md.code`, `md.task`, `md.done`) while the
   text stays plain. Ctrl-T makes the lines it's on tasks (`text` → `- [ ] text`, `- item` →
   `- [ ] item`) and ticks open ones; a ticked one is unticked, or with `"tasks": "cycle"` made
-  plain text again. A click on a `[ ]` ticks it. `"caret": "end"` starts the caret at the end of an entry the editor shows for the first time.
+  plain text again. A click on a `[ ]` ticks it. `"links"` makes spans act on a click: `{"kind": "wiki" | "tag" | "url", "click": action,
+  "s-click": action}`, with `{$match}` the page, tag or address; a key reads the link at the
+  caret as `{$link}`; links take the theme part `md.link`.
+  `"caret": "end"` starts the caret at the end of an entry the editor shows for the first time.
   Enter in a list item starts the next one (`- `, `2. `, an open
   `[ ] ` after a task, at the same indent, the rest of the line going with it); Enter on an empty
   item outdents it, or ends the list. `"readonly": true` shows a text to

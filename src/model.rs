@@ -399,6 +399,12 @@ pub enum Kind {
         /// default) or `end`. Shown again, an entry keeps its caret.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         caret: Option<String>,
+        /// Spans of the text that act on a click: `wiki` (`[[Page]]`), `tag` (`#tag`) or `url`,
+        /// each with a `click` and an `s-click` (Shift) action, whose templates read `{$match}`
+        /// (the page, the tag, the address). A key reads the link at the caret as `{$link}`.
+        /// Links take the theme part `md.link`.
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        links: Vec<LinkSpec>,
     },
     /// A one-line field (caretline, single-line): an editor whose text never holds a line
     /// break. Enter runs the node's `keys.enter`, so a form submits with a store action.
@@ -660,6 +666,56 @@ pub struct Field<'a> {
     pub task_cycle: bool,
     /// The caret starts at the end of an entry shown for the first time.
     pub caret_end: bool,
+    /// Spans that act on a click.
+    pub links: &'a [LinkSpec],
+}
+
+/// A kind of link in an editor's text and what a click on one does (see `Kind::Editor`).
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct LinkSpec {
+    pub kind: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub click: Option<Action>,
+    #[serde(default, rename = "s-click", skip_serializing_if = "Option::is_none")]
+    pub s_click: Option<Action>,
+}
+
+/// The links in a line, by kind (`wiki`, `tag`, `url`): where each starts and ends (chars) and
+/// what it names (the page, the tag without its `#`, the address).
+pub fn links_in(line: &str, kinds: &[&str]) -> Vec<(usize, usize, String, String)> {
+    let chars: Vec<char> = line.chars().collect();
+    let mut out = Vec::new();
+    let mut i = 0;
+    while i < chars.len() {
+        let rest: String = chars[i..].iter().collect();
+        if kinds.contains(&"wiki") && rest.starts_with("[[")
+            && let Some(end) = rest.find("]]")
+        {
+            let inner: String = rest[2..end].to_string();
+            let n = inner.chars().count() + 4;
+            if !inner.is_empty() && !inner.contains('\n') {
+                out.push((i, i + n, "wiki".into(), inner));
+                i += n;
+                continue;
+            }
+        }
+        if kinds.contains(&"url") && (rest.starts_with("https://") || rest.starts_with("http://")) {
+            let n = chars[i..].iter().take_while(|c| !c.is_whitespace() && !matches!(c, ')' | ']' | '>')).count();
+            out.push((i, i + n, "url".into(), chars[i..i + n].iter().collect()));
+            i += n;
+            continue;
+        }
+        if kinds.contains(&"tag") && chars[i] == '#' && (i == 0 || chars[i - 1].is_whitespace()) {
+            let n = chars[i + 1..].iter().take_while(|c| c.is_alphanumeric() || matches!(c, '_' | '-' | '/')).count();
+            if n > 0 {
+                out.push((i, i + 1 + n, "tag".into(), chars[i + 1..i + 1 + n].iter().collect()));
+                i += 1 + n;
+                continue;
+            }
+        }
+        i += 1;
+    }
+    out
 }
 
 /// Where a Markdown task item's box is in a line: the column of the char inside `[ ]`, and whether
@@ -866,7 +922,7 @@ impl Node {
     /// An editor or an input: the text component's settings.
     pub fn field(&self) -> Option<Field<'_>> {
         match &self.kind {
-            Kind::Editor { text, doc, placeholder, syntax, readonly, tab, tasks, caret } => Some(Field {
+            Kind::Editor { text, doc, placeholder, syntax, readonly, tab, tasks, caret, links } => Some(Field {
                 seed: text,
                 doc: doc.as_deref(),
                 placeholder: placeholder.as_deref(),
@@ -878,6 +934,7 @@ impl Node {
                 indent_lines: tab.as_deref() == Some("indent-lines"),
                 task_cycle: tasks.as_deref() == Some("cycle"),
                 caret_end: caret.as_deref() == Some("end"),
+                links,
             }),
             Kind::Input { text, placeholder, accept } => Some(Field {
                 seed: text,
@@ -891,6 +948,7 @@ impl Node {
                 indent_lines: false,
                 task_cycle: false,
                 caret_end: false,
+                links: &[],
             }),
             _ => None,
         }

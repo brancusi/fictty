@@ -569,6 +569,16 @@ fn apply(st: &mut State, msg: Msg) -> Vec<Effect> {
                 }
                 _ => {}
             }
+            // A click on a link runs what its kind says (Shift: its `s-click`).
+            if count == 1
+                && let Some((kind, _)) = link_at(st, &id)
+                && let Some(spec) = tree!(st).find(&id).and_then(|n| n.field()).and_then(|f| f.links.iter().find(|l| l.kind == kind).cloned())
+                && let Some(a) = if extend { spec.s_click } else { spec.click }
+            {
+                let mut out = editor_effects(st, fx);
+                out.extend(act(st, a));
+                return out;
+            }
             // A click on a task's box ticks it.
             if count == 1
                 && !extend
@@ -853,7 +863,28 @@ fn action_context(st: &State) -> Value {
     if let Some(Slot::Ready { value }) = st.data.get("$self") {
         ctx["$self"] = value.clone();
     }
+    // The link at the focused editor's caret: `{$link}` for a key, `{$match}` for a click.
+    if let Some((_, m)) = st.focus.as_deref().and_then(|id| link_at(st, id)) {
+        ctx["$link"] = m.clone().into();
+        ctx["$match"] = m.into();
+    }
     ctx
+}
+
+/// The link under editor `id`'s caret, if its text has one there: its kind and what it names.
+fn link_at(st: &State, id: &str) -> Option<(String, String)> {
+    let f = tree!(st).find(id)?.field()?;
+    if f.links.is_empty() {
+        return None;
+    }
+    let kinds: Vec<&str> = f.links.iter().map(|l| l.kind.as_str()).collect();
+    let (key, view) = field_view(st, id)?;
+    let Body::Text { doc } = &st.store.get(&key)?.body else { return None };
+    let at = view.caret().min(doc.text.len_chars());
+    let line = doc.text.char_to_line(at);
+    let col = at - doc.text.line_to_char(line);
+    let text = doc.text.line(line).to_string();
+    crate::model::links_in(&text, &kinds).into_iter().find(|(a, b, ..)| (*a..*b).contains(&col)).map(|(_, _, k, m)| (k, m))
 }
 
 /// A store action's `value` filled from `ctx`: strings are templates. A string that is one
@@ -2624,7 +2655,7 @@ mod tests {
         // The editor back, with a different seed: the note wins over the seed.
         let mut again = note();
         if let Some(c) = again.root.children_mut() {
-            c[0].kind = Kind::Editor { text: "a new seed".into(), doc: None, placeholder: None, syntax: None, readonly: false, tab: None, tasks: None, caret: None };
+            c[0].kind = Kind::Editor { text: "a new seed".into(), doc: None, placeholder: None, syntax: None, readonly: false, tab: None, tasks: None, caret: None, links: vec![] };
         }
         update(&mut st, Msg::Push { ui: again });
         assert_eq!(text_of(&st, "note"), "hi!");
