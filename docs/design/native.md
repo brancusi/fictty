@@ -239,12 +239,10 @@ Thought Control embeds fictty. What its move costs:
 | Screenshots may need Screen Recording permission | Offscreen rendering or the test platform as the fallback; decided in phase 2. |
 | 70 tests read the grid | Rewritten on readback and state in phase 1, component by component, before the grid goes. |
 | Frozen terminal demos and posts | They pin terminal builds and keep working; new posts pin window builds. |
-| The name says tty | An open question for Aram, not a blocker. |
 
-## Open questions for Aram
+## Decided with Aram (11 October 2026)
 
-1. **The name.** fictty is a fictitious tty. Keep it (it has a site, a blog and a following), or
-   rename with the move?
-2. **Linux timing.** macOS first is the plan; does anything need Linux before v0.3.0?
-3. **One window with tabs, or a window per agent?** The plan says tabs in one app, windows on
+1. **The name stays fictty.**
+2. **macOS first.** Linux and Windows come after v0.3.0.
+3. **One app with tabs.** An agent opens a tab (`fictty open --tab`); a separate window only on
    request (⌘N, or `fictty open --window`).
