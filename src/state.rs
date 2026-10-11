@@ -883,7 +883,8 @@ fn type_into(st: &mut State, id: &str, key: &str) -> Vec<caretline::Effect> {
 }
 
 /// Tab in an editor that indents: the lines of the selection, or a list item, two spaces in (or
-/// out, with `inward` false, as far as two spaces go); elsewhere Tab types two spaces. One edit
+/// out, with `inward` false, as far as two spaces go); elsewhere Tab types two spaces, unless the
+/// editor indents lines only (`indent-lines`). One edit
 /// by the person, one undo step, every caret carried along.
 fn indent(st: &mut State, id: &str, inward: bool) {
     let Some((key, view)) = field_view(st, id) else { return };
@@ -905,7 +906,8 @@ fn indent(st: &mut State, id: &str, inward: bool) {
             d > 0 && t[d..].starts_with(". ")
         }
     };
-    let changes: Vec<(usize, usize, String)> = if inward && lo == hi && !listy(&line(first)) {
+    let lines_only = st.ui.root.find(id).and_then(|n| n.field()).is_some_and(|f| f.indent_lines);
+    let changes: Vec<(usize, usize, String)> = if inward && lo == hi && !lines_only && !listy(&line(first)) {
         vec![(lo, lo, "  ".into())]
     } else if inward {
         (first..=last).map(|l| text.line_to_char(l)).map(|at| (at, at, "  ".to_string())).collect()
@@ -918,12 +920,41 @@ fn indent(st: &mut State, id: &str, inward: bool) {
             })
             .collect()
     };
+    edit_lines(st, id, changes);
+}
+
+/// Edits to the start of lines (an indent, a task's box) by the person, as one undo step, with
+/// editor `id`'s carets and selections moving with their text: one at a line's start stays with
+/// that line's text, not in front of what was added.
+fn edit_lines(st: &mut State, id: &str, changes: Vec<(usize, usize, String)>) {
     if changes.is_empty() {
         return;
     }
+    let Some((key, view)) = field_view(st, id) else { return };
+    let before = view.selection.clone();
+    let shift = |x: usize| -> usize {
+        let mut d: isize = 0;
+        for (f, t, s) in &changes {
+            let n = s.chars().count() as isize;
+            if x >= *t {
+                d += n - (t - f) as isize;
+            } else if x > *f {
+                d -= (x - f) as isize;
+            }
+        }
+        (x as isize + d).max(0) as usize
+    };
     let now_ms = st.now_ms;
     on_doc(st, id, caretline::Msg::Tick { now_ms }, "person");
-    on_doc(st, id, caretline::Msg::Edit { changes, join: false }, "person");
+    on_doc(st, id, caretline::Msg::Edit { changes: changes.clone(), join: false }, "person");
+    if let Some(v) = st.local.get_mut(id).and_then(|l| l.editors.get_mut(&key)) {
+        v.selection = before.transform(|mut r| {
+            r.anchor = shift(r.anchor);
+            r.head = shift(r.head);
+            r.old_visual_position = None;
+            r
+        });
+    }
 }
 
 /// Where editor `id`'s caret is: its line, and its column in that line.

@@ -372,7 +372,8 @@ pub enum Kind {
         #[serde(default, skip_serializing_if = "std::ops::Not::not")]
         readonly: bool,
         /// `indent`: the editor keeps Tab and Shift-Tab, which indent and outdent the lines of the
-        /// selection (or a list item; else Tab types two spaces). Esc leaves it.
+        /// selection (or a list item; else Tab types two spaces). `indent-lines`: Tab always
+        /// indents the lines the caret or the selection is on, as an outliner does. Esc leaves.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         tab: Option<String>,
     },
@@ -630,6 +631,8 @@ pub struct Field<'a> {
     pub readonly: bool,
     /// Tab and Shift-Tab indent and outdent instead of moving the focus.
     pub indents: bool,
+    /// Tab always indents the caret's line (an outliner), never types spaces.
+    pub indent_lines: bool,
 }
 
 /// Where a Markdown task item's box is in a line: the column of the char inside `[ ]`, and whether
@@ -829,7 +832,8 @@ impl Node {
                 markdown: syntax.as_deref() == Some("markdown"),
                 number: false,
                 readonly: *readonly,
-                indents: tab.as_deref() == Some("indent"),
+                indents: matches!(tab.as_deref(), Some("indent" | "indent-lines")),
+                indent_lines: tab.as_deref() == Some("indent-lines"),
             }),
             Kind::Input { text, placeholder, accept } => Some(Field {
                 seed: text,
@@ -840,6 +844,7 @@ impl Node {
                 number: accept.as_deref() == Some("number"),
                 readonly: false,
                 indents: false,
+                indent_lines: false,
             }),
             _ => None,
         }

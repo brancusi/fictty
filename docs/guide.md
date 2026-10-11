@@ -142,7 +142,8 @@ document with its undo history), each with a revision (`rev`) and who wrote it l
   (theme parts `md.heading`, `md.bullet`, `md.quote`, `md.code`, `md.task`, `md.done`) while the
   text stays plain; Ctrl-T or a click on a `[ ]` ticks it. `"readonly": true` shows a text to
   read, scroll, select and copy, never change. `"tab": "indent"` keeps Tab and Shift-Tab to
-  indent and outdent the selected lines or a list item (Esc leaves instead). A `put` by the person
+  indent and outdent the selected lines or a list item (Esc leaves instead); `"indent-lines"`
+  always indents the caret's line, as an outliner does. A `put` by the person
   into a text leaves the caret after it, and keys typed while a host's text is loading land once
   it has.
 - **Editing keys** follow the Mac text field, each with a twin for terminals that don't send ⌘:

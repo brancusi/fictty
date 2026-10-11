@@ -10,8 +10,15 @@ use serde_json::json;
 
 /// A screen with one editor, `e`, holding the golden's text with its selection made by keys.
 fn editor(golden: &str) -> fictty::Headless {
+    editor_with(golden, json!({}))
+}
+
+/// `editor`, with more fields on the editor node (`{"tab": "indent-lines"}`).
+fn editor_with(golden: &str, more: serde_json::Value) -> fictty::Headless {
     let (text, anchor, head) = parse(golden);
-    let ui = json!({"root": {"type": "editor", "id": "e", "text": text}});
+    let mut node = json!({"type": "editor", "id": "e", "text": text});
+    node.as_object_mut().unwrap().extend(more.as_object().unwrap().clone());
+    let ui = json!({"root": {"type": "col", "children": [node, {"type": "list", "id": "after", "items": ["x"]}]}, "focus": "e"});
     let mut s = App::new(serde_json::from_value(ui).unwrap()).headless(60, 8).unwrap();
     s.keys(&["c-home"]);
     for _ in 0..anchor {
@@ -256,4 +263,44 @@ fn invariants_hold_over_a_run_of_keys() {
         s.keys(&["d-z"]);
     }
     assert_eq!(shown(&mut s), "▮");
+}
+
+/// Thought Control's goldens for `"tab": "indent-lines"` (an outliner's Tab: a line nests, wherever
+/// the caret is in it).
+#[test]
+fn indent_lines() {
+    let lines = || json!({"tab": "indent-lines"});
+    let check = |from: &str, keys: &[&str], to: &str| {
+        let mut s = editor_with(from, lines());
+        s.keys(keys);
+        assert_eq!(shown(&mut s), to, "{from} then {keys:?}");
+        // IL7: one undo takes it back exactly, caret and selection too.
+        s.keys(&["d-z"]);
+        let (text, ..) = parse(from);
+        assert_eq!(parse(&shown(&mut s)).0, text, "{from}: undo");
+        s
+    };
+    // IL1
+    let mut s = editor_with("Para line▮", lines());
+    for k in ["enter", "f", "i", "r", "s", "t", "space", "s", "u", "b", "t", "a", "s", "k", "tab"] {
+        s.keys(&[k]);
+    }
+    assert_eq!(shown(&mut s), "Para line\n  first subtask▮");
+    // IL2, IL3
+    check("Hello wo▮rld", &["tab"], "  Hello wo▮rld");
+    check("  Hello wo▮rld", &["s-tab"], "Hello wo▮rld");
+    // IL4
+    check("- o⟦ne\n- tw▮⟧o", &["tab"], "  - o⟦ne\n  - tw▮⟧o");
+    // IL5
+    check("a\n⟦b\n▮⟧c", &["tab"], "a\n  ⟦b\n▮⟧c");
+    // IL6
+    check("▮", &["tab"], "  ▮");
+    // IL8
+    check(" one▮", &["s-tab"], "one▮");
+    let mut s = editor_with("one▮", lines());
+    s.keys(&["s-tab", "d-z"]);
+    assert_eq!(shown(&mut s), "one▮", "no edit, nothing to undo");
+    // Tab stays in the editor; Esc leaves.
+    s.keys(&["tab", "esc"]);
+    assert_eq!(s.state().focus.as_deref(), Some("after"));
 }
