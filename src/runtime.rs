@@ -9,7 +9,7 @@ use crate::view;
 use anyhow::{Context, Result, bail};
 use crate::view::Hit;
 use ratatui::crossterm::event::{
-    self, DisableMouseCapture, EnableMouseCapture, Event as TermEvent, KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseButton,
+    self, DisableBracketedPaste, DisableMouseCapture, EnableBracketedPaste, EnableMouseCapture, Event as TermEvent, KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseButton,
     MouseEventKind,
 };
 use serde::Deserialize;
@@ -188,6 +188,8 @@ struct Driver {
     /// Zero on the logical clock (`State::now_ms`).
     started: Instant,
     host: Arc<dyn Host>,
+    /// What a headless screen put on the clipboard, oldest first.
+    copied: Vec<String>,
 }
 
 impl Drop for Driver {
@@ -201,7 +203,7 @@ impl Drop for Driver {
 
 impl Driver {
     fn new(tx: Sender<Event>, blocking: bool, host: Arc<dyn Host>) -> Driver {
-        Driver { tx, in_flight: BTreeSet::new(), last_fetch: BTreeMap::new(), streams: BTreeMap::new(), quit: false, blocking, upgrade: None, started: Instant::now(), host }
+        Driver { tx, in_flight: BTreeSet::new(), last_fetch: BTreeMap::new(), streams: BTreeMap::new(), quit: false, blocking, upgrade: None, started: Instant::now(), host, copied: Vec::new() }
     }
 
     fn apply(&mut self, st: &mut State, msg: Msg) {
@@ -227,7 +229,8 @@ impl Driver {
                     let _ = write!(out, "\x1b]52;c;{b64}\x07");
                     let _ = out.flush();
                 }
-                Effect::Copy(_) => {}
+                // A headless screen keeps what it would have copied, for tests to read.
+                Effect::Copy(text) => self.copied.push(text),
                 Effect::Load(path) => match load(Path::new(&path)) {
                     Ok(ui) => queue.extend(update(st, Msg::Push { ui })),
                     Err(e) => st.status = Some(format!("{e:#}")),
@@ -632,7 +635,14 @@ impl App {
         if let Ok(size) = term.size() {
             d.apply(&mut st, Msg::Screen { width: size.width, height: size.height });
         }
-        let _ = ratatui::crossterm::execute!(std::io::stdout(), EnableMouseCapture);
+        let _ = ratatui::crossterm::execute!(std::io::stdout(), EnableMouseCapture, EnableBracketedPaste);
+        // Keys with every modifier told apart (⌘ as `d-`, Ctrl-Home, Shift-Enter), where the
+        // terminal speaks the kitty keyboard protocol.
+        let enhanced = ratatui::crossterm::terminal::supports_keyboard_enhancement().unwrap_or(false);
+        if enhanced {
+            use ratatui::crossterm::event::{KeyboardEnhancementFlags as F, PushKeyboardEnhancementFlags};
+            let _ = ratatui::crossterm::execute!(std::io::stdout(), PushKeyboardEnhancementFlags(F::DISAMBIGUATE_ESCAPE_CODES | F::REPORT_ALTERNATE_KEYS));
+        }
         let started = d.started;
         let res = (|| -> Result<()> {
             // Draw only when something changed, at most once per frame budget (120 fps).
@@ -655,6 +665,8 @@ impl App {
             let mut scaled_last: Vec<view::Scaled> = Vec::new();
             // When the last frame said it would change by itself (a toast going, a spinner).
             let mut wake: Option<u64> = None;
+            // The editor a press in its text started a drag in, and where it is.
+            let mut drag: Option<(String, ratatui::layout::Rect)> = None;
             while !d.quit {
                 // Animations (a pulsing ring) need time to move: tick every frame while one shows.
                 let animating = st.ui.layers.iter().any(|l| l.pulse.is_some());
@@ -711,7 +723,7 @@ impl App {
                     batch.extend(rx.try_iter().take(10_000));
                 }
                 let resized = batch.iter().any(|e| matches!(e, Event::Term(TermEvent::Resize(..))));
-                let n = apply_batch(batch, &mut d, &mut st, &hits, &mut screens);
+                let n = apply_batch(batch, &mut d, &mut st, &hits, &mut screens, &mut drag);
                 window.msgs += n;
                 dirty |= n > 0;
                 if let Some(p) = store.as_deref().filter(|_| st.store_writes != saved_writes) {
@@ -767,7 +779,10 @@ impl App {
             Ok(())
         })();
         let _ = std::io::stdout().write_all(&kitty.clear());
-        let _ = ratatui::crossterm::execute!(std::io::stdout(), DisableMouseCapture);
+        if enhanced {
+            let _ = ratatui::crossterm::execute!(std::io::stdout(), ratatui::crossterm::event::PopKeyboardEnhancementFlags);
+        }
+        let _ = ratatui::crossterm::execute!(std::io::stdout(), DisableMouseCapture, DisableBracketedPaste);
         ratatui::restore();
         let _ = std::fs::remove_file(&socket);
         res
@@ -777,7 +792,7 @@ impl App {
 /// Apply a batch of queued events. A source's value replaces the last one, so of several queued
 /// values for one source only the newest is applied (the rest still count as received). Returns
 /// how many events arrived.
-fn apply_batch(batch: Vec<Event>, d: &mut Driver, st: &mut State, hits: &[Hit], screens: &mut Vec<Sender<Value>>) -> usize {
+fn apply_batch(batch: Vec<Event>, d: &mut Driver, st: &mut State, hits: &[Hit], screens: &mut Vec<Sender<Value>>, drag: &mut Option<(String, ratatui::layout::Rect)>) -> usize {
     let n = batch.len();
     let mut newest: BTreeMap<String, usize> = BTreeMap::new();
     for (i, ev) in batch.iter().enumerate() {
@@ -809,7 +824,7 @@ fn apply_batch(batch: Vec<Event>, d: &mut Driver, st: &mut State, hits: &[Hit], 
                     "down" => MouseEventKind::ScrollDown,
                     _ => MouseEventKind::Moved,
                 };
-                let msg = mouse(kind, x, y, hits, st);
+                let msg = mouse(kind, KeyModifiers::NONE, x, y, hits, st, &mut None);
                 let what = msg.as_ref().map(|m| serde_json::to_value(m).unwrap_or_default());
                 if let Some(m) = msg {
                     d.apply(st, m);
@@ -828,9 +843,13 @@ fn apply_batch(batch: Vec<Event>, d: &mut Driver, st: &mut State, hits: &[Hit], 
                 true
             }
             Event::Term(TermEvent::Mouse(m)) => {
-                if let Some(msg) = mouse(m.kind, m.column, m.row, hits, st) {
+                if let Some(msg) = mouse(m.kind, m.modifiers, m.column, m.row, hits, st, drag) {
                     d.apply(st, msg);
                 }
+                true
+            }
+            Event::Term(TermEvent::Paste(text)) => {
+                d.apply(st, Msg::Paste { text });
                 true
             }
             Event::Term(_) => true,
@@ -840,15 +859,32 @@ fn apply_batch(batch: Vec<Event>, d: &mut Driver, st: &mut State, hits: &[Hit], 
 }
 
 /// A mouse event as a message, by what was drawn under it last frame (the innermost hit).
-fn mouse(kind: MouseEventKind, x: u16, y: u16, hits: &[Hit], st: &State) -> Option<Msg> {
+/// A press in an editor's text starts a drag (`drag`), and moves with the button held stretch its
+/// selection until the button comes up.
+fn mouse(kind: MouseEventKind, mods: KeyModifiers, x: u16, y: u16, hits: &[Hit], st: &State, drag: &mut Option<(String, ratatui::layout::Rect)>) -> Option<Msg> {
     let at = |want_row: bool| {
         hits.iter().rev().find(|h| h.rect.contains(ratatui::layout::Position { x, y }) && (!want_row || h.row.is_some()))
     };
     match kind {
+        MouseEventKind::Drag(MouseButton::Left) if drag.is_some() => {
+            let (id, r) = drag.as_ref()?;
+            let col = x.saturating_sub(r.x).min(r.width.saturating_sub(1));
+            let row = y.saturating_sub(r.y).min(r.height);
+            return Some(Msg::Drag { id: id.clone(), col, row });
+        }
+        MouseEventKind::Up(MouseButton::Left) => {
+            *drag = None;
+            return None;
+        }
+        _ => {}
+    }
+    match kind {
         MouseEventKind::Down(MouseButton::Left) => {
             let h = at(false)?;
             if h.text {
-                return Some(Msg::Point { id: h.id.clone(), col: x - h.rect.x, row: y - h.rect.y });
+                *drag = Some((h.id.clone(), h.rect));
+                let extend = mods.contains(KeyModifiers::SHIFT);
+                return Some(Msg::Point { id: h.id.clone(), col: x - h.rect.x, row: y - h.rect.y, extend });
             }
             Some(Msg::Click { id: h.id.clone(), row: h.row.filter(|r| *r < 1000), tab: h.tab })
         }
@@ -1037,6 +1073,11 @@ impl Headless {
         self
     }
 
+    /// What it has put on the clipboard so far, oldest first.
+    pub fn copied(&self) -> &[String] {
+        &self.d.copied
+    }
+
     /// The state, as `get --state` shows it.
     pub fn state(&mut self) -> &State {
         self.drain();
@@ -1166,28 +1207,27 @@ fn resize_editors(d: &mut Driver, st: &mut State, sizes: Vec<(String, u16, u16)>
     changed
 }
 
+/// A key's name: the key (`a`, `A`, `enter`, `left`, `f5`), after its modifiers in the order `c-`
+/// (Ctrl), `a-` (Alt/Option), `d-` (Super/⌘), `s-` (Shift). Shift on a letter alone is its case
+/// (`A`); with another modifier it's `s-` and the letter is lowercase (`s-d-z`, ⇧⌘Z).
 pub fn key_name(k: KeyEvent) -> Option<String> {
-    let ctrl = k.modifiers.contains(KeyModifiers::CONTROL);
-    let shift = k.modifiers.contains(KeyModifiers::SHIFT);
-    let alt = k.modifiers.contains(KeyModifiers::ALT);
-    // Shift with a movement key extends a selection in an editor: `s-left`, `s-end`.
-    let moves = matches!(k.code, KeyCode::Up | KeyCode::Down | KeyCode::Left | KeyCode::Right | KeyCode::Home | KeyCode::End);
-    if shift && moves {
-        let base = key_name(KeyEvent::new(k.code, KeyModifiers::NONE))?;
-        return Some(format!("s-{base}"));
-    }
-    if let KeyCode::Char(c) = k.code
-        && alt
-        && !ctrl
-    {
-        return Some(format!("a-{c}"));
-    }
-    Some(match k.code {
-        KeyCode::Char(c) if ctrl => format!("c-{c}"),
+    let m = k.modifiers;
+    let (ctrl, alt, sup, mut shift) = (m.contains(KeyModifiers::CONTROL), m.contains(KeyModifiers::ALT), m.contains(KeyModifiers::SUPER), m.contains(KeyModifiers::SHIFT));
+    let base = match k.code {
         KeyCode::Char(' ') => "space".into(),
-        KeyCode::Char(c) => c.to_string(),
+        KeyCode::Char(c) if ctrl || alt || sup => {
+            shift |= c.is_uppercase();
+            c.to_lowercase().to_string()
+        }
+        KeyCode::Char(c) => {
+            shift = false;
+            c.to_string()
+        }
         KeyCode::Tab => "tab".into(),
-        KeyCode::BackTab => "s-tab".into(),
+        KeyCode::BackTab => {
+            shift = true;
+            "tab".into()
+        }
         KeyCode::Enter => "enter".into(),
         KeyCode::Esc => "esc".into(),
         KeyCode::Backspace => "bs".into(),
@@ -1200,6 +1240,38 @@ pub fn key_name(k: KeyEvent) -> Option<String> {
         KeyCode::Delete => "del".into(),
         KeyCode::PageUp => "pgup".into(),
         KeyCode::PageDown => "pgdn".into(),
+        KeyCode::F(n) => format!("f{n}"),
         _ => return None,
-    })
+    };
+    let mut name = String::new();
+    for (on, p) in [(ctrl, "c-"), (alt, "a-"), (sup, "d-"), (shift, "s-")] {
+        if on {
+            name.push_str(p);
+        }
+    }
+    name.push_str(&base);
+    Some(name)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn key_names_put_modifiers_in_one_order() {
+        let k = |code, mods| key_name(KeyEvent::new(code, mods)).unwrap();
+        assert_eq!(k(KeyCode::Char('a'), KeyModifiers::NONE), "a");
+        assert_eq!(k(KeyCode::Char('A'), KeyModifiers::SHIFT), "A");
+        assert_eq!(k(KeyCode::Char('c'), KeyModifiers::CONTROL), "c-c");
+        assert_eq!(k(KeyCode::Char('b'), KeyModifiers::ALT), "a-b");
+        assert_eq!(k(KeyCode::Char('a'), KeyModifiers::SUPER), "d-a");
+        assert_eq!(k(KeyCode::Char('Z'), KeyModifiers::SUPER | KeyModifiers::SHIFT), "d-s-z");
+        assert_eq!(k(KeyCode::Char('z'), KeyModifiers::SUPER | KeyModifiers::SHIFT), "d-s-z");
+        assert_eq!(k(KeyCode::Left, KeyModifiers::SHIFT), "s-left");
+        assert_eq!(k(KeyCode::Left, KeyModifiers::ALT | KeyModifiers::SHIFT), "a-s-left");
+        assert_eq!(k(KeyCode::BackTab, KeyModifiers::SHIFT), "s-tab");
+        assert_eq!(k(KeyCode::Home, KeyModifiers::CONTROL), "c-home");
+        assert_eq!(k(KeyCode::Delete, KeyModifiers::SUPER), "d-del");
+        assert_eq!(k(KeyCode::Char(' '), KeyModifiers::NONE), "space");
+    }
 }

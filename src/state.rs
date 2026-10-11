@@ -65,7 +65,24 @@ pub struct State {
     /// Messages showing in the corner until their time is up, oldest first.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub toasts: Vec<Toast>,
+    /// The last click in an editor's text and how many came in a row there (a double click
+    /// selects a word, a triple the line).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub clicks: Option<Clicks>,
 }
+
+/// A run of clicks on one cell of an editor (see `State::clicks`).
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct Clicks {
+    pub id: String,
+    pub col: u16,
+    pub row: u16,
+    pub at: u64,
+    pub count: u8,
+}
+
+/// How soon a click must follow the last to count as a double (or triple) click, in ms.
+const MULTI_CLICK_MS: u64 = 400;
 
 /// A message in the corner (`Action::Toast`), shown until `until` on the logical clock.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
@@ -152,8 +169,20 @@ pub enum Msg {
     /// The wheel over a node: rows to move (negative is up).
     Scroll { id: String, by: isize },
     /// A click inside an editor's or input's text, at a cell relative to it: focus it and put the
-    /// caret there.
-    Point { id: String, col: u16, row: u16 },
+    /// caret there, or with `extend` (Shift held) stretch the selection to it. A second click on
+    /// the same cell soon after selects a word, a third the line.
+    Point {
+        id: String,
+        col: u16,
+        row: u16,
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        extend: bool,
+    },
+    /// The mouse dragged with the button held, from a click in an editor's text: the selection
+    /// stretches to this cell (relative to the editor; the runtime clamps it).
+    Drag { id: String, col: u16, row: u16 },
+    /// Text pasted into the terminal (bracketed paste): into the focused editor or input.
+    Paste { text: String },
     /// Animation time.
     Tick { now_ms: u64 },
     /// Move a node's view state from outside: a list's or table's `selected` row, a tabs
@@ -330,19 +359,56 @@ fn apply(st: &mut State, msg: Msg) -> Vec<Effect> {
             st.hover = hover;
             vec![]
         }
-        Msg::Point { id, col, row } => {
-            if st.ui.root.find(&id).is_some_and(|n| n.field().is_some()) {
-                st.focus = Some(id.clone());
-                on_doc(st, &id, caretline::Msg::Click { col, row, extend: false }, "person");
-                // A click on a task's box ticks it.
-                if let Some((line, at)) = caret_place(st, &id)
-                    && let Some((b, _)) = task_line(st, &id, line)
-                    && (b.saturating_sub(1)..=b + 1).contains(&at)
-                {
-                    toggle_task(st, &id, line);
-                }
+        Msg::Point { id, col, row, extend } => {
+            if !st.ui.root.find(&id).is_some_and(|n| n.field().is_some()) {
+                return vec![];
             }
-            vec![]
+            st.focus = Some(id.clone());
+            let now = st.now_ms;
+            let count = match &st.clicks {
+                Some(c) if !extend && c.id == id && (c.col, c.row) == (col, row) && now.saturating_sub(c.at) <= MULTI_CLICK_MS => c.count % 3 + 1,
+                _ => 1,
+            };
+            st.clicks = Some(Clicks { id: id.clone(), col, row, at: now, count });
+            let mut fx = on_doc(st, &id, caretline::Msg::Click { col, row, extend }, "person");
+            match count {
+                2 => {
+                    if let Some((_, view)) = field_view(st, &id) {
+                        let pos = view.caret();
+                        fx.extend(on_doc(st, &id, caretline::Msg::SelectWordAt { pos }, "person"));
+                    }
+                }
+                3 => {
+                    use caretline::{By, Dir};
+                    fx.extend(on_doc(st, &id, caretline::Msg::Move { dir: Dir::Backward, by: By::LineStart, extend: false }, "person"));
+                    fx.extend(on_doc(st, &id, caretline::Msg::Move { dir: Dir::Forward, by: By::LineEnd, extend: true }, "person"));
+                }
+                _ => {}
+            }
+            // A click on a task's box ticks it.
+            if count == 1
+                && !extend
+                && let Some((line, at)) = caret_place(st, &id)
+                && let Some((b, _)) = task_line(st, &id, line)
+                && (b.saturating_sub(1)..=b + 1).contains(&at)
+            {
+                toggle_task(st, &id, line);
+            }
+            editor_effects(st, fx)
+        }
+        Msg::Drag { id, col, row } => {
+            if st.focus.as_deref() != Some(id.as_str()) {
+                return vec![];
+            }
+            let fx = on_doc(st, &id, caretline::Msg::Drag { col, row }, "person");
+            editor_effects(st, fx)
+        }
+        Msg::Paste { text } => {
+            let Some(id) = st.focus.clone().filter(|f| st.ui.root.find(f).is_some_and(|n| n.field().is_some())) else { return vec![] };
+            let now_ms = st.now_ms;
+            on_doc(st, &id, caretline::Msg::Tick { now_ms }, "person");
+            let fx = on_doc(st, &id, caretline::Msg::Paste { text: Some(text) }, "person");
+            editor_effects(st, fx)
         }
         Msg::Scroll { id, by } if st.ui.root.find(&id).is_some_and(|n| n.field().is_some()) => {
             on_doc(st, &id, caretline::Msg::Scroll { rows: by as i32 * 3 }, "person");
@@ -454,8 +520,8 @@ fn apply(st: &mut State, msg: Msg) -> Vec<Effect> {
                 return vec![];
             }
             if let Some(id) = editing(st, &key) {
-                type_into(st, &id, &key);
-                return vec![];
+                let fx = type_into(st, &id, &key);
+                return editor_effects(st, fx);
             }
             match resolve(st, &key) {
                 Some(a) => act(st, a),
@@ -594,18 +660,40 @@ fn not_a_number(st: &State, key: &str) -> Option<String> {
 fn editing(st: &State, key: &str) -> Option<String> {
     let id = st.focus.as_ref()?;
     let n = st.ui.root.find(id)?;
-    let taken = n.field().is_some() && !n.keys.contains_key(key) && !matches!(key, "tab" | "s-tab" | "esc");
+    // Esc leaves an editor, unless there's a selection to drop first.
+    let leaves = match key {
+        "tab" | "s-tab" => true,
+        "esc" => !field_view(st, id).is_some_and(|(_, v)| {
+            let r = v.selection.primary();
+            r.anchor != r.head
+        }),
+        _ => false,
+    };
+    let taken = n.field().is_some() && !n.keys.contains_key(key) && !leaves;
     taken.then(|| id.clone())
 }
 
+/// What an editor asked for, as the screen's effects: its clipboard goes to the system's (OSC 52),
+/// its notices ("copied 3 chars", "nothing selected") to a short toast.
+fn editor_effects(st: &mut State, fx: Vec<caretline::Effect>) -> Vec<Effect> {
+    let mut out = Vec::new();
+    for e in fx {
+        match e {
+            caretline::Effect::ClipboardSet { text } => out.push(Effect::Copy(text)),
+            caretline::Effect::Notice { text } => toast(st, text, None, Some(1500)),
+            _ => {}
+        }
+    }
+    out
+}
+
 /// A key into an editor: the clock first (typing groups into undo steps by time), then the key
-/// through caretline's keymap. Its effects (save, quit, the system clipboard) are the host's
-/// and fictty has none to give, so they're dropped; copy and paste work inside the editor.
-fn type_into(st: &mut State, id: &str, key: &str) {
-    let Some(msg) = editor_key(key).and_then(|k| caretline::keymap(&k)) else { return };
+/// through caretline's keymap. Its effects come back for `editor_effects`.
+fn type_into(st: &mut State, id: &str, key: &str) -> Vec<caretline::Effect> {
+    let Some(msg) = editor_key(key).and_then(|k| caretline::keymap(&k)) else { return vec![] };
     let now_ms = st.now_ms;
     on_doc(st, id, caretline::Msg::Tick { now_ms }, "person");
-    on_doc(st, id, msg, "person");
+    on_doc(st, id, msg, "person")
 }
 
 /// Where editor `id`'s caret is: its line, and its column in that line.
@@ -681,10 +769,11 @@ fn put_views(st: &mut State, key: &str, views: Vec<(String, caretline::View)>) {
 
 /// A caretline message through editor `id`'s view of its text. Every other editor on the same
 /// text follows the change. A change of text is a store write, by `by`.
-fn on_doc(st: &mut State, id: &str, msg: caretline::Msg, by: &str) {
-    let Some(node) = st.ui.root.find(id) else { return };
+fn on_doc(st: &mut State, id: &str, msg: caretline::Msg, by: &str) -> Vec<caretline::Effect> {
+    let Some(node) = st.ui.root.find(id) else { return vec![] };
     let number = node.field().is_some_and(|f| f.number);
-    let Some(key) = doc_key(st, node) else { return };
+    let Some(key) = doc_key(st, node) else { return vec![] };
+    let mut fx = Vec::new();
     let mut views = take_views(st, &key);
     let acting = views.iter().position(|(v, _)| v == id);
     if let (Some(acting), Some(Entry { body: Body::Text { doc }, .. })) = (acting, st.store.get_mut(&key)) {
@@ -692,7 +781,12 @@ fn on_doc(st: &mut State, id: &str, msg: caretline::Msg, by: &str) {
         let mut vs: Vec<caretline::View> = views.iter().map(|(_, v)| v.clone()).collect();
         // A number field keeps what it had when an edit would make it something else.
         let undo = number.then(|| (doc.clone(), vs.clone()));
-        caretline::views::update_doc(doc, &mut vs, acting, msg);
+        fx = caretline::views::update_doc(doc, &mut vs, acting, msg);
+        // What the editor would say on its own status bar ("copied 3 chars", "nothing selected")
+        // becomes a notice.
+        if let Some(text) = vs[acting].status.take() {
+            fx.push(caretline::Effect::Notice { text });
+        }
         if let Some((d, v)) = undo
             && !crate::model::number_so_far(&doc.text.to_string())
         {
@@ -707,6 +801,7 @@ fn on_doc(st: &mut State, id: &str, msg: caretline::Msg, by: &str) {
         }
     }
     put_views(st, &key, views);
+    fx
 }
 
 /// Count a write to `key`: its revision goes up, and it records who.
@@ -803,6 +898,7 @@ fn editor_key(name: &str) -> Option<caretline::Key> {
             "c" => mods.ctrl = true,
             "a" => mods.alt = true,
             "s" => mods.shift = true,
+            "d" => mods.cmd = true,
             _ => return None,
         }
         rest = r;
@@ -1839,7 +1935,7 @@ mod tests {
         ]}})) });
         assert_eq!(st.focus.as_deref(), Some("l"));
         update(&mut st, Msg::Size { id: "e".into(), width: 20, height: 4 });
-        update(&mut st, Msg::Point { id: "e".into(), col: 3, row: 1 });
+        update(&mut st, Msg::Point { id: "e".into(), col: 3, row: 1, extend: false });
         assert_eq!(st.focus.as_deref(), Some("e"));
         assert_eq!(caret(&st, "e"), 14, "line two, column three");
     }
