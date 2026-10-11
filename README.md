@@ -30,14 +30,16 @@ It sits between [caretline](https://caretline.app), the text-editing engine, and
 
 ## Try it
 
-One line fetches fictty into `~/.fictty` and opens the showcase. It builds `main` if you have
-Rust, and otherwise runs the latest release's binary (macOS and Linux):
+One line fetches fictty into `~/.fictty` and opens a tour of it: nine short chapters, each with
+something to play with and a quest, from a screen and its JSON side by side to an agent driving
+the screen while you watch and a firehose of updates. It builds `main` if you have Rust, and
+otherwise runs the latest release's binary (macOS and Linux):
 
 ```sh
 curl -fsSL https://fictty.com/try.sh | sh
 ```
 
-To drive it from a second terminal, open the Agent screen and click a command (or select it and
+To drive it from a second terminal, open the Agents chapter (or the Agent app) and click a command (or select it and
 press Enter): it's copied ready to paste, and it sets that terminal up so `fictty` reaches the
 showcase. `tour.sh` there has an agent drive the whole thing. `… | sh -s -- <tag or commit>` runs a
 given version, each in its own folder and store.
@@ -45,7 +47,7 @@ given version, each in its own folder and store.
 From a checkout:
 
 ```sh
-examples/showcase/play.sh       # a menu of screens: notes, a ledger, a live market, a gallery
+examples/showcase/play.sh       # the tour, then the apps: notes, a ledger, a live market, a gallery
 examples/showcase/tour.sh       # in another terminal: watch an agent drive it
 ```
 
@@ -86,9 +88,12 @@ A UI is one JSON value:
 }
 ```
 
-- **Components** come from a small set with behaviour built in: layout, text, list, table, tabs,
-  charts, layers (callouts, spotlights, arrows) and pixels (cards, plots, SVG, images).
-- **Data sources** are commands, JSON-line streams or literal values. `@tasks` binds the row
+- **Components** come from a small set with behaviour built in: layout (rows, columns, stacks
+  with floating and modal children), text, lists, trees, tables, editors, inputs, buttons, tabs,
+  charts, toasts, layers (callouts, spotlights, arrows) and pixels (cards, plots, SVG, images).
+  `when` shows a node while a condition holds, so dialogs and responsive panes are data too.
+- **Data sources** are commands, JSON-line streams, literal values, or an embedding app's own
+  (fictty is a Rust library too: `fictty::App::new(ui).host(my_app).run()`). `@tasks` binds the row
   selected in `tasks`.
 - **View state is kept by node id,** like React's keys, so a push keeps your selection and focus.
 - **The app's data lives in a store, apart from the UI.** A push never touches it. Typing, keys
