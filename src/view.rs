@@ -331,6 +331,18 @@ fn toasts(cx: &mut Cx, buf: &mut Buffer, body: Rect) {
     }
 }
 
+/// How long each spinner frame shows (ms).
+const SPIN_MS: u64 = 80;
+
+/// The spinner's glyph now, and a wake for the next one.
+fn spin(cx: &mut Cx) -> &'static str {
+    const FRAMES: [&str; 10] = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+    let now = cx.st.now_ms;
+    let next = (now / SPIN_MS + 1) * SPIN_MS;
+    cx.wake = Some(cx.wake.map_or(next, |w| w.min(next)));
+    FRAMES[(now / SPIN_MS % FRAMES.len() as u64) as usize]
+}
+
 /// A floating node's place in its stack.
 fn float_rect(fl: &Float, area: Rect) -> Rect {
     let m = fl.margin.unwrap_or(0);
@@ -589,7 +601,8 @@ fn node(cx: &mut Cx, n: &Node, f: &mut Frame, area: Rect) {
             }
             Some(Slot::Ready { .. }) => {}
             _ if st.ui.data.contains_key(name) => {
-                return f.render_widget(Paragraph::new("…").style(Style::default().fg(cx.th.dim)), inner);
+                let g = spin(cx);
+                return f.render_widget(Paragraph::new(format!("{g} {name}…")).style(Style::default().fg(cx.th.dim)), inner);
             }
             _ => {}
         }
@@ -639,6 +652,12 @@ fn node(cx: &mut Cx, n: &Node, f: &mut Frame, area: Rect) {
                 }
                 node(cx, c, f, at);
             }
+        }
+        Kind::Spinner { text } => {
+            let v = bound(st, n).unwrap_or(&Value::Null);
+            let mut parts = vec![Part::Text(Span::styled(format!("{} ", spin(cx)), cx.look("spinner", style.fg(cx.th.accent))))];
+            parts.extend(cx.parts(text, v, style));
+            draw_parts(f.buffer_mut(), Rect { height: 1.min(inner.height), ..inner }, parts);
         }
         Kind::Button { label } => {
             let v = bound(st, n).unwrap_or(&Value::Null);
@@ -743,9 +762,11 @@ fn node(cx: &mut Cx, n: &Node, f: &mut Frame, area: Rect) {
             }
             let sel = n.id.as_ref().map(|id| selected(st, id));
             let (from, _) = window(sel, inner.height as usize);
+            scrollbar(cx, f.buffer_mut(), inner, from, rows.len());
+            let over = (rows.len() > inner.height as usize) as u16;
             for (k, r) in rows.iter().enumerate().skip(from).take(inner.height as usize) {
                 let y = inner.y + (k - from) as u16;
-                let line = Rect::new(inner.x, y, inner.width, 1);
+                let line = Rect::new(inner.x, y, inner.width.saturating_sub(over), 1);
                 let mut rs = style;
                 if cx.hovered(&id, k) {
                     rs = rs.bg(cx.th.hover);
@@ -784,10 +805,12 @@ fn node(cx: &mut Cx, n: &Node, f: &mut Frame, area: Rect) {
             }
             let sel = n.id.as_ref().map(|id| selected(st, id));
             let (from, _) = window(sel, inner.height as usize);
+            scrollbar(cx, f.buffer_mut(), inner, from, rows.len());
+            let over = (rows.len() > inner.height as usize) as u16;
             let guide = cx.look("tree.guide", style.fg(cx.th.dim));
             for (k, r) in rows.iter().enumerate().skip(from).take(inner.height as usize) {
                 let y = inner.y + (k - from) as u16;
-                let line = Rect::new(inner.x, y, inner.width, 1);
+                let line = Rect::new(inner.x, y, inner.width.saturating_sub(over), 1);
                 let mut rs = style;
                 if cx.hovered(&id, k) {
                     rs = rs.bg(cx.th.hover);
@@ -824,21 +847,23 @@ fn node(cx: &mut Cx, n: &Node, f: &mut Frame, area: Rect) {
             if inner.height == 0 {
                 return;
             }
+            let totals = columns.iter().any(|c| c.total.is_some());
+            let visible = (inner.height as usize).saturating_sub(1 + totals as usize);
+            let over = (rows.len() > visible) as u16;
             // Column positions once; each row reuses them at its own y.
-            let spans = Layout::horizontal(widths).spacing(1).split(Rect::new(inner.x + 2, inner.y, inner.width.saturating_sub(2), 1));
+            let spans = Layout::horizontal(widths).spacing(1).split(Rect::new(inner.x + 2, inner.y, inner.width.saturating_sub(2 + over), 1));
             let cols = |y: u16| spans.iter().map(move |a| Rect { y, ..*a });
             let head = cx.look("table.header", Style::default().fg(cx.th.accent).add_modifier(Modifier::BOLD));
             for (c, a) in columns.iter().zip(cols(inner.y)) {
                 let al = if c.align.as_deref() == Some("right") { Alignment::Right } else { Alignment::Left };
                 f.render_widget(Paragraph::new(c.title.clone()).style(head).alignment(al), a);
             }
-            let totals = columns.iter().any(|c| c.total.is_some());
-            let visible = (inner.height as usize).saturating_sub(1 + totals as usize);
             let sel = n.id.as_ref().map(|id| selected(st, id));
             let (from, _) = window(sel, visible);
+            scrollbar(cx, f.buffer_mut(), Rect::new(inner.x, inner.y + 1, inner.width, visible as u16), from, rows.len());
             for (k, r) in rows.iter().enumerate().skip(from).take(visible) {
                 let y = inner.y + 1 + (k - from) as u16;
-                let line = Rect::new(inner.x, y, inner.width, 1);
+                let line = Rect::new(inner.x, y, inner.width.saturating_sub(over), 1);
                 let mut rs = style;
                 if cx.hovered(&id, k) {
                     rs = rs.bg(cx.th.hover);
@@ -1277,6 +1302,24 @@ fn mix(a: Color, b: Color, t: f64) -> Color {
 
 /// Only the rows that fit are built: the first one shown, and the selection within them. The
 /// selection sits on the last visible row once it passes the bottom.
+/// A thin bar on the right edge of `r` when `len` rows don't fit: where the shown ones (from
+/// `from`) are among them. Drawn first; the rows draw over all but its column.
+fn scrollbar(cx: &Cx, buf: &mut Buffer, r: Rect, from: usize, len: usize) {
+    let h = r.height as usize;
+    if len <= h || h == 0 || r.width < 2 {
+        return;
+    }
+    let size = (h * h / len).max(1);
+    let at = from * (h - size) / (len - h).max(1);
+    let x = r.right() - 1;
+    let track = cx.look("scrollbar", Style::default().fg(cx.th.border));
+    let thumb = cx.look("scrollbar.thumb", Style::default().fg(cx.th.accent));
+    for y in 0..h {
+        let on = y >= at && y < at + size;
+        buf.set_string(x, r.y + y as u16, if on { "┃" } else { "│" }, if on { thumb } else { track });
+    }
+}
+
 fn window(selected: Option<usize>, height: usize) -> (usize, Option<usize>) {
     let sel = selected.unwrap_or(0);
     let from = (sel + 1).saturating_sub(height.max(1));

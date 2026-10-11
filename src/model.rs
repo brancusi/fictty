@@ -247,6 +247,12 @@ pub enum Kind {
     Stack { children: Vec<Node> },
     /// A labelled control: Enter or Space while focused, or a click, runs its `click`.
     Button { label: String },
+    /// A turning glyph before `text` (a template): something is under way. A bound source that
+    /// hasn't arrived shows one too.
+    Spinner {
+        #[serde(default, skip_serializing_if = "String::is_empty")]
+        text: String,
+    },
     /// Text. `{field}` placeholders fill from the bound value (`{a.b}` reaches in).
     Text { text: String },
     /// A selectable list of `items`, or of the bound array. `item` formats each one; with
@@ -712,6 +718,7 @@ impl Node {
             Kind::Row { .. } => "row",
             Kind::Stack { .. } => "stack",
             Kind::Button { .. } => "button",
+            Kind::Spinner { .. } => "spinner",
             Kind::Text { .. } => "text",
             Kind::List { .. } => "list",
             Kind::Tree { .. } => "tree",

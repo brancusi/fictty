@@ -224,3 +224,27 @@ fn a_readonly_editor_scrolls_but_never_changes() {
     let frame = s.screen();
     assert!(!frame.contains("line 1\n"), "{frame}");
 }
+
+#[test]
+fn a_spinner_turns_with_the_clock() {
+    let ui = json!({"root": {"type": "spinner", "text": "syncing"}});
+    let mut s = screen(ui, 20, 2);
+    let a = s.screen();
+    assert!(a.starts_with("⠋ syncing"), "{a}");
+    s.msg(Msg::Tick { now_ms: 85 });
+    assert!(s.screen().starts_with("⠙ syncing"));
+}
+
+#[test]
+fn a_long_list_shows_a_scroll_bar_and_keeps_its_rows_clear_of_it() {
+    let rows: Vec<String> = (0..40).map(|i| format!("row {i:02} xxxxxxxxxxxxxxxxxxxxxxxx")).collect();
+    let ui = json!({"root": {"type": "list", "id": "l", "items": rows}});
+    let mut s = screen(ui, 20, 6);
+    let frame = s.screen();
+    let first = frame.lines().next().unwrap();
+    assert!(first.ends_with('┃'), "{frame}");
+    assert!(first.contains('…'), "{frame}");
+    s.keys(&["G"]);
+    let frame = s.screen();
+    assert!(frame.lines().nth(4).unwrap().ends_with('┃'), "the thumb at the bottom: {frame}");
+}
