@@ -93,3 +93,10 @@ Posts on fictty.com/blog are milestones written as a conversation between Aram (
 Tilde, the name Claude goes by on this project. Follow the `blog-post` skill
 ([.claude/skills/blog-post/SKILL.md](.claude/skills/blog-post/SKILL.md)): keep the conversation
 true, use graphics, and ask before publishing.
+
+## Shipping
+
+When a session's work goes public, follow the `ship` skill
+([.claude/skills/ship/SKILL.md](.claude/skills/ship/SKILL.md)): docs, a demo one-liner pinned to
+the build (`scripts/freeze-demo.sh`, tested with `scripts/try-test.py`), the latest demo on the
+landing page, and a post. Frozen demos in `web/public/try/` are never edited by hand.

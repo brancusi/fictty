@@ -135,25 +135,18 @@ scripts/blog-tokens.py ~/.claude/projects/<project>/<session>.jsonl \
 ## Let readers try it
 
 If the post shows something runnable, give readers one line that runs **exactly what the post
-shows, forever**. `web/public/try.sh` is the general script: it takes a version (a tag, a branch or
-a full commit), fetches it into `~/.fictty/<version>` with its own store, uses a release binary for
-release tags and builds from source otherwise, and runs the showcase. For a post, freeze a copy:
+shows, forever**: a frozen demo pinned to a commit, shown with the demo link component. The
+**ship** skill (`.claude/skills/ship/SKILL.md`, step 2) has the steps: make the demo show the
+change, `scripts/freeze-demo.sh <slug> <commit> "<title>"`, test it with `scripts/try-test.py`,
+then in the post:
 
-1. Commit and push everything the demo needs, and note the full commit (`git rev-parse HEAD`).
-2. Copy `web/public/try.sh` to `web/public/try/<slug>.sh`, set the default `ref` to that full
-   commit, and put a header naming the post and saying the file is frozen. See
-   `web/public/try/settling-the-stack.sh`.
-3. In the post: `curl -fsSL https://fictty.com/try/<slug>.sh | sh`, and say it's pinned, what it
-   needs (Rust until the version has release binaries; python3 for helper processes), and that
-   `https://fictty.com/try.sh` runs the latest.
-4. Test it from an empty home in a real or pseudo-terminal, through a pipe, the way readers run
-   it: `cat web/public/try/<slug>.sh | FICTTY_HOME=$(mktemp -d) sh`. Check the screen draws and a
-   key works; `FICTTY_NO_RUN=1` only checks the fetch and the build.
+```html
+<div class="demo-link" data-name="What it shows" data-date="YYYY-MM-DD" data-script="try/<slug>.sh" data-commit="<full commit>"></div>
+```
 
-**Never edit a frozen script** once its post is live, and never move or delete one: old posts
-depend on them. If a frozen demo breaks (a dependency vanishes), add a fix to that file only with
-a dated comment saying what changed and why. When a demo is about something other than the
-showcase, extend `try.sh` (a demo name after the version), then freeze as above.
+Say in a sentence what to try, that it's pinned, and what it needs (Rust until the version has
+release binaries; python3 for helper processes). `https://fictty.com/try.sh` is the latest, not
+pinned; use it only where "the latest" is what you mean.
 
 ## Links
 
