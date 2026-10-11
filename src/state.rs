@@ -339,6 +339,8 @@ pub fn update(st: &mut State, msg: Msg) -> Vec<Effect> {
     let moves = matches!(msg, Msg::Key { .. } | Msg::Click { .. } | Msg::Set { .. } | Msg::Scroll { .. });
     let was = st.focus.clone();
     let fx = apply(st, msg);
+    // A tick that took a lasting write away changed the store like any write.
+    let quiet = quiet && st.store_writes == writes;
     if moves {
         remember(st);
     }
@@ -594,10 +596,8 @@ fn apply(st: &mut State, msg: Msg) -> Vec<Effect> {
         Msg::Tick { now_ms } => {
             st.now_ms = now_ms;
             st.toasts.retain(|t| t.until > now_ms);
-            if expire(st) {
-                derive_rows(st, None);
-                settle(st);
-            }
+            toasting(st);
+            expire(st);
             vec![]
         }
         Msg::Toast { text, tone, ms } => {
@@ -883,6 +883,15 @@ fn toast(st: &mut State, text: String, tone: Option<String>, ms: Option<u64>) {
     st.toasts.push(Toast { text, tone, until: st.now_ms + ms.unwrap_or(3000) });
     let over = st.toasts.len().saturating_sub(TOASTS);
     st.toasts.drain(..over);
+    toasting(st);
+}
+
+/// `$toasting`: whether a toast shows, so a UI can hide what a `toasts` node covers.
+fn toasting(st: &mut State) {
+    let on = !st.toasts.is_empty();
+    if !matches!(st.data.get("$toasting"), Some(Slot::Ready { value: Value::Bool(b) }) if *b == on) {
+        st.data.insert("$toasting".into(), Slot::Ready { value: Value::Bool(on) });
+    }
 }
 
 /// How many entries `$log` keeps.

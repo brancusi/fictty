@@ -598,3 +598,21 @@ fn toasts_go_where_a_toasts_node_is() {
     assert_eq!(lines[2].trim(), "saved by agent", "{frame}");
     assert!(!frame.contains('╭'), "no corner toast: {frame}");
 }
+
+#[test]
+fn a_toasts_node_covers_what_is_under_it_while_one_shows() {
+    let ui = json!({"root": {"type": "col", "children": [
+        {"type": "text", "text": "body"},
+        {"type": "stack", "size": 1, "children": [
+            {"type": "text", "text": "the bar's own text, quite long"},
+            {"type": "toasts"}]}]}});
+    let mut s = screen(ui, 40, 4);
+    assert_eq!(s.state().data.get("$toasting"), None, "no toast yet");
+    s.msg(Msg::Toast { text: "hi".into(), tone: None, ms: Some(100) });
+    let bar = s.screen().lines().nth(2).unwrap().to_string();
+    assert_eq!(bar.trim(), "hi", "{bar:?}");
+    assert_eq!(s.state().data["$toasting"], fictty::state::Slot::Ready { value: json!(true) });
+    s.msg(Msg::Tick { now_ms: 100 });
+    assert!(s.screen().contains("the bar's own text"));
+    assert_eq!(s.state().data["$toasting"], fictty::state::Slot::Ready { value: json!(false) });
+}

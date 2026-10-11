@@ -208,3 +208,22 @@ fn a_host_source_reads_its_args_from_the_selection_and_the_store() {
     assert!(s.screen().contains("all about a (\"hi\")"), "{}", s.screen());
     assert_eq!(s.state().args["detail"]["id"], "a");
 }
+
+#[test]
+fn an_expiry_refills_the_args_that_read_it() {
+    let ui: fictty::model::Ui = serde_json::from_value(json!({
+        "root": {"type": "text", "bind": "detail", "text": "{about}"},
+        "data": {"detail": {"host": "detail", "args": {"id": "x", "q": "{store.live}"}}},
+        "store": {"live": {}}
+    }))
+    .unwrap();
+    let host = Detail::default();
+    let mut s = App::new(ui).host(host.clone()).headless(60, 3).unwrap();
+    let merge = serde_json::from_value(json!({"write": "merge", "value": {"a": true}})).unwrap();
+    s.msg(fictty::state::Msg::Write { key: "live".into(), write: merge, if_rev: None, by: "agent".into(), for_ms: Some(3000) });
+    assert!(s.screen().contains("{\"a\":true}"), "{}", s.screen());
+    // Only the clock moves: the mark goes, and the source is asked again without it.
+    s.msg(fictty::state::Msg::Tick { now_ms: 3000 });
+    assert_eq!(host.asked.lock().unwrap().last().unwrap()["q"], json!({}));
+    assert!(s.screen().contains("({})"), "{}", s.screen());
+}

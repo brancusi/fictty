@@ -689,6 +689,11 @@ fn node(cx: &mut Cx, n: &Node, f: &mut Frame, area: Rect) {
         }
         Kind::Toasts {} => {
             cx.toasts_placed = true;
+            // While a toast shows, the node covers its whole area, whatever was drawn there.
+            if let Some(newest) = st.toasts.last() {
+                f.render_widget(ratatui::widgets::Clear, inner);
+                f.buffer_mut().set_style(inner, toast_look(cx, newest.tone.as_deref()));
+            }
             for (k, t) in st.toasts.iter().rev().take(inner.height as usize).enumerate() {
                 cx.wake = Some(cx.wake.map_or(t.until, |w| w.min(t.until)));
                 let line = Rect::new(inner.x, inner.y + k as u16, inner.width, 1);

@@ -84,7 +84,8 @@ fictty theme paper                                        # choose a loaded them
   room and no focus. Layers take `when` too. **Toasts** show for a while: the `toast` action,
   `fictty toast`, and failed commands and host actions. They sit in the corner, or wherever a
   `{"type": "toasts"}` node is (a line each, in a UI's own bar), styled by the theme part
-  `toast.<tone>`, else `toast`.
+  `toast.<tone>`, else `toast`; while one shows, a `toasts` node covers its area, and
+  `$toasting` is true (for a `when` on what's under it).
 - **Sources** in `data`: `cmd` (argv), `shell`, `stream` (a command printing JSON lines), a
   literal `value`, or `host` (the embedding app's, with `args` that are templates over the state,
   so `{"host": "detail", "args": {"id": "{@list.id}"}}` refetches as the selection moves); `path`
