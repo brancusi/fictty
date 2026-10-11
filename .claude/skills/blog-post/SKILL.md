@@ -137,15 +137,17 @@ scripts/blog-tokens.py ~/.claude/projects/<project>/<session>.jsonl \
 If the post shows something runnable, give readers one line that runs **exactly what the post
 shows, forever**: a frozen demo pinned to a commit, shown with the demo link component. The
 **ship** skill (`.claude/skills/ship/SKILL.md`, step 2) has the steps: make the demo show the
-change, `scripts/freeze-demo.sh <slug> <commit> "<title>"`, test it with `scripts/try-test.py`,
+change, `scripts/freeze-demo.sh <slug> <release tag or commit> "<title>"`, test it with
+`scripts/try-test.py`,
 then in the post:
 
 ```html
-<div class="demo-link" data-name="What it shows" data-date="YYYY-MM-DD" data-script="try/<slug>.sh" data-commit="<full commit>"></div>
+<div class="demo-link" data-name="What it shows" data-date="YYYY-MM-DD" data-script="try/<slug>.sh" data-commit="<v0.x.y or full commit>" data-needs="git"></div>
 ```
 
-Say in a sentence what to try, that it's pinned, and what it needs (Rust until the version has
-release binaries; python3 for helper processes). `https://fictty.com/try.sh` is the latest, not
+Say in a sentence what to try, that it's pinned, and what it needs: a release tag needs only git
+on macOS and Linux (it downloads a binary); a commit needs Rust to build. python3 runs the
+helper processes. `https://fictty.com/try.sh` is the latest, not
 pinned; use it only where "the latest" is what you mean.
 
 ## Links

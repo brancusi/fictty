@@ -30,7 +30,8 @@ It sits between [caretline](https://caretline.app), the text-editing engine, and
 
 ## Try it
 
-One line fetches fictty into `~/.fictty`, builds it, and opens the showcase:
+One line fetches fictty into `~/.fictty` and opens the showcase. It builds `main` if you have
+Rust, and otherwise runs the latest release's binary (macOS and Linux):
 
 ```sh
 curl -fsSL https://fictty.com/try.sh | sh

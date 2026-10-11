@@ -63,8 +63,8 @@ here with its history.
 - [ ] An escape for `<` in template markup
 - [ ] Problem checks only for nodes whose bind or data changed, to win back the 13% of flat-out
       push speed they cost
-- [ ] Tag the first release (`v0.1.0`), so the one-liners download a binary instead of needing
-      Rust; check the Intel macOS runner (`macos-13`) still exists
+- [x] The first release, `v0.1.0`: binaries for macOS and Linux (Intel Macs cross-built), so the
+      one-liners need no Rust; how to release is [releasing.md](releasing.md)
 - [ ] Say when a copy didn't reach the clipboard (tmux, or a terminal that refuses OSC 52); today
       the screen says "copied" either way
 - [ ] A pull request to json-render for its Tab focus bug (one line in the Ink renderer)

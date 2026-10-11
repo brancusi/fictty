@@ -37,13 +37,17 @@ One line a reader can paste that runs **exactly this build** and **shows off wha
 1. Make the demo show the change. If the showcase (`examples/showcase/`) doesn't exercise the new
    features, extend it first: a new screen, a new step in `tour.sh`, a new seed in the store.
    The demo is the proof; a feature it doesn't show didn't ship. Commit and push.
-2. Freeze it on that commit:
+2. Freeze it. Prefer a release: bump the version, tag the build and push the tag, following
+   `docs/releasing.md` (ask Aram before tagging). The release workflow builds macOS and Linux
+   binaries so readers need no Rust. **Don't wait for it**: CI is a background signal for now.
+   Freeze on the tag at once and carry on; check the run at the end (step 5). Without a release,
+   pin the commit.
 
    ```sh
-   scripts/freeze-demo.sh <post-slug> <commit> "<post title>"
+   scripts/freeze-demo.sh <post-slug> <v0.x.y or commit> "<post title>"
    ```
 
-   This writes `web/public/try/<post-slug>.sh`, pinned to the commit, served at
+   This writes `web/public/try/<post-slug>.sh`, pinned to that version, served at
    `https://fictty.com/try/<post-slug>.sh`. Never edit a frozen file by hand, and never move or
    delete one; to fix one, rerun the script with a dated note.
 3. Test it the way a reader runs it, through a pipe, in a terminal, from an empty home, with a
@@ -69,7 +73,7 @@ One line a reader can paste that runs **exactly this build** and **shows off wha
    bare code block:
 
    ```html
-   <div class="demo-link" data-name="What it shows" data-date="YYYY-MM-DD" data-script="try/<post-slug>.sh" data-commit="<full commit>"></div>
+   <div class="demo-link" data-name="What it shows" data-date="YYYY-MM-DD" data-script="try/<post-slug>.sh" data-commit="<v0.x.y or full commit>" data-needs="git"></div>
    ```
 
    It renders the name, the date, the pinned commit, the command and a copy button
@@ -113,5 +117,8 @@ Write the session's post with the **blog-post** skill. On top of what it asks:
    - the post, `/try.sh`, `/try/<post-slug>.sh` answer 200;
    - the landing page shows the latest demo link above the fold;
    - `scripts/try-test.py https://fictty.com/try/<post-slug>.sh …` passes against the live URL.
-4. Tell Aram what shipped: the post's link, the demo line, the commit, what was tested, and
+4. Look at the release run in passing (`gh run list --workflow release.yml`): if it failed, say so
+   and fix it in a follow-up (`docs/releasing.md`, "Cutting a release", step 4). It never blocks
+   the ship.
+5. Tell Aram what shipped: the post's link, the demo line, the commit, what was tested, and
    anything that wasn't.

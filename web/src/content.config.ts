@@ -22,7 +22,7 @@ export const collections = {
     loader: glob({ pattern: 'guide.md', base: '../docs' }),
   }),
   pages: defineCollection({
-    loader: glob({ pattern: ['PLAN.md', 'design/scope.md', 'design/adopt-or-build.md', 'design/state-and-theme.md', 'design/prototype-notes.md'], base: '../docs', generateId: ({ entry }) => entry.replace(/\.md$/, '').replace(/^design\//, '').toLowerCase() }),
+    loader: glob({ pattern: ['PLAN.md', 'design/scope.md', 'design/adopt-or-build.md', 'design/state-and-theme.md', 'design/prototype-notes.md', 'releasing.md'], base: '../docs', generateId: ({ entry }) => entry.replace(/\.md$/, '').replace(/^design\//, '').toLowerCase() }),
   }),
   dossiers: defineCollection({
     loader: glob({ pattern: '*.md', base: '../docs/research/landscape', generateId: ({ entry }) => entry.replace(/\.md$/, '') }),

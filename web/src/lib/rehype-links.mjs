@@ -18,6 +18,7 @@ export function route(rel) {
   if (rel === 'docs/design/adopt-or-build.md') return '/adopt-or-build/';
   if (rel === 'docs/design/state-and-theme.md') return '/state-and-theme/';
   if (rel === 'docs/design/prototype-notes.md') return '/prototype-notes/';
+  if (rel === 'docs/releasing.md') return '/releasing/';
   if (rel === 'docs/research' || rel === 'docs/research/landscape') return '/research/';
   let m = rel.match(/^docs\/research\/landscape\/([a-z0-9-]+)--_overview\.md$/);
   if (m) return `/research/${m[1]}/`;

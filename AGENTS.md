@@ -44,7 +44,8 @@ These come first; every review checks them.
 - `scripts/`: `preflight.sh` (before commits and pushes), `freeze-demo.sh` and `try-test.py`
   (pinned demos and testing them like a reader), `blog-tokens.py` (a post's Tokens panel)
 - `.claude/skills/`: `blog-post` and `ship`, how milestones are written and published
-- `.github/workflows/release.yml`: binaries for a version tag
+- `.github/workflows/release.yml`: binaries for a version tag; how to release is
+  [docs/releasing.md](docs/releasing.md) (CI is a background signal, not a gate, for now)
 
 ## Build, test, run
 

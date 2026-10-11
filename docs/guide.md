@@ -2,7 +2,8 @@
 
 Everything the prototype does today, with the demos and the numbers. The [README](../README.md)
 is the short version. To see it first: `curl -fsSL https://fictty.com/try.sh | sh` runs the
-showcase in your terminal (it fetches and builds fictty into `~/.fictty`; delete that to undo).
+showcase in your terminal (it fetches fictty into `~/.fictty`, building it or using a release
+binary; delete that folder to undo). Releases are described in [releasing.md](releasing.md).
 
 ## The model in one picture
 
