@@ -6,7 +6,7 @@ use crate::model::{Action, Kind, LayerSpec, Node, ThemeSpec, Ui, lookup};
 use crate::store::{Body, Entry, Write};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct State {
@@ -57,6 +57,11 @@ pub struct State {
     /// Whether larger text (OSC 66) is on: the terminal's to say, or `FICTTY_TEXT_SIZE=1`.
     #[serde(default)]
     pub text_sizing: bool,
+    /// The rows a node shows when they aren't its bound array as it is: a tree's open rows in
+    /// order, a filtered list's matches. Worked out from the rest after each message (so never
+    /// saved); `items` reads them.
+    #[serde(skip)]
+    pub rows: BTreeMap<String, Vec<Value>>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
@@ -96,6 +101,9 @@ pub struct Local {
     /// scroll, size. The text is in the store.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub editors: BTreeMap<String, caretline::View>,
+    /// A tree's rows (by key) folded or opened against its default.
+    #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
+    pub toggled: BTreeSet<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -196,7 +204,12 @@ pub enum Effect {
 pub fn update(st: &mut State, msg: Msg) -> Vec<Effect> {
     let checks = matches!(msg, Msg::Push { .. } | Msg::Patch { .. } | Msg::Data { .. } | Msg::Write { .. } | Msg::Theme { .. } | Msg::Key { .. });
     let writes = st.store_writes;
+    let quiet = matches!(msg, Msg::Tick { .. } | Msg::Hover { .. } | Msg::Stats { .. } | Msg::Activity { .. } | Msg::Caps { .. } | Msg::Size { .. });
     let fx = apply(st, msg);
+    if !quiet {
+        derive_rows(st);
+        settle(st);
+    }
     // A selection, a write or a new row can point an editor at an entry it hasn't shown yet.
     fields(st);
     if checks {
@@ -737,6 +750,15 @@ fn resolve(st: &State, key: &str) -> Option<Action> {
     if let Some(a) = st.ui.keys.get(key) {
         return Some(a.clone());
     }
+    // A tree folds where a list would switch tabs.
+    if focused.is_some_and(|n| matches!(n.kind, Kind::Tree { .. })) {
+        match key {
+            "h" | "left" => return Some(Action::Named("collapse".into())),
+            "l" | "right" => return Some(Action::Named("expand".into())),
+            "space" => return Some(Action::Named("fold".into())),
+            _ => {}
+        }
+    }
     let name = match key {
         "q" | "c-c" => "quit",
         "j" | "down" => "down",
@@ -807,20 +829,62 @@ fn act(st: &mut State, a: Action) -> Vec<Effect> {
             vec![Effect::Host { name: host, args }]
         }
         Action::Remove { remove } => {
-            let Some(id) = st.focus.clone() else { return vec![] };
-            let shows = st.ui.root.find(&id).and_then(|n| n.bind.as_deref()) == Some(remove.as_str());
-            let at = selected(st, &id);
-            match st.store.get_mut(&remove).map(|e| &mut e.body) {
-                Some(Body::Value { value: Value::Array(a) }) if shows && at < a.len() => {
-                    a.remove(at);
-                }
-                _ => {
-                    st.status = Some(format!("remove: the focused list doesn't show a row of {remove}"));
-                    return vec![];
-                }
+            let target = row_target(st).filter(|(key, _)| *key == remove);
+            let Some((key, ptr)) = target else {
+                st.status = Some(format!("remove: the focused list doesn't show a row of {remove}"));
+                return vec![];
+            };
+            let (parent, last) = ptr.rsplit_once('/').unwrap_or(("", ""));
+            let removed = match st.store.get_mut(&key).map(|e| &mut e.body) {
+                Some(Body::Value { value }) => match (value.pointer_mut(parent), last.parse::<usize>()) {
+                    (Some(Value::Array(a)), Ok(i)) if i < a.len() => {
+                        a.remove(i);
+                        true
+                    }
+                    _ => false,
+                },
+                _ => false,
+            };
+            if !removed {
+                st.status = Some(format!("remove: no row at {ptr} in {key}"));
+                return vec![];
             }
-            wrote(st, &remove, "person");
+            wrote(st, &key, "person");
             settle(st);
+            vec![]
+        }
+        Action::Toggle { toggle } => {
+            let Some((key, ptr)) = row_target(st) else {
+                st.status = Some(format!("toggle: the focused list doesn't show a store entry, so {toggle} can't change"));
+                return vec![];
+            };
+            let field = format!("{ptr}/{}", toggle.replace('.', "/"));
+            let flipped = match st.store.get_mut(&key).map(|e| &mut e.body) {
+                Some(Body::Value { value }) => match value.pointer_mut(&field) {
+                    Some(Value::Bool(b)) => {
+                        *b = !*b;
+                        true
+                    }
+                    Some(v @ Value::Null) => {
+                        *v = Value::Bool(true);
+                        true
+                    }
+                    Some(_) => false,
+                    None => match value.pointer_mut(&ptr) {
+                        Some(Value::Object(m)) => {
+                            m.insert(toggle.clone(), Value::Bool(true));
+                            true
+                        }
+                        _ => false,
+                    },
+                },
+                _ => false,
+            };
+            if !flipped {
+                st.status = Some(format!("toggle: {toggle} of the selected row isn't true or false"));
+                return vec![];
+            }
+            wrote(st, &key, "person");
             vec![]
         }
         Action::Do { steps } => steps.into_iter().flat_map(|a| act(st, a)).collect(),
@@ -833,6 +897,9 @@ fn act(st: &mut State, a: Action) -> Vec<Effect> {
             "bottom" => step(st, |_, len| len.saturating_sub(1)),
             "tab_next" => switch(st, 1),
             "tab_prev" => switch(st, -1),
+            "fold" => fold(st, Fold::Toggle),
+            "collapse" => fold(st, Fold::Close),
+            "expand" => fold(st, Fold::Open),
             "focus_next" => cycle(st, 1),
             "focus_prev" => cycle(st, -1),
             other => {
@@ -841,6 +908,184 @@ fn act(st: &mut State, a: Action) -> Vec<Effect> {
             }
         },
     }
+}
+
+#[derive(Clone, Copy, PartialEq)]
+enum Fold {
+    Toggle,
+    Open,
+    Close,
+}
+
+/// Fold or unfold the focused tree's selected row. Closing a row that's closed (or has nothing
+/// under it) goes to its parent; opening one that's open goes to its first child.
+fn fold(st: &mut State, how: Fold) -> Vec<Effect> {
+    let Some(id) = st.focus.clone() else { return vec![] };
+    if !st.ui.root.find(&id).is_some_and(|n| matches!(n.kind, Kind::Tree { .. })) {
+        return vec![];
+    }
+    let rows = st.rows.get(&id).map(Vec::as_slice).unwrap_or(&[]);
+    let at = selected(st, &id);
+    let Some(row) = rows.get(at) else { return vec![] };
+    let kids = row["$kids"].as_u64().unwrap_or(0) > 0;
+    let open = row["$open"].as_bool().unwrap_or(false);
+    let depth = row["$depth"].as_u64().unwrap_or(0);
+    let key = row["$key"].as_str().unwrap_or_default().to_string();
+    let flip = match how {
+        Fold::Toggle => kids,
+        Fold::Open => kids && !open,
+        Fold::Close => kids && open,
+    };
+    let local = st.local.entry(id.clone()).or_default();
+    if flip {
+        if !local.toggled.remove(&key) {
+            local.toggled.insert(key);
+        }
+    } else if how == Fold::Close && depth > 0 {
+        let parent = rows[..at].iter().rposition(|r| r["$depth"].as_u64() == Some(depth - 1));
+        local.selected = parent.unwrap_or(at);
+    } else if how == Fold::Open && kids && open {
+        local.selected = at + 1;
+    }
+    vec![]
+}
+
+/// The focused list's (or tree's) selected row as a place in the store: the entry its bind names,
+/// and a JSON Pointer to the row in that entry's value. None unless the node shows a store entry.
+fn row_target(st: &State) -> Option<(String, String)> {
+    let id = st.focus.as_ref()?;
+    let n = st.ui.root.find(id)?;
+    let bind = n.bind.as_deref().filter(|b| !b.starts_with('@'))?;
+    let (key, path) = split_bind(bind);
+    if !matches!(st.store.get(key)?.body, Body::Value { .. }) {
+        return None;
+    }
+    let at = selected(st, id);
+    let row = items(st, n).get(at)?;
+    let inner = match row.get("$ptr").and_then(Value::as_str) {
+        Some(p) => p.to_string(),
+        None => format!("/{at}"),
+    };
+    let prefix: String = if path.is_empty() { String::new() } else { path.split('.').map(|p| format!("/{p}")).collect() };
+    Some((key.to_string(), format!("{prefix}{inner}")))
+}
+
+/// The text a filter reads: a text entry's contents, or a bound string.
+fn query_text(st: &State, bind: &str) -> String {
+    match st.store.get(bind).map(|e| &e.body) {
+        Some(Body::Text { doc }) => doc.text.to_string(),
+        _ => crate::model::scalar(value_of(st, bind)),
+    }
+}
+
+/// Whether every term is somewhere in the row's values (its text, numbers; not its nested rows).
+fn row_matches(r: &Value, terms: &[String], nest: Option<&str>) -> bool {
+    fn text(v: &Value, nest: Option<&str>, out: &mut String) {
+        match v {
+            Value::Object(m) => {
+                for (k, x) in m {
+                    if Some(k.as_str()) != nest {
+                        text(x, None, out);
+                    }
+                }
+            }
+            Value::Array(a) => a.iter().for_each(|x| text(x, None, out)),
+            Value::String(s) => {
+                out.push_str(&s.to_lowercase());
+                out.push(' ');
+            }
+            Value::Number(n) => {
+                out.push_str(&n.to_string());
+                out.push(' ');
+            }
+            _ => {}
+        }
+    }
+    let mut hay = String::new();
+    text(r, nest, &mut hay);
+    terms.iter().all(|t| hay.contains(t.as_str()))
+}
+
+/// A row as a tree or a filter shows it: the row (an object; anything else under `value`), its
+/// nested rows left out, with where it is (`$ptr`) and, in a tree, `$depth`, `$kids`, `$open`
+/// and `$key`.
+fn shown_row(r: &Value, nest: Option<&str>, ptr: String) -> Value {
+    let mut m = match r {
+        Value::Object(m) => m.iter().filter(|(k, _)| Some(k.as_str()) != nest).map(|(k, v)| (k.clone(), v.clone())).collect(),
+        other => serde_json::Map::from_iter([("value".to_string(), other.clone())]),
+    };
+    m.insert("$ptr".into(), ptr.into());
+    Value::Object(m)
+}
+
+struct TreeCx<'a> {
+    nest: &'a str,
+    key: &'a str,
+    open: bool,
+    toggled: Option<&'a BTreeSet<String>>,
+    terms: &'a [String],
+}
+
+/// A tree's shown rows, depth first: every row whose parents are open, or, while filtering, every
+/// row that matches or has a match under it (opened to show it). True when any row was shown.
+fn flatten(rows: &[Value], at: &str, depth: usize, t: &TreeCx, out: &mut Vec<Value>) -> bool {
+    let mut any = false;
+    let nest_ptr: String = t.nest.split('.').map(|p| format!("/{p}")).collect();
+    for (i, r) in rows.iter().enumerate() {
+        let ptr = format!("{at}/{i}");
+        let kids = lookup(r, t.nest).and_then(Value::as_array).map(Vec::as_slice).unwrap_or(&[]);
+        let key = Some(crate::model::scalar(lookup(r, t.key))).filter(|k| !k.is_empty()).unwrap_or_else(|| ptr.clone());
+        let filtering = !t.terms.is_empty();
+        let open = filtering || t.open != t.toggled.is_some_and(|s| s.contains(&key));
+        let mut under = Vec::new();
+        let hit_under = if open || filtering { flatten(kids, &format!("{ptr}{nest_ptr}"), depth + 1, t, &mut under) } else { false };
+        if filtering && !hit_under && !row_matches(r, t.terms, Some(t.nest)) {
+            continue;
+        }
+        let mut row = shown_row(r, Some(t.nest), ptr);
+        row["$depth"] = depth.into();
+        row["$kids"] = kids.len().into();
+        row["$open"] = (open && !kids.is_empty()).into();
+        row["$key"] = key.into();
+        out.push(row);
+        if open {
+            out.extend(under);
+        }
+        any = true;
+    }
+    any
+}
+
+/// Work out `State::rows`: each tree's shown rows, and each filtered list's or table's matches.
+fn derive_rows(st: &mut State) {
+    let mut all = Vec::new();
+    st.ui.root.walk(&mut all);
+    let mut out = BTreeMap::new();
+    for n in all {
+        let Some(id) = &n.id else { continue };
+        let query = n.filter().map(|f| query_text(st, f)).unwrap_or_default();
+        let terms: Vec<String> = query.split_whitespace().map(str::to_lowercase).collect();
+        match &n.kind {
+            Kind::Tree { nest, key, open, .. } => {
+                let t = TreeCx {
+                    nest: nest.as_deref().unwrap_or("children"),
+                    key: key.as_deref().unwrap_or("id"),
+                    open: *open,
+                    toggled: st.local.get(id).map(|l| &l.toggled),
+                    terms: &terms,
+                };
+                let mut rows = Vec::new();
+                flatten(raw_items(st, n), "", 0, &t, &mut rows);
+                out.insert(id.clone(), rows);
+            }
+            _ if !terms.is_empty() => {
+                let rows = raw_items(st, n).iter().enumerate().filter(|(_, r)| row_matches(r, &terms, None)).map(|(i, r)| shown_row(r, None, format!("/{i}"))).collect();
+                out.insert(id.clone(), rows);
+            }
+            _ => {}
+        }
+    }
+    st.rows = out;
 }
 
 /// Show the next or previous child of the focused tabs node.
@@ -1034,7 +1279,7 @@ pub fn problems(st: &State) -> Vec<String> {
         }
         let Some(bind) = n.bind.as_deref().filter(|b| !b.starts_with('@')) else { continue };
         let Some(v) = value_of(st, bind) else { continue };
-        let wants_list = matches!(n.kind, Kind::List { .. } | Kind::Table { .. } | Kind::Bars { .. } | Kind::Sparkline { .. });
+        let wants_list = matches!(n.kind, Kind::List { .. } | Kind::Table { .. } | Kind::Tree { .. } | Kind::Bars { .. } | Kind::Sparkline { .. });
         let literal = !items(st, n).is_empty() && !v.is_array();
         if wants_list && !v.is_array() && !literal {
             out.push(format!("{} {name}: {bind} should be a list, but it's {}", n.kind_name(), kind(v)));
@@ -1094,8 +1339,16 @@ pub fn split_bind(bind: &str) -> (&str, &str) {
 /// A list's or table's rows: its literal `items`, else its bound array. Borrowed: a 50,000-row
 /// source is read in place, never copied per message or per frame.
 pub fn items<'a>(st: &'a State, n: &'a Node) -> &'a [Value] {
+    if let Some(rows) = n.id.as_ref().and_then(|id| st.rows.get(id)) {
+        return rows;
+    }
+    raw_items(st, n)
+}
+
+/// A node's rows as given: its literal `items`, else its bound array.
+fn raw_items<'a>(st: &'a State, n: &'a Node) -> &'a [Value] {
     let literal = match &n.kind {
-        Kind::List { items, .. } | Kind::Table { items, .. } | Kind::Bars { items, .. } => items,
+        Kind::List { items, .. } | Kind::Table { items, .. } | Kind::Tree { items, .. } | Kind::Bars { items, .. } => items,
         _ => return &[],
     };
     if !literal.is_empty() {

@@ -231,6 +231,32 @@ pub enum Kind {
         lead: Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         selected: Option<String>,
+        /// Show only the rows matching the text in this store entry (or bind): every word of it,
+        /// in any case, somewhere in the row's values.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        filter: Option<String>,
+    },
+    /// An outline over the bound array (or `items`): each row's `nest` (default `children`) holds
+    /// the rows under it. Rows fold and unfold (←/→, space, a click on the arrow); `open: false`
+    /// starts them folded. `item` formats a row as in a list, and can read `{$depth}`, `{$kids}`
+    /// (how many rows are under it) and `{$open}`. A row's identity (what stays folded across
+    /// updates) is its `key` (default `id`), else its place. Store actions on the selected row
+    /// reach it where it sits (`$ptr`, a JSON Pointer into the bound entry).
+    Tree {
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        items: Vec<Value>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        item: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        nest: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        key: Option<String>,
+        #[serde(default = "yes", skip_serializing_if = "Clone::clone")]
+        open: bool,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        empty: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        filter: Option<String>,
     },
     /// A line filling the node: `glyph` (default `│` when taller than wide, else `─`).
     Rule {
@@ -242,6 +268,9 @@ pub enum Kind {
         columns: Vec<Column>,
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         items: Vec<Value>,
+        /// As a list's `filter`.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        filter: Option<String>,
     },
     /// A sparkline over numbers: `values`, or `field` of each bound item.
     Sparkline {
@@ -535,6 +564,9 @@ pub enum Action {
     Append { append: String, value: Value },
     Put { put: String, value: Value },
     Remove { remove: String },
+    /// Flip a true-or-false field of the focused list's or tree's selected row, in the store entry
+    /// it shows (a missing field becomes true): a checkbox.
+    Toggle { toggle: String },
     /// Put text on the system clipboard (through the terminal, OSC 52). A template over the
     /// selected row, `store` and `$self`, like the store actions.
     Copy { copy: String },
@@ -574,9 +606,17 @@ impl Node {
         }
     }
 
-    /// Lists, tables, tabs and editors with an id take focus.
+    /// The filter a list, table or tree has: the bind its query text is read from.
+    pub fn filter(&self) -> Option<&str> {
+        match &self.kind {
+            Kind::List { filter, .. } | Kind::Table { filter, .. } | Kind::Tree { filter, .. } => filter.as_deref(),
+            _ => None,
+        }
+    }
+
+    /// Lists, tables, trees, tabs and editors with an id take focus.
     pub fn focusable(&self) -> bool {
-        self.id.is_some() && (matches!(self.kind, Kind::List { .. } | Kind::Table { .. } | Kind::Tabs { .. }) || self.field().is_some())
+        self.id.is_some() && (matches!(self.kind, Kind::List { .. } | Kind::Table { .. } | Kind::Tree { .. } | Kind::Tabs { .. }) || self.field().is_some())
     }
 
     /// The component's name, as written in `type`.
@@ -586,6 +626,7 @@ impl Node {
             Kind::Row { .. } => "row",
             Kind::Text { .. } => "text",
             Kind::List { .. } => "list",
+            Kind::Tree { .. } => "tree",
             Kind::Rule { .. } => "rule",
             Kind::Table { .. } => "table",
             Kind::Sparkline { .. } => "sparkline",

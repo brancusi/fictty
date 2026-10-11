@@ -645,6 +645,49 @@ fn node(cx: &mut Cx, n: &Node, f: &mut Frame, area: Rect) {
                 }
             }
         }
+        Kind::Tree { item, empty, .. } => {
+            let rows = items(st, n);
+            if rows.is_empty() {
+                let e = empty.clone().unwrap_or_else(|| "(nothing)".into());
+                let es = cx.look("empty", Style::default().fg(cx.th.dim));
+                return f.render_widget(Paragraph::new(e).style(es).wrap(Wrap { trim: true }), inner);
+            }
+            let sel = n.id.as_ref().map(|id| selected(st, id));
+            let (from, _) = window(sel, inner.height as usize);
+            let guide = cx.look("tree.guide", style.fg(cx.th.dim));
+            for (k, r) in rows.iter().enumerate().skip(from).take(inner.height as usize) {
+                let y = inner.y + (k - from) as u16;
+                let line = Rect::new(inner.x, y, inner.width, 1);
+                let mut rs = style;
+                if cx.hovered(&id, k) {
+                    rs = rs.bg(cx.th.hover);
+                }
+                if sel == Some(k) {
+                    rs = if focused {
+                        rs.patch(cx.look("row.selected", Style::default().add_modifier(Modifier::REVERSED)))
+                    } else {
+                        rs.patch(cx.look("row.selected.blur", Style::default().add_modifier(Modifier::BOLD)))
+                    };
+                }
+                f.buffer_mut().set_style(line, rs);
+                let depth = r["$depth"].as_u64().unwrap_or(0) as usize;
+                let arrow = match (r["$kids"].as_u64().unwrap_or(0) > 0, r["$open"].as_bool().unwrap_or(false)) {
+                    (true, true) => "▾ ",
+                    (true, false) => "▸ ",
+                    _ => "· ",
+                };
+                let gs = if sel == Some(k) { rs } else { guide.patch(Style { bg: rs.bg, ..Style::default() }) };
+                let mut parts = vec![Part::Text(Span::styled(format!(" {}{arrow}", "  ".repeat(depth)), gs))];
+                match item {
+                    Some(t) => parts.extend(cx.parts(t, r, rs)),
+                    None => parts.push(Part::Text(Span::styled(scalar(lookup(r, "text").or(Some(r))), rs))),
+                }
+                draw_parts(f.buffer_mut(), line, parts);
+                if !id.is_empty() {
+                    cx.mark(&id, Some(k), None, line);
+                }
+            }
+        }
         Kind::Table { columns, .. } => {
             let rows = items(st, n);
             let widths: Vec<Constraint> = columns.iter().map(|c| constraint(c.size.as_ref())).collect();
