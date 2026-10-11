@@ -181,6 +181,14 @@ fn exec(argv: &[String]) -> Result<(), String> {
 
 /// Runs `update` and carries out its effects. Fetches and runs go to threads that report back as
 /// messages; `blocking` (for headless renders) does them inline instead.
+/// Whether a source runs a command to get its value.
+fn is_command(src: &Source) -> bool {
+    src.stream.is_some() || src.cmd.is_some() || src.shell.is_some()
+}
+
+/// Why a command didn't run on a screen whose commands are off.
+const OFF: &str = "commands are off";
+
 struct Driver {
     tx: Sender<Event>,
     in_flight: BTreeSet<String>,
@@ -205,6 +213,9 @@ struct Driver {
     /// The answer to the request being handled (a write's new revision, or why not).
     reply: Option<Value>,
     changed: BTreeMap<String, (u64, Instant)>,
+    /// Whether `run` actions and command sources (`cmd`, `shell`, `stream`) run. Off, each
+    /// fails with "commands are off", as a test or a fuzzer wants.
+    commands: bool,
 }
 
 impl Drop for Driver {
@@ -218,7 +229,7 @@ impl Drop for Driver {
 
 impl Driver {
     fn new(tx: Sender<Event>, blocking: bool, host: Arc<dyn Host>) -> Driver {
-        Driver { tx, in_flight: BTreeSet::new(), again: BTreeSet::new(), last_fetch: BTreeMap::new(), streams: BTreeMap::new(), quit: false, blocking, upgrade: None, started: Instant::now(), host, copied: Vec::new(), reply: None, kept: BTreeMap::new(), changed: BTreeMap::new() }
+        Driver { tx, in_flight: BTreeSet::new(), again: BTreeSet::new(), last_fetch: BTreeMap::new(), streams: BTreeMap::new(), quit: false, blocking, upgrade: None, started: Instant::now(), host, copied: Vec::new(), reply: None, kept: BTreeMap::new(), changed: BTreeMap::new(), commands: true }
     }
 
     fn apply(&mut self, st: &mut State, msg: Msg) {
@@ -243,6 +254,10 @@ impl Driver {
         let mut queue: Vec<Effect> = update(st, msg);
         while let Some(fx) = queue.pop() {
             match fx {
+                Effect::Run(argv) if !self.commands => queue.extend(update(st, Msg::Ran { argv, result: Err(OFF.into()) })),
+                Effect::Fetch(name) if !self.commands && crate::state::source_now(st, &name).is_some_and(|s| is_command(&s)) => {
+                    queue.extend(update(st, Msg::Data { name, result: Err(OFF.into()) }))
+                }
                 Effect::Quit => self.quit = true,
                 Effect::Reply(r) => self.reply = Some(r),
                 // The terminal puts it on the clipboard (OSC 52); a headless render has none.
@@ -437,6 +452,10 @@ impl Driver {
     /// Fetch on a thread; the value comes back as `Msg::Data`. One fetch per source at a time.
     fn spawn_fetch(&mut self, st: &State, name: String) {
         let Some(src) = crate::state::source_now(st, &name) else { return };
+        // Its first fetch said why (see `apply`); a refresh says nothing more.
+        if !self.commands && is_command(&src) {
+            return;
+        }
         self.last_fetch.insert(name.clone(), Instant::now());
         if !self.in_flight.insert(name.clone()) {
             self.again.insert(name);
@@ -545,6 +564,7 @@ pub struct App {
     themes: BTreeMap<String, ThemeSpec>,
     theme: Option<String>,
     host: Arc<dyn Host>,
+    commands: bool,
 }
 
 impl App {
@@ -558,6 +578,14 @@ impl App {
         App { file: Some(path.into()), ..App::empty() }
     }
 
+    /// Whether `run` actions and command sources run (they do by default). Off, each fails with
+    /// "commands are off" and nothing is started: for tests and fuzzing a UI whose buttons run
+    /// scripts.
+    pub fn commands(mut self, on: bool) -> App {
+        self.commands = on;
+        self
+    }
+
     /// A screen waiting for a UI to be pushed.
     pub fn empty() -> App {
         App {
@@ -566,6 +594,7 @@ impl App {
             watch: false,
             socket: default_socket(),
             restore: None,
+            commands: true,
             store: None,
             themes: BTreeMap::new(),
             theme: None,
@@ -657,10 +686,22 @@ impl App {
         let (ntx, notes) = mpsc::channel();
         self.host.start(Notifier::new(ntx));
         let mut d = Driver::new(tx, true, self.host.clone());
+        d.commands = self.commands;
         d.apply(&mut st, Msg::Screen { width, height });
         d.apply(&mut st, Msg::Push { ui });
         let term = ratatui::Terminal::new(ratatui::backend::TestBackend::new(width, height))?;
-        let mut h = Headless { st, d, term, notes };
+        let mut h = Headless {
+            st,
+            d,
+            term,
+            notes,
+            last: ratatui::buffer::Buffer::empty(ratatui::layout::Rect::new(0, 0, width, height)),
+            drawn: false,
+            hits: Vec::new(),
+            drag: None,
+            #[cfg(feature = "fuzz")]
+            wire: None,
+        };
         // One frame to learn each editor's size, so keys scroll it as they would on screen.
         h.frame();
         Ok(h)
@@ -704,6 +745,7 @@ impl App {
         });
         host.start(Notifier::new(ntx));
         let mut d = Driver::new(tx, false, host);
+        d.commands = self.commands;
         // A restored state's clock carries on from where it was.
         d.started = Instant::now().checked_sub(Duration::from_millis(st.now_ms)).unwrap_or_else(Instant::now);
         d.apply(&mut st, Msg::Push { ui });
@@ -1157,6 +1199,84 @@ pub struct Headless {
     d: Driver,
     term: ratatui::Terminal<ratatui::backend::TestBackend>,
     notes: Receiver<Msg>,
+    /// The last frame as drawn. Not the backend's buffer: that one only takes the cells a frame
+    /// changed, and keeps a stale character under a wide one's second cell, which no terminal
+    /// shows.
+    last: ratatui::buffer::Buffer,
+    /// Whether `last` is the state's frame as it is now.
+    drawn: bool,
+    /// The last frame's hit regions, so the mouse lands where a running screen's would.
+    hits: Vec<Hit>,
+    /// An editor a press started a drag in, as the runtime keeps it.
+    drag: Option<(String, ratatui::layout::Rect)>,
+    /// Once asked for (`terminal`): every frame drawn again the way a running screen draws it,
+    /// as escapes from the crossterm backend, diffed against the frame before, into an emulator.
+    #[cfg(feature = "fuzz")]
+    wire: Option<Wire>,
+}
+
+/// A frame's way to a terminal: ratatui's crossterm backend writing escapes into a buffer, and
+/// vt100 reading them.
+#[cfg(feature = "fuzz")]
+struct Wire {
+    term: ratatui::Terminal<ratatui::backend::CrosstermBackend<Tap>>,
+    out: Arc<std::sync::Mutex<Vec<u8>>>,
+    vt: vt100::Parser,
+}
+
+/// What the backend writes, kept for the emulator to read.
+#[cfg(feature = "fuzz")]
+struct Tap(Arc<std::sync::Mutex<Vec<u8>>>);
+
+#[cfg(feature = "fuzz")]
+impl Write for Tap {
+    fn write(&mut self, b: &[u8]) -> std::io::Result<usize> {
+        self.0.lock().expect("the tap").extend_from_slice(b);
+        Ok(b.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+#[cfg(feature = "fuzz")]
+impl Wire {
+    fn new(w: u16, h: u16) -> Wire {
+        let out = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let backend = ratatui::backend::CrosstermBackend::new(Tap(out.clone()));
+        let viewport = ratatui::Viewport::Fixed(ratatui::layout::Rect::new(0, 0, w, h));
+        let term = ratatui::Terminal::with_options(backend, ratatui::TerminalOptions { viewport }).expect("a terminal on a buffer");
+        Wire { term, out, vt: vt100::Parser::new(h, w, 0) }
+    }
+
+    fn draw(&mut self, st: &State) {
+        let _ = self.term.draw(|f| {
+            view::draw(st, f);
+        });
+        let bytes = std::mem::take(&mut *self.out.lock().expect("the tap"));
+        self.vt.process(&bytes);
+    }
+
+    /// The emulator's grid as text, as `buffer_text` writes a frame.
+    fn text(&self) -> String {
+        let screen = self.vt.screen();
+        let (h, w) = screen.size();
+        let mut out = String::new();
+        for y in 0..h {
+            let mut line = String::new();
+            for x in 0..w {
+                match screen.cell(y, x) {
+                    // `buffer_text` writes a wide character's second cell as a space.
+                    Some(c) if c.has_contents() && !c.is_wide_continuation() => line.push_str(c.contents()),
+                    _ => line.push(' '),
+                }
+            }
+            out.push_str(line.trim_end());
+            out.push('\n');
+        }
+        out
+    }
 }
 
 impl Headless {
@@ -1174,16 +1294,95 @@ impl Headless {
     /// Any message, as if it came from the socket.
     pub fn msg(&mut self, msg: Msg) -> &mut Headless {
         self.drain();
+        self.drawn = false;
         self.d.apply(&mut self.st, msg);
         self.d.keep(&mut self.st, Duration::ZERO);
         self
+    }
+
+    /// The mouse at a cell, as the terminal reports it: `press` (the left button), `s-press`,
+    /// `drag` (with the button held), `release`, `move`, `wheel-up` or `wheel-down`. It lands on
+    /// the last frame, as on a running screen.
+    pub fn mouse(&mut self, kind: &str, x: u16, y: u16) -> &mut Headless {
+        let (kind, mods) = match kind {
+            "press" => (MouseEventKind::Down(MouseButton::Left), KeyModifiers::NONE),
+            "s-press" => (MouseEventKind::Down(MouseButton::Left), KeyModifiers::SHIFT),
+            "drag" => (MouseEventKind::Drag(MouseButton::Left), KeyModifiers::NONE),
+            "release" => (MouseEventKind::Up(MouseButton::Left), KeyModifiers::NONE),
+            "wheel-up" => (MouseEventKind::ScrollUp, KeyModifiers::NONE),
+            "wheel-down" => (MouseEventKind::ScrollDown, KeyModifiers::NONE),
+            _ => (MouseEventKind::Moved, KeyModifiers::NONE),
+        };
+        self.drain();
+        if let Some(m) = mouse(kind, mods, x, y, &self.hits, &self.st, &mut self.drag) {
+            self.msg(m);
+        }
+        self.frame();
+        self
+    }
+
+    /// Text pasted (bracketed), as the terminal delivers it.
+    pub fn paste(&mut self, text: &str) -> &mut Headless {
+        self.msg(Msg::Paste { text: text.into() });
+        self.frame();
+        self
+    }
+
+    /// The terminal resized to `width` × `height` cells.
+    pub fn resize(&mut self, width: u16, height: u16) -> &mut Headless {
+        self.drawn = false;
+        self.term.backend_mut().resize(width, height);
+        let _ = self.term.resize(ratatui::layout::Rect::new(0, 0, width, height));
+        // The terminal resized: the emulator's grid too, and ratatui draws the whole frame again.
+        #[cfg(feature = "fuzz")]
+        if let Some(w) = &mut self.wire {
+            w.vt.screen_mut().set_size(height, width);
+            let _ = w.term.resize(ratatui::layout::Rect::new(0, 0, width, height));
+        }
+        self.msg(Msg::Screen { width, height });
+        self.frame();
+        self
+    }
+
+    /// The frame as a terminal shows it: drawn through the crossterm backend (diffed against the
+    /// frame before, as a running screen draws) into a vt100 emulator, read back as text. It
+    /// should always equal `screen`; where it doesn't, the escapes are wrong. Frames from the
+    /// first call on go through it.
+    #[cfg(feature = "fuzz")]
+    pub fn terminal(&mut self) -> String {
+        if self.wire.is_none() {
+            let (w, h) = self.size();
+            self.wire = Some(Wire::new(w, h));
+            self.drawn = false;
+        }
+        self.frame();
+        self.wire.as_ref().map(Wire::text).unwrap_or_default()
+    }
+
+    /// The screen's size in cells.
+    pub fn size(&self) -> (u16, u16) {
+        let a = self.term.backend().buffer().area;
+        (a.width, a.height)
     }
 
     /// A request as the control socket takes it (`{"op": "write", "key": …}`), answered as the
     /// socket would answer it: an agent's view of the screen, without a socket.
     pub fn request(&mut self, req: Value) -> Value {
         self.drain();
+        self.drawn = false;
         let reply = match serde_json::from_value::<Request>(req) {
+            // The loop answers these on a running screen, from its last frame.
+            Ok(Request::Screen) => return json!({"ok": true, "screen": self.screen()}),
+            Ok(Request::Mouse { kind, x, y }) => {
+                let kind = match kind.as_str() {
+                    "click" => "press",
+                    "up" => "wheel-up",
+                    "down" => "wheel-down",
+                    _ => "move",
+                };
+                self.mouse(kind, x, y);
+                return json!({"ok": true});
+            }
             Ok(r) => self.d.request(&mut self.st, r),
             Err(e) => json!({"ok": false, "status": format!("bad request: {e}")}),
         };
@@ -1205,17 +1404,18 @@ impl Headless {
     /// The frame as text, one line per row (trailing spaces trimmed).
     pub fn screen(&mut self) -> String {
         self.frame();
-        buffer_text(self.term.backend().buffer())
+        buffer_text(&self.last)
     }
 
     /// The frame with its colours and attributes, as ANSI (truecolour) escapes.
     pub fn ansi(&mut self) -> String {
         self.frame();
-        buffer_ansi(self.term.backend().buffer())
+        buffer_ansi(&self.last)
     }
 
     fn drain(&mut self) {
         while let Ok(m) = self.notes.try_recv() {
+            self.drawn = false;
             self.d.apply(&mut self.st, m);
             self.d.keep(&mut self.st, Duration::ZERO);
         }
@@ -1223,17 +1423,29 @@ impl Headless {
 
     fn frame(&mut self) {
         self.drain();
-        let (mut sizes, mut areas) = (Vec::new(), Vec::new());
-        let st = &self.st;
+        // The frame is the state's: nothing new since the last one, nothing to draw.
+        if self.drawn {
+            return;
+        }
+        self.drawn = true;
+        let (mut sizes, mut areas, mut hits) = (Vec::new(), Vec::new(), Vec::new());
+        let (st, last) = (&self.st, &mut self.last);
         let _ = self.term.draw(|f| {
             let out = view::draw(st, f);
-            (sizes, areas) = (out.sizes, out.areas);
+            (sizes, areas, hits) = (out.sizes, out.areas, out.hits);
+            *last = f.buffer_mut().clone();
         });
         if resize_editors(&mut self.d, &mut self.st, sizes) | report_areas(&mut self.d, &mut self.st, areas) {
-            let st = &self.st;
+            let (st, last) = (&self.st, &mut self.last);
             let _ = self.term.draw(|f| {
-                view::draw(st, f);
+                hits = view::draw(st, f).hits;
+                *last = f.buffer_mut().clone();
             });
+        }
+        self.hits = hits;
+        #[cfg(feature = "fuzz")]
+        if let Some(w) = &mut self.wire {
+            w.draw(&self.st);
         }
     }
 }

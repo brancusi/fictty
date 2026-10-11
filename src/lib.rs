@@ -9,6 +9,8 @@
 //! - `host`: what an app that embeds fictty provides (sources and actions in process).
 //! - `gfx`: pictures (cards, plots, images) placed with the kitty graphics protocol.
 
+#[cfg(feature = "fuzz")]
+pub mod fuzz;
 pub mod gfx;
 pub mod host;
 pub mod lists;

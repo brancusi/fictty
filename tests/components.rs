@@ -774,3 +774,59 @@ fn each_follows_its_data_and_keeps_its_tree_otherwise() {
     s.msg(Msg::Write { key: "open".into(), write: serde_json::from_value(json!({"write": "put", "value": ["a", "b"]})).unwrap(), if_rev: None, by: "t".into(), for_ms: None });
     assert!(s.screen().contains("b!"), "{}", s.screen());
 }
+
+#[test]
+fn with_commands_off_nothing_runs_and_the_screen_says_why() {
+    let dir = std::env::temp_dir().join(format!("fictty-commands-off-{}", std::process::id()));
+    let mark = dir.join("ran");
+    let ui = json!({
+        "root": {"type": "col", "children": [
+            {"type": "text", "id": "out", "bind": "@listing", "text": "{.}"},
+            {"type": "button", "id": "go", "label": "go", "click": {"run": ["sh", "-c", format!("mkdir -p {0} && touch {1}", dir.display(), mark.display())]}}
+        ]},
+        "data": {"listing": {"shell": "echo hello"}},
+        "focus": "go"
+    });
+    let mut s = App::new(serde_json::from_value(ui).unwrap()).commands(false).headless(60, 8).unwrap();
+    s.keys(&["enter"]);
+    assert!(!mark.exists(), "the button's command ran");
+    let status = s.state().status.clone().unwrap_or_default();
+    assert!(status.ends_with("commands are off"), "{status}");
+    let listing = serde_json::to_value(&s.state().data["listing"]).unwrap();
+    assert!(listing.to_string().contains("commands are off"), "{listing}");
+}
+
+#[test]
+fn headless_takes_the_mouse_and_resizes_like_a_terminal() {
+    let ui = json!({
+        "root": {"type": "col", "children": [
+            {"type": "list", "id": "l", "items": ["one", "two", "three"], "min": 3},
+            {"type": "editor", "id": "e", "text": "hello world"}
+        ]},
+        "focus": "l"
+    });
+    let mut s = screen(ui, 30, 10);
+    let at = |s: &mut fictty::Headless, text: &str| {
+        let screen = s.screen();
+        let (y, line) = screen.lines().enumerate().find(|(_, l)| l.contains(text)).unwrap_or_else(|| panic!("{text} in {screen}"));
+        (line[..line.find(text).unwrap()].chars().count() as u16, y as u16)
+    };
+    // A press on a row selects it.
+    let (x, y) = at(&mut s, "three");
+    s.mouse("press", x, y).mouse("release", x, y);
+    assert_eq!(s.state().local["l"].selected, 2);
+    // A drag across the editor's text selects what it crossed.
+    let (x, y) = at(&mut s, "hello");
+    s.mouse("press", x, y).mouse("drag", x + 5, y).mouse("release", x + 5, y);
+    assert_eq!(s.state().focus.as_deref(), Some("e"));
+    let (_, v) = fictty::state::field_view(s.state(), "e").unwrap();
+    let r = v.selection.primary();
+    assert_eq!((r.anchor.min(r.head), r.anchor.max(r.head)), (0, 5));
+    // A paste replaces the selection; a resize redraws at the new size.
+    s.paste("HOWDY");
+    assert!(s.screen().contains("HOWDY world"));
+    s.resize(20, 6);
+    assert_eq!(s.size(), (20, 6));
+    assert_eq!(s.screen().lines().count(), 6);
+}
+

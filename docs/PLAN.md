@@ -99,6 +99,23 @@ hundred scenarios with real key and mouse bytes) and sent what was missing, roun
       typed-ahead keys while a page loads, a push that keeps unchanged sources
 - [x] v0.2.0 with binaries; the tour's Pages chapter shows the new pieces together
 
+### Fuzzing (2026-10-11)
+
+Thought Control asked for testing at the terminal level, fast enough to fuzz. The first two layers
+run in process, at Headless speed.
+
+- [x] Headless takes the mouse, pastes and resizes as a terminal delivers them, and reads its
+      frame from what it drew (the backend's buffer kept a stale character under wide ones)
+- [x] `App::commands(false)`: no `run` and no command sources, for tests and fuzzing
+- [x] `fictty::fuzz` (the `fuzz` feature): generated acts, built-in properties (no panic, a time
+      budget, replay, the terminal shows the frame), the editing invariants, app properties,
+      shrinking to a scenario in the editing notation, `replay`
+- [x] What it found: undo renumbered what it put back (so it could never get past it), a paste
+      didn't renumber, numbers after bullets weren't a list of their own, and a toast drawn
+      over half a wide character lost its corner on a real terminal
+- [ ] `fictty-sim`: any fictty binary in a pty with an emulator on the other end, keys encoded
+      under the keyboard flags the app pushed, so crossterm's own decoder is fuzzed too
+
 ## 1 · Land the prototype (now)
 
 - [x] Review and merge `store-theme-prototype` into `main`

@@ -220,8 +220,22 @@ fictty::App::new(ui)
 - **Everything the host says arrives as a message**, so `get --state`, `$log` and replays see it;
   the view never reads the host.
 - **Tests without a terminal**: `App::new(ui).host(h).headless(80, 24)?` gives a screen to send
-  `keys(&["j", "x"])` and messages to, and to read back as text (`screen()`, `ansi()`) or state
-  (`state()`). Sources are fetched and actions done inline. See `tests/host.rs`.
+  `keys(&["j", "x"])`, the mouse (`mouse("press", x, y)`, also `s-press`, `drag`, `release`,
+  `move`, `wheel-up`, `wheel-down`), `paste(text)`, `resize(w, h)` and messages to, and to read
+  back as text (`screen()`, `ansi()`) or state (`state()`). Sources are fetched and actions done
+  inline. `App::commands(false)` stops `run` actions and command sources (each fails with
+  "commands are off"), so a test never starts a script. See `tests/host.rs`.
+- **Fuzzing** (the `fuzz` feature): `fictty::fuzz::run(make, &mut checks, &config)` plays random
+  keys, clicks, drags, the wheel, pastes, resizes and waits on fresh headless screens, checking
+  after every act. Built in: nothing panics, each act stays inside a time budget, the same acts
+  replay to the same state and frame, and the frame drawn as a running screen draws it (escapes
+  from ratatui's crossterm backend, diffed frame to frame, into a vt100 emulator) shows exactly
+  the frame. `fuzz::editing()` adds the editing invariants (a plain motion leaves no selection,
+  copy changes nothing, cut then paste gives the text back, undoing everything gets back to the
+  start); an app adds its own with `fuzz::check(name, |step| …)`. A failure shrinks to the
+  fewest acts and prints them with the focused editor in the editing notation
+  (`Hello ⟦wor▮⟧ld`), and `fuzz::replay(make, "key d-a; paste \"x\"", …)` runs a printed one
+  again. See `tests/fuzz.rs`, which fuzzes every chapter of the tour.
 - **Store entries the host keeps**: `Host::keys` names prefixes (`page/`). Such an entry is never
   seeded: when something first shows it the screen asks `Host::load` (a spinner meanwhile, the
   reason if it fails), and once it has changed and been still for half a second it goes back

@@ -10,6 +10,10 @@ keywords = ["tui", "terminal", "agents", "declarative", "ratatui"]
 categories = ["command-line-interface"]
 publish = false
 
+[features]
+# The fuzz driver (`fictty::fuzz`), for an app's tests.
+fuzz = ["dep:vt100"]
+
 [[bin]]
 name = "fictty"
 path = "src/main.rs"
@@ -26,3 +30,9 @@ ratatui = "0.30"
 resvg = { version = "0.48", default-features = false, features = ["text", "system-fonts"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
+# A terminal emulator, for the fuzz driver's check that the escapes draw the frame.
+vt100 = { version = "0.16", optional = true }
+
+[dev-dependencies]
+# The tests use the fuzz driver.
+fictty = { path = ".", features = ["fuzz"] }
