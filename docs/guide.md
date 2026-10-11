@@ -61,7 +61,8 @@ fictty theme paper                                        # choose a loaded them
 - **Sources** in `data`: `cmd` (argv), `shell`, `stream` (a command printing JSON lines) or a
   literal `value`; `path` narrows the JSON, `every` re-fetches. Sources are disposable: a push
   fetches them again. Built in: `$stats`, `$caps`, `$theme`, `$store` (every entry, by revision)
-  and `$log` (what agents did over the socket, newest first).
+  and `$log` (what agents did over the socket, newest first, at the local clock time; a write
+  that was refused shows as `refused`, with why).
 - **Binds and templates**: `bind` names a store entry or a source, then a path (`books.running`);
   `@id` is the selected row of another list. Text and columns are templates over the bound
   value: `"{text} · {due}"`, `<accent+b>styled</>`, `{±change}` coloured by sign.
@@ -91,7 +92,8 @@ document with its undo history), each with a revision (`rev`) and who wrote it l
 - **Editors**: `{"type": "editor", "bind": "@notes", "doc": "note/{id}", "text": "# {title}"}` edits
   the entry its template names from the selected note, so a list and an editor make a notes app.
   An editor takes every key but Tab, Shift-Tab and Esc; `input` is the one-line version, and
-  Enter runs its `keys.enter`. A click places the caret; `"syntax": "markdown"` styles headings,
+  Enter runs its `keys.enter`. `"accept": "number"` makes an input refuse typing that can't make
+  a number, and its keys wait until the text is a whole one (the status says why). A click places the caret; `"syntax": "markdown"` styles headings,
   list markers, quotes and inline code (theme parts `md.heading`, `md.bullet`, `md.quote`,
   `md.code`) while the text stays plain.
 

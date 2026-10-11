@@ -4,7 +4,7 @@
      "text": "<c1>●</> <b>fictty</> <d>›</> agent <d>· what agents did over the socket, and what the store holds</>\t<d>t theme ·</> <accent>{name}</> <d>· esc menu</> "},
     {"type": "row", "pad": 1, "children": [
       {"type": "list", "id": "activity", "bind": "$log", "title": "Agent activity, newest first", "variant": "card",
-       "item": "<d>{at}</>  {op|push=<accent+b>push </>;patch=<violet+b>patch</>;put=<pos+b>put  </>;edit=<amber+b>edit </>;merge=<amber+b>merge</>;set=<violet+b>set  </>;key=<b>key  </>;theme=<rose+b>theme</>;*=<b>$</>}  {what}",
+       "item": "<d>{at}</>  {op|push=<accent+b>push   </>;patch=<violet+b>patch  </>;put=<pos+b>put    </>;edit=<amber+b>edit   </>;merge=<amber+b>merge  </>;set=<violet+b>set    </>;key=<b>key    </>;theme=<violet+b>theme  </>;refused=<rose+b>refused</>;*=<b>$</>}  {what}",
        "empty": "Nothing yet. Run examples/showcase/tour.sh in another terminal and watch an agent drive this showcase."},
       {"type": "text", "size": 1, "text": ""},
       {"type": "col", "size": "46%", "children": [
@@ -16,7 +16,7 @@
            {"title": "holds", "value": "<d>{holds}</>", "size": 17}
          ]},
         {"type": "text", "title": "Try it from another terminal", "variant": "quiet", "size": 11, "pad": [2, 1],
-         "text": "<accent>fictty read note/standup</>\n<accent>fictty put draft -</> <d><<< '\"from an agent\"'</>\n<accent>fictty theme paper</>\n<accent>fictty get --state</>\n\nWrites take <b>--if-rev N</>: if anyone wrote since\nrevision N, the write is refused, with what's there."}
+         "text": "<accent>fictty read note/standup</>\n<accent>echo '\"hi\"' | fictty put draft -</>\n<accent>fictty theme paper</>\n<accent>fictty get --state</>\n\nWrites take <b>--if-rev N</>: if anyone wrote since\nrevision N, the write is refused, with what's there."}
       ]}
     ]},
     {"type": "text", "size": 1, "pad": 1,

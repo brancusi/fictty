@@ -308,6 +308,10 @@ pub enum Kind {
         text: String,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         placeholder: Option<String>,
+        /// `number`: typing that can't make a number is refused, and the node's keys (Enter)
+        /// don't run until the text is one.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        accept: Option<String>,
     },
     /// One child at a time, picked by a row of tab titles (click one, or ←/→ when focused).
     Tabs { tabs: Vec<String>, children: Vec<Node> },
@@ -483,6 +487,26 @@ pub struct Field<'a> {
     pub line: bool,
     /// Markdown styling.
     pub markdown: bool,
+    /// Numbers only (`accept: "number"`).
+    pub number: bool,
+}
+
+/// Text that is a number, or the start of one ("", "-", "12.").
+pub fn number_so_far(t: &str) -> bool {
+    let t = t.strip_prefix('-').unwrap_or(t);
+    let mut dot = false;
+    t.chars().all(|c| match c {
+        '.' if !dot => {
+            dot = true;
+            true
+        }
+        c => c.is_ascii_digit(),
+    })
+}
+
+/// Text that is a whole number: "-12.50", "3", "4.".
+pub fn number_done(t: &str) -> bool {
+    number_so_far(t) && t.chars().any(|c| c.is_ascii_digit())
 }
 
 /// What a key does. Names: `quit`, `up`, `down`, `top`, `bottom`, `focus_next`, `focus_prev`,
@@ -574,10 +598,16 @@ impl Node {
                 placeholder: placeholder.as_deref(),
                 line: false,
                 markdown: syntax.as_deref() == Some("markdown"),
+                number: false,
             }),
-            Kind::Input { text, placeholder } => {
-                Some(Field { seed: text, doc: None, placeholder: placeholder.as_deref(), line: true, markdown: false })
-            }
+            Kind::Input { text, placeholder, accept } => Some(Field {
+                seed: text,
+                doc: None,
+                placeholder: placeholder.as_deref(),
+                line: true,
+                markdown: false,
+                number: accept.as_deref() == Some("number"),
+            }),
             _ => None,
         }
     }

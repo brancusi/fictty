@@ -158,8 +158,9 @@ pub enum Msg {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         choose: Option<String>,
     },
-    /// Something an agent did over the socket, for the `$log` source (newest first).
-    Activity { op: String, what: String },
+    /// Something an agent did over the socket, for the `$log` source (newest first), with the
+    /// local clock time it happened at (`HH:MM:SS`, from the runtime).
+    Activity { op: String, what: String, at: String },
     /// The cells an editor node got in the last frame (the view reports them; the runtime sends
     /// this when they differ from what the editor has).
     Size { id: String, width: u16, height: u16 },
@@ -330,8 +331,8 @@ fn apply(st: &mut State, msg: Msg) -> Vec<Effect> {
             }
             vec![]
         }
-        Msg::Activity { op, what } => {
-            log(st, op, what);
+        Msg::Activity { op, what, at } => {
+            log(st, op, what, at);
             vec![]
         }
         Msg::Size { id, width, height } => {
@@ -354,6 +355,10 @@ fn apply(st: &mut State, msg: Msg) -> Vec<Effect> {
             vec![]
         }
         Msg::Key { key } => {
+            if let Some(why) = not_a_number(st, &key) {
+                st.status = Some(why);
+                return vec![];
+            }
             if let Some(id) = editing(st, &key) {
                 type_into(st, &id, &key);
                 return vec![];
@@ -436,8 +441,7 @@ const LOG_LEN: usize = 40;
 
 /// Adds to `$log`: `{at, op, what}`, newest first, `at` as minutes and seconds on the clock.
 /// Keys in a row join one entry, so an agent typing a sentence reads as the sentence.
-fn log(st: &mut State, op: String, what: String) {
-    let at = format!("{}:{:02}", st.now_ms / 60_000, st.now_ms / 1000 % 60);
+fn log(st: &mut State, op: String, what: String, at: String) {
     let mut entries = match st.data.remove("$log") {
         Some(Slot::Ready { value: Value::Array(a) }) => a,
         _ => Vec::new(),
@@ -462,6 +466,21 @@ fn log(st: &mut State, op: String, what: String) {
         }
     }
     st.data.insert("$log".into(), Slot::Ready { value: Value::Array(entries) });
+}
+
+/// Why the focused number field's own `key` can't run yet: its text isn't a number.
+fn not_a_number(st: &State, key: &str) -> Option<String> {
+    let n = st.ui.root.find(st.focus.as_ref()?)?;
+    if !n.field()?.number || !n.keys.contains_key(key) {
+        return None;
+    }
+    let (doc_key, _) = field_view(st, n.id.as_ref()?)?;
+    let text = match &st.store.get(&doc_key)?.body {
+        Body::Text { doc } => doc.text.to_string(),
+        Body::Value { .. } => return None,
+    };
+    let name = n.title.as_deref().or(n.id.as_deref()).unwrap_or("input");
+    (!crate::model::number_done(&text)).then(|| format!("{name}: {text:?} isn't a number"))
 }
 
 /// The focused editor or input that takes this key, if any: everything but Tab, Shift-Tab, Esc
@@ -521,13 +540,23 @@ fn put_views(st: &mut State, key: &str, views: Vec<(String, caretline::View)>) {
 /// A caretline message through editor `id`'s view of its text. Every other editor on the same
 /// text follows the change. A change of text is a store write, by `by`.
 fn on_doc(st: &mut State, id: &str, msg: caretline::Msg, by: &str) {
-    let Some(key) = st.ui.root.find(id).and_then(|n| doc_key(st, n)) else { return };
+    let Some(node) = st.ui.root.find(id) else { return };
+    let number = node.field().is_some_and(|f| f.number);
+    let Some(key) = doc_key(st, node) else { return };
     let mut views = take_views(st, &key);
     let acting = views.iter().position(|(v, _)| v == id);
     if let (Some(acting), Some(Entry { body: Body::Text { doc }, .. })) = (acting, st.store.get_mut(&key)) {
         let before = doc.rev;
         let mut vs: Vec<caretline::View> = views.iter().map(|(_, v)| v.clone()).collect();
+        // A number field keeps what it had when an edit would make it something else.
+        let undo = number.then(|| (doc.clone(), vs.clone()));
         caretline::views::update_doc(doc, &mut vs, acting, msg);
+        if let Some((d, v)) = undo
+            && !crate::model::number_so_far(&doc.text.to_string())
+        {
+            *doc = d;
+            vs = v;
+        }
         for ((_, v), new) in views.iter_mut().zip(vs) {
             *v = new;
         }
@@ -952,6 +981,11 @@ pub fn problems(st: &State) -> Vec<String> {
                 out.push(format!("{name}: tone {t:?} isn't a theme token or a colour"));
             }
         }
+        if let Kind::Input { accept: Some(a), .. } = &n.kind
+            && a != "number"
+        {
+            out.push(format!("input {name}: accept {a:?} isn't known (only \"number\")"));
+        }
         let Some(bind) = n.bind.as_deref().filter(|b| !b.starts_with('@')) else { continue };
         let Some(v) = value_of(st, bind) else { continue };
         let wants_list = matches!(n.kind, Kind::List { .. } | Kind::Table { .. } | Kind::Bars { .. } | Kind::Sparkline { .. });
@@ -1255,6 +1289,20 @@ mod tests {
     }
 
     #[test]
+    fn a_number_input_takes_only_numbers_and_submits_only_a_whole_one() {
+        let mut st = State::default();
+        update(&mut st, Msg::Push { ui: ui(json!({"root": {"type": "input", "id": "amt", "title": "Amount", "accept": "number",
+            "keys": {"enter": {"append": "rows", "value": "{store.amt}"}}}, "store": {"rows": []}})) });
+        keys(&mut st, &["-", "enter"]);
+        assert_eq!(st.status.as_deref(), Some("Amount: \"-\" isn't a number"));
+        assert_eq!(st.store["rows"].read()["value"], json!([]), "nothing booked");
+        keys(&mut st, &["3", "-", "x", ".", "5", ".", "0"]);
+        assert_eq!(text_of(&st, "amt"), "-3.50", "the second '-', the 'x' and the second '.' were refused");
+        keys(&mut st, &["enter"]);
+        assert_eq!(st.store["rows"].read()["value"], json!(["-3.50"]));
+    }
+
+    #[test]
     fn store_actions_keep_types_and_say_what_went_wrong() {
         let mut st = State::default();
         update(&mut st, Msg::Push { ui: ui(json!({
@@ -1341,7 +1389,7 @@ mod tests {
     #[test]
     fn the_log_joins_typed_keys_and_keeps_the_newest_first() {
         let mut st = State::default();
-        let act = |op: &str, what: &str| Msg::Activity { op: op.into(), what: what.into() };
+        let act = |op: &str, what: &str| Msg::Activity { op: op.into(), what: what.into(), at: "09:41:00".into() };
         for m in [act("push", "a new UI"), act("key", "h"), act("key", "i"), act("key", "space"), act("key", "enter"), act("set", "note")] {
             update(&mut st, m);
         }

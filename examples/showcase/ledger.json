@@ -89,6 +89,7 @@
           "size": 14,
           "pad": 1,
           "placeholder": "-12.50",
+          "accept": "number",
           "keys": {
            "enter": {
             "do": [

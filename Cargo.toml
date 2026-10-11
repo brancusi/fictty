@@ -20,6 +20,7 @@ base64 = "0.22"
 caretline = "0.5"
 caretline-layers = { version = "0.2.0", default-features = false }
 clap = { version = "4", features = ["derive", "env"] }
+libc = "0.2"
 miniz_oxide = "0.8"
 ratatui = "0.30"
 resvg = { version = "0.48", default-features = false, features = ["text", "system-fonts"] }

@@ -547,6 +547,7 @@ dependencies = [
  "caretline",
  "caretline-layers",
  "clap",
+ "libc",
  "miniz_oxide 0.8.9",
  "ratatui",
  "resvg",

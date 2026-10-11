@@ -316,9 +316,15 @@ impl Driver {
 
     fn request(&mut self, st: &mut State, req: Request) -> Value {
         // What changed the screen goes in `$log`, so a UI can show what its agent is doing.
-        if let Some((op, what)) = activity(st, &req) {
+        // A write is logged after it's tried, so a refused one shows as refused.
+        let logged = activity(st, &req);
+        let log = |st: &mut State, op: &str, what: String| {
             update(st, Msg::Tick { now_ms: self.started.elapsed().as_millis() as u64 });
-            update(st, Msg::Activity { op: op.into(), what });
+            update(st, Msg::Activity { op: op.into(), what, at: clock() });
+        };
+        let is_write = matches!(req, Request::Write { .. });
+        if let (Some((op, what)), false) = (&logged, is_write) {
+            log(st, op, what.clone());
         }
         let msg = match req {
             Request::Get => return serde_json::to_value(&st.ui).unwrap_or_default(),
@@ -336,6 +342,12 @@ impl Driver {
                     _ => None,
                 });
                 let mut reply = reply.unwrap_or_else(|| json!({"ok": false}));
+                if let Some((op, what)) = logged {
+                    match reply["ok"].as_bool() {
+                        Some(true) => log(st, op, what),
+                        _ => log(st, "refused", format!("{op} {what} ({})", refusal(&reply))),
+                    }
+                }
                 if !st.problems.is_empty() {
                     reply["problems"] = json!(st.problems);
                 }
@@ -893,6 +905,25 @@ fn activity(st: &State, req: &Request) -> Option<(&'static str, String)> {
         Request::Click { id, .. } => ("click", id.clone()),
         _ => return None,
     })
+}
+
+/// Why a write was refused, in a few words for the log: "at rev 3" for a stale one.
+fn refusal(reply: &Value) -> String {
+    match reply["current"]["rev"].as_u64() {
+        Some(rev) => format!("stale: at rev {rev}"),
+        None => reply["status"].as_str().unwrap_or("refused").to_string(),
+    }
+}
+
+/// The local wall-clock time, `HH:MM:SS`, for the activity log.
+fn clock() -> String {
+    let now = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).map_or(0, |d| d.as_secs()) as libc::time_t;
+    // SAFETY: localtime_r writes only into `tm`, which outlives the call.
+    let mut tm: libc::tm = unsafe { std::mem::zeroed() };
+    if unsafe { libc::localtime_r(&now, &mut tm) }.is_null() {
+        return format!("{:02}:{:02}:{:02}", now / 3600 % 24, now / 60 % 60, now % 60);
+    }
+    format!("{:02}:{:02}:{:02}", tm.tm_hour, tm.tm_min, tm.tm_sec)
 }
 
 /// Tells each editor the size it was drawn at, where that differs from its own. True when any
