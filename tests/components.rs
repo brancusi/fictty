@@ -830,3 +830,21 @@ fn headless_takes_the_mouse_and_resizes_like_a_terminal() {
     assert_eq!(s.screen().lines().count(), 6);
 }
 
+#[test]
+fn a_key_at_the_end_of_a_long_paragraph_stays_quick() {
+    // Found by Thought Control: each cell's look scanned its whole line for links, so a key in a
+    // 1,200-character paragraph took over half a second in a release build.
+    let para = "Words and [[a link]] and #tag here, ".repeat(34);
+    let ui = json!({"root": {"type": "editor", "id": "e", "text": para, "syntax": "markdown", "caret": "end",
+                             "links": [{"kind": "wiki"}, {"kind": "tag"}]}, "focus": "e"});
+    let mut s = screen(ui, 100, 30);
+    s.keys(&["d-end"]);
+    let t = std::time::Instant::now();
+    for _ in 0..10 {
+        s.keys(&["x"]);
+        s.screen();
+    }
+    let each = t.elapsed() / 10;
+    let limit = if cfg!(debug_assertions) { 300 } else { 30 };
+    assert!(each.as_millis() < limit, "{each:?} a key");
+}

@@ -692,28 +692,29 @@ pub struct LinkSpec {
 /// what it names (the page, the tag without its `#`, the address).
 pub fn links_in(line: &str, kinds: &[&str]) -> Vec<(usize, usize, String, String)> {
     let chars: Vec<char> = line.chars().collect();
+    let at = |i: usize, pat: &str| pat.chars().enumerate().all(|(k, p)| chars.get(i + k) == Some(&p));
+    let (wiki, url, tag) = (kinds.contains(&"wiki"), kinds.contains(&"url"), kinds.contains(&"tag"));
     let mut out = Vec::new();
     let mut i = 0;
     while i < chars.len() {
-        let rest: String = chars[i..].iter().collect();
-        if kinds.contains(&"wiki") && rest.starts_with("[[")
-            && let Some(end) = rest.find("]]")
+        if wiki
+            && at(i, "[[")
+            && let Some(end) = (i + 2..chars.len()).find(|&j| at(j, "]]"))
         {
-            let inner: String = rest[2..end].to_string();
-            let n = inner.chars().count() + 4;
+            let inner: String = chars[i + 2..end].iter().collect();
             if !inner.is_empty() && !inner.contains('\n') {
-                out.push((i, i + n, "wiki".into(), inner));
-                i += n;
+                out.push((i, end + 2, "wiki".into(), inner));
+                i = end + 2;
                 continue;
             }
         }
-        if kinds.contains(&"url") && (rest.starts_with("https://") || rest.starts_with("http://")) {
+        if url && (at(i, "https://") || at(i, "http://")) {
             let n = chars[i..].iter().take_while(|c| !c.is_whitespace() && !matches!(c, ')' | ']' | '>')).count();
             out.push((i, i + n, "url".into(), chars[i..i + n].iter().collect()));
             i += n;
             continue;
         }
-        if kinds.contains(&"tag") && chars[i] == '#' && (i == 0 || chars[i - 1].is_whitespace()) {
+        if tag && chars[i] == '#' && (i == 0 || chars[i - 1].is_whitespace()) {
             let n = chars[i + 1..].iter().take_while(|c| c.is_alphanumeric() || matches!(c, '_' | '-' | '/')).count();
             if n > 0 {
                 out.push((i, i + 1 + n, "tag".into(), chars[i + 1..i + 1 + n].iter().collect()));
@@ -835,11 +836,15 @@ pub enum Action {
     /// selected row, `store` and `$self`, like the store actions.
     Copy { copy: String },
     /// Ask the app that embeds the screen to do something (`Host::act`): `args` are templates, as
-    /// in the store actions. The answer goes in `$log`; a failure shows on the status line.
+    /// in the store actions. The answer goes in `$log`; a failure shows on the status line. With
+    /// `wait`, keys typed meanwhile wait until it has answered and the host sources it refreshes
+    /// have landed, then go in order (for an act that closes or opens what the next key acts on).
     Host {
         host: String,
         #[serde(default, skip_serializing_if = "Value::is_null")]
         args: Value,
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        wait: bool,
     },
     Do {
         #[serde(rename = "do")]

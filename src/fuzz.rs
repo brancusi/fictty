@@ -158,8 +158,10 @@ impl Default for Config {
         }
         keys.extend(["d-a", "d-c", "d-x", "d-v", "d-z", "d-s-z", "c-a", "c-c", "c-x", "c-v", "c-z", "a-bs", "d-bs", "c-w", "c-k", "c-t"].map(String::from));
         let combos = [["d-x", "d-v"], ["d-c", "d-v"], ["d-z", "d-s-z"]].map(|c| c.map(String::from).into()).into();
-        let pastes: Vec<String> =
+        let mut pastes: Vec<String> =
             ["word", "two words", "line one\nline two", "- [ ] a task", "1. one\n2. two", "  indented", "émoji 🙂 wide 漢字", ""].map(String::from).into();
+        // A long paragraph: work that grows with a line's length shows up as a slow act.
+        pastes.push("Words with [[a link]], #a-tag, `code` and https://example.com in a long paragraph. ".repeat(20));
         Config { seed: 1, runs: 64, steps: 60, budget: Duration::from_millis(250), keys, combos, pastes, mouse: 12, paste: 6, resize: 2, wait: 3, replay: true, terminal: true }
     }
 }

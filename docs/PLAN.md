@@ -113,6 +113,11 @@ run in process, at Headless speed.
 - [x] What it found: undo renumbered what it put back (so it could never get past it), a paste
       didn't renumber, numbers after bullets weren't a list of their own, and a toast drawn
       over half a wide character lost its corner on a real terminal
+- [x] From Thought Control's profiling and runs: a Markdown line's looks worked out once per
+      line, not per cell (a key in a 1,200-character paragraph took 573 ms in a release build);
+      a running screen knows its size before the first push, as a headless one does; host
+      actions with `wait` hold keys until they and what they refresh have landed; a list bound to
+      its own selection reads nothing and says so, instead of overflowing the stack
 - [ ] `fictty-sim`: any fictty binary in a pty with an emulator on the other end, keys encoded
       under the keyboard flags the app pushed, so crossterm's own decoder is fuzzed too
 

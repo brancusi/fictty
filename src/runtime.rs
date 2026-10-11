@@ -748,6 +748,11 @@ impl App {
         d.commands = self.commands;
         // A restored state's clock carries on from where it was.
         d.started = Instant::now().checked_sub(Duration::from_millis(st.now_ms)).unwrap_or_else(Instant::now);
+        // The size before the first push, as a headless screen has it: a UI whose `when` reads
+        // `$screen` starts on the right layout, and its starting focus on a node that's shown.
+        if let Ok((width, height)) = ratatui::crossterm::terminal::size() {
+            d.apply(&mut st, Msg::Screen { width, height });
+        }
         d.apply(&mut st, Msg::Push { ui });
         let here = match file {
             Some(f) => std::fs::canonicalize(f).ok().and_then(|f| f.parent().map(Path::to_path_buf)).unwrap_or_default(),

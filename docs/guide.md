@@ -213,7 +213,9 @@ fictty::App::new(ui)
   `{"host": "today", "args": {"limit": 20}, "path": "rows"}` calls `Host::fetch("today", args)`;
   an action `{"host": "done", "args": {"id": "{id}"}}` (a template, like the store actions) calls
   `Host::act`. Both run off the drawing thread. An action's answer goes in `$log` (a failure on
-  the status line too), and the host sources fetch again after it.
+  the status line too), and the host sources fetch again after it. With `"wait": true`, keys
+  typed meanwhile wait (in the state, as `held`) until the action has answered and those sources
+  have landed, then go in order: for an action that closes or opens what the next key acts on.
 - **`Notifier`**: `Host::start` gets one, for any thread. `changed("today")` refetches every source
   that reads `today` (the app's world changed; no polling), `write(key, write, by)` writes the
   store, `focus(id)` moves the focus without running a click, and `msg` sends any message.

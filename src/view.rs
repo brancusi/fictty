@@ -463,49 +463,65 @@ struct Markdown {
 
 /// A text cell's Markdown style: its line's kind (a heading, a quote), the list marker at the
 /// line's start, or inline `code`. `col` is the char's column in its line.
+#[cfg(test)]
 fn md_style(md: &Markdown, line: &str, col: usize, base: Style) -> Style {
+    md_styles(md, line, base).get(col).copied().unwrap_or(base)
+}
+
+/// The look of each character of a Markdown line, in one pass over it (a long paragraph is
+/// one line, drawn a cell at a time). Later rules win: code, a list marker, a task, a quote or
+/// heading line, then links.
+fn md_styles(md: &Markdown, line: &str, base: Style) -> Vec<Style> {
+    let chars: Vec<char> = line.chars().collect();
+    let n = chars.len();
+    let mut out = vec![base; n];
+    // Inside a pair of backticks (the backticks too): an odd number before, or an opening one
+    // with another after it.
+    let mut ticks = 0;
+    let last_tick = chars.iter().rposition(|c| *c == '`');
+    for (col, c) in chars.iter().enumerate() {
+        let here = *c == '`';
+        if ticks % 2 == 1 || (here && last_tick.is_some_and(|l| l > col)) {
+            out[col] = md.code;
+        }
+        ticks += here as usize;
+    }
     let t = line.trim_start();
     let indent = line.len() - t.len();
-    if !md.links.is_empty() {
-        let kinds: Vec<&str> = md.links.iter().map(String::as_str).collect();
-        if crate::model::links_in(line, &kinds).iter().any(|(a, b, ..)| (*a..*b).contains(&col)) {
-            return md.link;
-        }
-    }
-    if t.starts_with('#') && !(md.links.iter().any(|k| k == "tag") && t.chars().nth(1).is_some_and(|c| c.is_alphanumeric())) {
-        return md.heading;
-    }
-    if t.starts_with("> ") || t == ">" {
-        return md.quote;
-    }
-    // A task: its box, and the rest of a ticked one done.
-    if let Some((b, ticked)) = crate::model::task_box(line) {
-        if col + 1 >= b && col <= b + 1 {
-            return md.task;
-        }
-        if ticked && col > b + 1 {
-            return md.done;
-        }
-    }
     let marker = if t.starts_with("- ") || t.starts_with("* ") || t.starts_with("+ ") {
         Some(1)
     } else {
         let digits = t.chars().take_while(char::is_ascii_digit).count();
         (digits > 0 && t[digits..].starts_with(". ")).then_some(digits + 1)
     };
-    if let Some(m) = marker
-        && col >= indent
-        && col < indent + m
-    {
-        return md.bullet;
+    if let Some(m) = marker {
+        for s in out.iter_mut().skip(indent).take(m) {
+            *s = md.bullet;
+        }
     }
-    // Inside a pair of backticks (the backticks too).
-    let ticks = line.chars().take(col).filter(|c| *c == '`').count();
-    let here = line.chars().nth(col) == Some('`');
-    if ticks % 2 == 1 || (here && line.chars().skip(col + 1).any(|c| c == '`')) {
-        return md.code;
+    // A task: its box, and the rest of a ticked one done.
+    if let Some((b, ticked)) = crate::model::task_box(line) {
+        for (col, s) in out.iter_mut().enumerate() {
+            if col + 1 >= b && col <= b + 1 {
+                *s = md.task;
+            } else if ticked && col > b + 1 {
+                *s = md.done;
+            }
+        }
     }
-    base
+    let heading = t.starts_with('#') && !(md.links.iter().any(|k| k == "tag") && t.chars().nth(1).is_some_and(|c| c.is_alphanumeric()));
+    if heading || t.starts_with("> ") || t == ">" {
+        out.fill(if heading { md.heading } else { md.quote });
+    }
+    if !md.links.is_empty() {
+        let kinds: Vec<&str> = md.links.iter().map(String::as_str).collect();
+        for (a, b, ..) in crate::model::links_in(line, &kinds) {
+            for s in out.iter_mut().take(b).skip(a) {
+                *s = md.link;
+            }
+        }
+    }
+    out
 }
 
 /// An editor's cells, from caretline's own view of it. Until the runtime has told it its size
@@ -533,12 +549,16 @@ fn editor(buf: &mut Buffer, area: Rect, doc: &caretline::Document, view: &caretl
         caretline::views::update_doc(&mut d, &mut vs, 0, caretline::Msg::resize(area.width, area.height));
         caretline::view::render(&d, &vs[0])
     };
+    // For Markdown: the document line a row shows, where it starts, and each character's look,
+    // worked out once for all the rows a wrapped line takes.
+    let mut styled: Option<(usize, usize, Vec<Style>)> = None;
     for y in 0..frame.height.min(area.height) {
-        // For Markdown: the document line this row shows, and where that line starts.
         let line = match (&look.markdown, frame.rows.get(y as usize)) {
-            (Some(_), Some(caretline::view::RowInfo::Text { line, .. })) => {
-                let l = d_line(doc, *line);
-                Some((l, doc.text.line_to_char(*line)))
+            (Some(md), Some(caretline::view::RowInfo::Text { line, .. })) => {
+                if styled.as_ref().is_none_or(|(l, ..)| l != line) {
+                    styled = Some((*line, doc.text.line_to_char(*line), md_styles(md, &d_line(doc, *line), look.text)));
+                }
+                styled.as_ref().map(|(_, start, styles)| (start, styles))
             }
             _ => None,
         };
@@ -547,8 +567,8 @@ fn editor(buf: &mut Buffer, area: Rect, doc: &caretline::Document, view: &caretl
             if cell.symbol.is_empty() {
                 continue; // the second half of a wide grapheme
             }
-            let text = match (&look.markdown, &line, cell.char_idx) {
-                (Some(md), Some((l, start)), Some(i)) if i as usize >= *start => md_style(md, l, i as usize - start, look.text),
+            let text = match (line, cell.char_idx) {
+                (Some((start, styles)), Some(i)) if i as usize >= *start => styles.get(i as usize - start).copied().unwrap_or(look.text),
                 _ => look.text,
             };
             let s = match cell.role {

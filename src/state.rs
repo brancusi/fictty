@@ -92,6 +92,13 @@ pub struct State {
     /// in order once it lands.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub typed_ahead: Vec<(String, String, String)>,
+    /// What keys wait for: host acts with `wait` (`act:<name>`), then the host sources they
+    /// refresh (`data:<name>`). While any is here, keys go into `held`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub waiting: Vec<String>,
+    /// Keys typed while something in `waiting` hadn't landed, typed in order once it all has.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub held: Vec<String>,
     /// Writes that last a while (`for_ms`): what goes, and when on the logical clock.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub expiring: Vec<Expiry>,
@@ -528,10 +535,11 @@ fn apply(st: &mut State, msg: Msg) -> Vec<Effect> {
                     Ok(value) => Slot::Ready { value },
                     Err(message) => Slot::Error { message },
                 };
-                st.data.insert(name, slot);
+                st.data.insert(name.clone(), slot);
                 settle(st);
             }
-            vec![]
+            st.waiting.retain(|w| *w != format!("data:{name}"));
+            release(st)
         }
         Msg::Stats { stats } => {
             // Rounded for showing: `$stats` is for templates.
@@ -553,7 +561,7 @@ fn apply(st: &mut State, msg: Msg) -> Vec<Effect> {
         Msg::Changed { host } => st.ui.data.iter().filter(|(_, s)| s.host.as_deref() == Some(&host)).map(|(k, _)| Effect::Fetch(k.clone())).collect(),
         Msg::Acted { name, result, at } => {
             match result {
-                Ok(_) => log(st, "host".into(), name, at),
+                Ok(_) => log(st, "host".into(), name.clone(), at),
                 Err(e) => {
                     st.status = Some(format!("{name}: {e}"));
                     toast(st, format!("{name}: {e}"), Some("neg".into()), Some(6000));
@@ -561,7 +569,17 @@ fn apply(st: &mut State, msg: Msg) -> Vec<Effect> {
                 }
             }
             // What the host did may have changed what its sources say.
-            st.ui.data.iter().filter(|(_, s)| s.host.is_some()).map(|(k, _)| Effect::Fetch(k.clone())).collect()
+            let refresh: Vec<String> = st.ui.data.iter().filter(|(_, s)| s.host.is_some()).map(|(k, _)| k.clone()).collect();
+            // An act keys wait for: now they wait for what it refreshes.
+            if let Some(i) = st.waiting.iter().position(|w| *w == format!("act:{name}")) {
+                st.waiting.remove(i);
+                // Only sources that will answer (a template with nothing to fill from fetches nothing).
+                let answering: Vec<String> = refresh.iter().filter(|k| source_now(st, k).is_some()).map(|k| format!("data:{k}")).collect();
+                st.waiting.extend(answering);
+            }
+            let mut fx: Vec<Effect> = refresh.into_iter().map(Effect::Fetch).collect();
+            fx.extend(release(st));
+            fx
         }
         Msg::Click { id, row, tab } => {
             let Some(n) = tree!(st).find(&id) else { return vec![] };
@@ -833,6 +851,10 @@ fn apply(st: &mut State, msg: Msg) -> Vec<Effect> {
                 "env": format!("export PATH={}:{}:\"$PATH\" FICTTY_SOCKET={}", q(&bin_dir), q(&dir), q(&socket)),
             });
             st.data.insert("$self".into(), Slot::Ready { value });
+            vec![]
+        }
+        Msg::Key { key } if !st.waiting.is_empty() => {
+            st.held.push(key);
             vec![]
         }
         Msg::Key { key } => {
@@ -1398,6 +1420,19 @@ fn tasks_key(st: &mut State, id: &str) {
     edit_lines(st, id, changes);
 }
 
+/// Keys held while something they wait for landed: typed in order once nothing is left to wait
+/// for (a key that starts another wait holds the ones after it again).
+fn release(st: &mut State) -> Vec<Effect> {
+    if !st.waiting.is_empty() {
+        return vec![];
+    }
+    let mut fx = Vec::new();
+    for key in std::mem::take(&mut st.held) {
+        fx.extend(update(st, Msg::Key { key }));
+    }
+    fx
+}
+
 /// Tick or untick the task on line `line` of editor `id`: an edit by the person, one undo step.
 fn toggle_task(st: &mut State, id: &str, line: usize) {
     let Some((b, done)) = task_line(st, id, line) else { return };
@@ -1778,8 +1813,11 @@ fn act(st: &mut State, a: Action) -> Vec<Effect> {
             toast(st, text, tone, ms);
             vec![]
         }
-        Action::Host { host, args } => {
+        Action::Host { host, args, wait } => {
             let args = fill_value(&args, &action_context(st));
+            if wait {
+                st.waiting.push(format!("act:{host}"));
+            }
             vec![Effect::Host { name: host, args }]
         }
         Action::Remove { remove, matching: Some(want) } => {
@@ -2482,6 +2520,11 @@ pub fn problems(st: &State) -> Vec<String> {
                 out.push(format!("{name}: tone {t:?} isn't a theme token or a colour"));
             }
         }
+        if let Some(id) = n.bind.as_deref().and_then(|b| split_bind(b).0.strip_prefix('@'))
+            && selects_in_a_loop(st, id)
+        {
+            out.push(format!("{name}: its bind {:?} comes back round to itself through selected rows, so it reads nothing", n.bind.as_deref().unwrap_or_default()));
+        }
         if let Kind::Input { accept: Some(a), .. } = &n.kind
             && a != "number"
         {
@@ -2612,6 +2655,9 @@ pub fn value_of<'a>(st: &'a State, bind: &str) -> Option<&'a Value> {
     let (source, path) = split_bind(bind);
     if let Some(id) = source.strip_prefix('@') {
         let n = tree!(st).find(id)?;
+        if selects_in_a_loop(st, id) {
+            return None;
+        }
         return lookup(items(st, n).get(selected(st, id))?, path);
     }
     if let Some(e) = st.store.get(source) {
@@ -2624,6 +2670,21 @@ pub fn value_of<'a>(st: &'a State, bind: &str) -> Option<&'a Value> {
         Slot::Ready { value } => lookup(value, path),
         _ => None,
     }
+}
+
+/// Whether node `id`'s rows come, through `@` binds (another node's selected row), back to
+/// `id` itself: a list bound to `@` its own selection. Such a bind reads nothing.
+fn selects_in_a_loop(st: &State, id: &str) -> bool {
+    let mut seen = vec![id];
+    let mut at = id;
+    while let Some(next) = tree!(st).find(at).and_then(|n| n.bind.as_deref()).and_then(|b| split_bind(b).0.strip_prefix('@')) {
+        if seen.contains(&next) {
+            return true;
+        }
+        seen.push(next);
+        at = next;
+    }
+    false
 }
 
 /// `bind` is a source name, then optionally a path into its value: `"tick.rows"` reads `rows` of
@@ -2983,6 +3044,51 @@ mod tests {
     }
 
     #[test]
+    fn a_list_bound_to_its_own_selection_reads_nothing() {
+        // Through another node too. It used to recurse until the stack ran out.
+        for ui in [
+            serde_json::json!({"root": {"type": "list", "id": "a", "bind": "@a"}}),
+            serde_json::json!({"root": {"type": "col", "children": [
+                {"type": "list", "id": "a", "bind": "@b.kids"}, {"type": "list", "id": "b", "bind": "@a.kids"}]}}),
+        ] {
+            let mut st = State::default();
+            update(&mut st, Msg::Push { ui: serde_json::from_value(ui).unwrap() });
+            update(&mut st, Msg::Key { key: "j".into() });
+            assert!(st.problems.iter().any(|p| p.starts_with("a: its bind") && p.ends_with("reads nothing")), "{:?}", st.problems);
+        }
+    }
+
+    #[test]
+    fn keys_wait_for_an_act_that_says_so_and_for_what_it_refreshes() {
+        let ui: Ui = serde_json::from_value(serde_json::json!({
+            "root": {"type": "list", "id": "panels", "bind": "panels", "item": "{.}",
+                     "keys": {"w": {"host": "close", "wait": true}, "v": {"host": "log"}}},
+            "data": {"panels": {"host": "panels"}},
+            "focus": "panels"
+        }))
+        .unwrap();
+        let mut st = State::default();
+        update(&mut st, Msg::Push { ui });
+        update(&mut st, Msg::Data { name: "panels".into(), result: Ok(serde_json::json!(["a", "b", "c"])) });
+        // An act without `wait` holds nothing.
+        update(&mut st, Msg::Key { key: "v".into() });
+        update(&mut st, Msg::Key { key: "j".into() });
+        assert_eq!(selected(&st, "panels"), 1);
+        // With it, the keys after it wait for its answer, then for the sources it refreshes.
+        let fx = update(&mut st, Msg::Key { key: "w".into() });
+        assert_eq!(fx, vec![Effect::Host { name: "close".into(), args: Value::Null }]);
+        update(&mut st, Msg::Key { key: "j".into() });
+        update(&mut st, Msg::Key { key: "j".into() });
+        assert_eq!((selected(&st, "panels"), st.held.len()), (1, 2));
+        let fx = update(&mut st, Msg::Acted { name: "close".into(), result: Ok(Value::Null), at: String::new() });
+        assert_eq!(fx, vec![Effect::Fetch("panels".into())]);
+        assert_eq!(st.waiting, vec!["data:panels".to_string()]);
+        update(&mut st, Msg::Data { name: "panels".into(), result: Ok(serde_json::json!(["a", "b", "c", "d"])) });
+        assert!(st.waiting.is_empty() && st.held.is_empty());
+        assert_eq!(selected(&st, "panels"), 3, "both keys, after it landed");
+    }
+
+    #[test]
     fn set_moves_view_state() {
         let mut st = State::default();
         update(&mut st, Msg::Push { ui: note() });
@@ -3093,3 +3199,4 @@ mod tests {
         assert!(st.status.unwrap().contains("zz"));
     }
 }
+
