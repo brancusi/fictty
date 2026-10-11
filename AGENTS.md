@@ -33,9 +33,15 @@ These come first; every review checks them.
 - `src/state.rs`: `State`, `Msg`, `Effect`, `update`, key resolution, focus and selection
 - `src/view.rs`: the pure view: draws every component, returns hit regions and pictures
 - `src/gfx.rs`: pixels: the kitty graphics protocol, rasterising, SVG (resvg), caching
-- `src/runtime.rs`: the terminal, the event queue, data sources, the socket, `upgrade`
+- `src/runtime.rs`: the terminal, the event queue, data sources, the socket, `upgrade`; `App`
+  (how a screen starts, for the binary and for apps that embed fictty) and `Headless`
+- `src/host.rs`: `Host`, what an embedding app provides (sources, actions, kept store entries),
+  and the `Notifier` it talks back with
 - `src/main.rs`: the CLI, one subcommand per socket operation
-- `examples/`: UIs and their feeds. `showcase/` is the demo the one-liners run; `stress/` and
+- `tests/`: the library from outside: `components.rs` (each component, driven and read back),
+  `editing.rs` (the editing-keys contract), `host.rs` (an embedding app)
+- `examples/`: UIs and their feeds. `showcase/` is the demo the one-liners run (the tour's chapters
+  are written by `tour.py`; `autopilot.sh` is its agent); `stress/` and
   `finance/` are standalone; `thc/` and `pixels/` need Thought Control installed (they move to
   that repo, see the plan)
 - `docs/`: the guide, the plan, design proposals, the identity explorations, the blog
@@ -55,9 +61,10 @@ mise exec -- cargo test
 mise exec -- cargo clippy --all-targets
 ```
 
-- Tests live next to the code (`#[cfg(test)]` in `state.rs`, `model.rs`, `view.rs`). `update` and
-  `view` are pure, so test them directly: build a `State`, apply messages, assert on state or on
-  the rendered text.
+- Tests live next to the code (`#[cfg(test)]` in `state.rs`, `model.rs`, `view.rs`) and in
+  `tests/`. `update` and `view` are pure, so test them directly: build a `State`, apply messages,
+  assert on state or on the rendered text; or drive `App::new(ui).headless(w, h)` with keys and
+  read back `screen()` and `state()`.
 - **See your change without a terminal:** `fictty render ui.json --size 120x40 --keys j,j,tab`
   prints the frame; `--ansi` keeps colours.
 - **Drive a running screen** the way an agent would: `fictty run ui.json` in one terminal, then
