@@ -92,7 +92,7 @@
       "type": "list",
       "id": "today",
       "bind": "feed.rows",
-      "variant": "kind",
+      "row_variant": "kind",
       "skip": [
        "section",
        "blank"

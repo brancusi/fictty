@@ -77,6 +77,10 @@ pub struct State {
     /// isn't asked for again until the host says it changed).
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub loading: BTreeMap<String, Option<String>>,
+    /// Each host source's `args` with their templates filled from the state (the selection, the
+    /// store): what it was last fetched with. When they come out different, it's fetched again.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub args: BTreeMap<String, Value>,
 }
 
 /// A run of clicks on one cell of an editor (see `State::clicks`).
@@ -286,6 +290,9 @@ pub fn update(st: &mut State, msg: Msg) -> Vec<Effect> {
     fields(st);
     let mut fx = fx;
     fx.extend(wanted(st));
+    if !quiet {
+        fx.extend(refill_args(st));
+    }
     if checks {
         st.problems = problems(st);
     }
@@ -312,6 +319,8 @@ fn apply(st: &mut State, msg: Msg) -> Vec<Effect> {
             if let Some(f) = st.ui.focus.clone() {
                 st.focus = Some(f);
             }
+            // Every source is fetched anew, with args filled after this message.
+            st.args.clear();
             settle(st);
             // Sources can change with the UI; fetch them all again.
             st.data.retain(|k, _| builtin(k) || st.ui.data.contains_key(k));
@@ -1493,6 +1502,78 @@ fn settle(st: &mut State) {
         .collect();
     for (id, k) in fix {
         st.local.entry(id).or_default().selected = k;
+    }
+}
+
+/// Fill the templated `args` of every host source, and fetch again the ones whose args changed.
+fn refill_args(st: &mut State) -> Vec<Effect> {
+    let templated: Vec<(String, Value)> =
+        st.ui.data.iter().filter(|(_, s)| s.host.is_some() && s.args.to_string().contains('{')).map(|(k, s)| (k.clone(), s.args.clone())).collect();
+    st.args.retain(|k, _| templated.iter().any(|(n, _)| n == k));
+    let mut fx = Vec::new();
+    for (name, args) in templated {
+        let filled = fill_from_state(st, &args);
+        if st.args.get(&name) != Some(&filled) {
+            let first = !st.args.contains_key(&name);
+            st.args.insert(name.clone(), filled);
+            // A push fetches every source anyway; this is for args that moved since.
+            if !first {
+                fx.push(Effect::Fetch(name));
+            }
+        }
+    }
+    fx
+}
+
+/// A source's definition as it's fetched now: its `args` filled from the state.
+pub fn source_now(st: &State, name: &str) -> Option<crate::model::Source> {
+    let mut src = st.ui.data.get(name)?.clone();
+    if let Some(a) = st.args.get(name) {
+        src.args = a.clone();
+    }
+    Some(src)
+}
+
+/// A value whose strings are templates over the state: `{@list.id}` (a node's selected row),
+/// `{store.key}` (a store entry; a text's contents) or `{source.path}`. A string that is one
+/// placeholder takes the value with its type.
+fn fill_from_state(st: &State, v: &Value) -> Value {
+    let read = |path: &str| -> Option<Value> {
+        let path = path.trim();
+        let (key, rest) = match path.strip_prefix("store.") {
+            Some(p) => (p, true),
+            None => (path, false),
+        };
+        if rest || st.store.contains_key(split_bind(key).0) {
+            if let Some(Body::Text { doc }) = st.store.get(key).map(|e| &e.body) {
+                return Some(Value::String(doc.text.to_string()));
+            }
+        }
+        value_of(st, key).cloned()
+    };
+    match v {
+        Value::String(t) if t.contains('{') => {
+            if let Some(p) = t.strip_prefix('{').and_then(|r| r.strip_suffix('}')).filter(|p| !p.contains(['{', '}'])) {
+                return read(p).unwrap_or(Value::Null);
+            }
+            let mut out = String::new();
+            let mut rest = t.as_str();
+            while let Some(i) = rest.find('{') {
+                out.push_str(&rest[..i]);
+                let Some(j) = rest[i..].find('}') else {
+                    out.push_str(&rest[i..]);
+                    rest = "";
+                    break;
+                };
+                out.push_str(&crate::model::scalar(read(&rest[i + 1..i + j]).as_ref()));
+                rest = &rest[i + j + 1..];
+            }
+            out.push_str(rest);
+            Value::String(out)
+        }
+        Value::Array(a) => Value::Array(a.iter().map(|x| fill_from_state(st, x)).collect()),
+        Value::Object(m) => Value::Object(m.iter().map(|(k, x)| (k.clone(), fill_from_state(st, x))).collect()),
+        other => other.clone(),
     }
 }
 

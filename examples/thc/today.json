@@ -57,7 +57,7 @@
       "id": "today",
       "bind": "feed.rows",
       "size": 90,
-      "variant": "kind",
+      "row_variant": "kind",
       "skip": [
        "section",
        "blank"

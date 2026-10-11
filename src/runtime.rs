@@ -178,6 +178,9 @@ fn exec(argv: &[String]) -> Result<(), String> {
 struct Driver {
     tx: Sender<Event>,
     in_flight: BTreeSet<String>,
+    /// Sources asked for while a fetch of them was under way (a push changed their args): fetched
+    /// again when it lands, so the screen ends on what the newest definition gives.
+    again: BTreeSet<String>,
     last_fetch: BTreeMap<String, Instant>,
     /// Running `stream` sources, with the definition each was started from.
     streams: BTreeMap<String, (Source, Child)>,
@@ -207,12 +210,16 @@ impl Drop for Driver {
 
 impl Driver {
     fn new(tx: Sender<Event>, blocking: bool, host: Arc<dyn Host>) -> Driver {
-        Driver { tx, in_flight: BTreeSet::new(), last_fetch: BTreeMap::new(), streams: BTreeMap::new(), quit: false, blocking, upgrade: None, started: Instant::now(), host, copied: Vec::new(), kept: BTreeMap::new(), changed: BTreeMap::new() }
+        Driver { tx, in_flight: BTreeSet::new(), again: BTreeSet::new(), last_fetch: BTreeMap::new(), streams: BTreeMap::new(), quit: false, blocking, upgrade: None, started: Instant::now(), host, copied: Vec::new(), kept: BTreeMap::new(), changed: BTreeMap::new() }
     }
 
     fn apply(&mut self, st: &mut State, msg: Msg) {
+        let mut refetch = None;
         if let Msg::Data { name, .. } = &msg {
             self.in_flight.remove(name);
+            if self.again.remove(name) {
+                refetch = Some(name.clone());
+            }
         }
         // What the host just gave is what it has: nothing to save back.
         let loaded = match &msg {
@@ -245,8 +252,8 @@ impl Driver {
                     Err(e) => st.status = Some(format!("{e:#}")),
                 },
                 Effect::Fetch(name) if self.blocking => {
-                    let Some(src) = st.ui.data.get(&name) else { continue };
-                    let result = fetch(src, &*self.host);
+                    let Some(src) = crate::state::source_now(st, &name) else { continue };
+                    let result = fetch(&src, &*self.host);
                     queue.extend(update(st, Msg::Data { name, result }));
                 }
                 Effect::Fetch(name) if st.ui.data.get(&name).is_some_and(|s| s.stream.is_some()) => {
@@ -294,6 +301,9 @@ impl Driver {
             && let Some(e) = st.store.get(&key)
         {
             self.kept.insert(key, e.rev);
+        }
+        if let Some(name) = refetch {
+            self.spawn_fetch(st, name);
         }
         self.reap(st);
     }
@@ -418,9 +428,10 @@ impl Driver {
 
     /// Fetch on a thread; the value comes back as `Msg::Data`. One fetch per source at a time.
     fn spawn_fetch(&mut self, st: &State, name: String) {
-        let Some(src) = st.ui.data.get(&name).cloned() else { return };
+        let Some(src) = crate::state::source_now(st, &name) else { return };
         self.last_fetch.insert(name.clone(), Instant::now());
         if !self.in_flight.insert(name.clone()) {
+            self.again.insert(name);
             return;
         }
         let (tx, host) = (self.tx.clone(), self.host.clone());

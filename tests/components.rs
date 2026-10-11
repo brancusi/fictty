@@ -293,3 +293,16 @@ fn a_layer_shows_while_its_when_holds() {
     s.keys(&["x"]);
     assert!(!s.screen().contains("press x"));
 }
+
+#[test]
+fn a_list_keeps_its_row_variants_and_its_look_through_json() {
+    let ui = json!({"root": {"type": "list", "id": "l", "variant": "card", "row_variant": "kind",
+                              "variants": {"head": "<b>{text}</>"}, "skip": ["head"],
+                              "items": [{"kind": "head", "text": "Today"}, {"text": "a"}]}});
+    let parsed: fictty::model::Ui = serde_json::from_value(ui.clone()).unwrap();
+    let back = serde_json::to_value(&parsed).unwrap();
+    assert_eq!(back["root"]["variant"], "card");
+    assert_eq!(back["root"]["row_variant"], "kind");
+    let mut s = screen(ui, 20, 4);
+    assert_eq!(s.state().local["l"].selected, 1, "the header can't be selected");
+}

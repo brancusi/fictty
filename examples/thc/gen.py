@@ -18,7 +18,7 @@ rule = {"type": "row", "size": 1, "children": [
     text("<line>──────────</><accent>━━━━━━━</><line>{*─}</>", 90),
     text("<line>┬</>", 1),
     text("<line>{*─}</>")]}
-today = {"type": "list", "id": "today", "bind": "feed.rows", "size": 90, "variant": "kind", "skip": ["section", "blank"],
+today = {"type": "list", "id": "today", "bind": "feed.rows", "size": 90, "row_variant": "kind", "skip": ["section", "blank"],
          "variants": {"section": " <text+b>{title}</>  <muted>{count}</>", "blank": "",
                       "done": "<muted>{short}</>  <done>[x]</> <muted>{text}</>\t{meta_m|markup} "},
          "item": "<muted>{short}</>  " + GLYPH + " {text_m|markup}\t{meta_m|markup} ",

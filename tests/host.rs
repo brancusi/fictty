@@ -167,3 +167,44 @@ fn hosted_entries_load_when_shown_and_save_when_changed() {
     screen.keys(&["k", "j"]);
     assert_eq!(vault.loads.lock().unwrap().iter().filter(|k| *k == "page/gone").count(), 1);
 }
+
+/// A host whose detail source answers for the id it's asked about.
+#[derive(Clone, Default)]
+struct Detail {
+    asked: Arc<Mutex<Vec<Value>>>,
+}
+
+impl Host for Detail {
+    fn fetch(&self, name: &str, args: &Value) -> Result<Value, String> {
+        self.asked.lock().unwrap().push(args.clone());
+        match name {
+            "detail" => Ok(json!({"about": format!("all about {} ({})", args["id"].as_str().unwrap_or("?"), args["q"])})),
+            _ => Err("no".into()),
+        }
+    }
+}
+
+#[test]
+fn a_host_source_reads_its_args_from_the_selection_and_the_store() {
+    let ui: fictty::model::Ui = serde_json::from_value(json!({
+        "root": {"type": "row", "children": [
+            {"type": "list", "id": "l", "item": "{id}", "items": [{"id": "a"}, {"id": "b"}], "size": 6},
+            {"type": "col", "children": [{"type": "input", "id": "q", "size": 1}, {"type": "text", "bind": "detail", "text": "{about}"}]}
+        ]},
+        "data": {"detail": {"host": "detail", "args": {"id": "{@l.id}", "q": "{store.q}", "n": "{l}"}}},
+        "focus": "l"
+    }))
+    .unwrap();
+    let host = Detail::default();
+    let mut s = App::new(ui).host(host.clone()).headless(50, 4).unwrap();
+    assert!(s.screen().contains("all about a (\"\")"), "{}", s.screen());
+    s.keys(&["j"]);
+    assert!(s.screen().contains("all about b"), "{}", s.screen());
+    s.keys(&["k"]);
+    let n = host.asked.lock().unwrap().len();
+    s.keys(&["k"]);
+    assert_eq!(host.asked.lock().unwrap().len(), n, "same args, no fetch");
+    s.keys(&["tab", "h", "i"]);
+    assert!(s.screen().contains("all about a (\"hi\")"), "{}", s.screen());
+    assert_eq!(s.state().args["detail"]["id"], "a");
+}

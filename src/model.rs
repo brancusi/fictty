@@ -264,8 +264,9 @@ pub enum Kind {
     /// Text. `{field}` placeholders fill from the bound value (`{a.b}` reaches in).
     Text { text: String },
     /// A selectable list of `items`, or of the bound array. `item` formats each one; with
-    /// `variant` (a path), a row whose value there is a key of `variants` uses that template
+    /// `row_variant` (a path), a row whose value there is a key of `variants` uses that template
     /// instead (a section header, a blank). Rows whose variant is in `skip` aren't selectable.
+    /// (`variant`, as on every node, is the node's look from the theme.)
     /// `mark` and `lead` start the selected and the other rows (default `▸ ` and two spaces);
     /// `selected` styles the selected row (a style spec; default reverse when focused).
     List {
@@ -275,7 +276,7 @@ pub enum Kind {
         item: Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         empty: Option<String>,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[serde(default, rename = "row_variant", skip_serializing_if = "Option::is_none")]
         variant: Option<String>,
         #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
         variants: BTreeMap<String, String>,
