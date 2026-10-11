@@ -3,9 +3,9 @@
 #
 #   curl -fsSL https://fictty.com/try/settling-the-stack.sh | sh
 #
-# It runs fictty as it was at commit 7c918e6594ab. Don't edit this file by hand: it's the
+# It runs fictty as it was at commit a7378267c49d. Don't edit this file by hand: it's the
 # post's demo. Regenerate it with scripts/freeze-demo.sh, with a note, if it must change.
-# Changed: 2026-10-11, a socket and fictty/fictty-tour commands of its own, so a second terminal can drive the demo (it printed tour.sh's path, and fictty wasn't on PATH).
+# Changed: 2026-10-11, moved from 7c918e6 to a737826: the same showcase, plus a socket of its own and click-to-copy commands on the Agent screen, so a second terminal can drive it.
 #
 # Try the fictty showcase in one line:
 #
@@ -25,7 +25,7 @@
 # python3 runs the ledger's and the market's helpers. FICTTY_NO_RUN=1 sets up without running.
 set -eu
 
-ref="${1:-${FICTTY_REF:-7c918e6594ab7992e8bf42c3c44353114450f0cb}}"
+ref="${1:-${FICTTY_REF:-a7378267c49d0756d68601d895175e62b5844475}}"
 repo=https://github.com/brancusi/fictty
 home="${FICTTY_HOME:-$HOME/.fictty}"
 src="$home/$(printf '%s' "$ref" | tr -c 'A-Za-z0-9._-' '-' | cut -c1-40)"
@@ -85,7 +85,6 @@ mkdir -p "$home/bin"
 printf '#!/bin/sh\nFICTTY_SOCKET="${FICTTY_SOCKET:-%s}" exec "%s" "$@"\n' "$FICTTY_SOCKET" "$bin" >"$home/bin/fictty"
 printf '#!/bin/sh\nFICTTY_SOCKET="${FICTTY_SOCKET:-%s}" exec "%s" "$@"\n' "$FICTTY_SOCKET" "$src/examples/showcase/tour.sh" >"$home/bin/fictty-tour"
 chmod +x "$home/bin/fictty" "$home/bin/fictty-tour"
-other="export PATH=\"$home/bin:\$PATH\""
 
 if [ "${FICTTY_NO_RUN:-}" = 1 ]; then
   say "Ready. Run it with: FICTTY_SOCKET=$FICTTY_SOCKET FICTTY_SHOWCASE_STORE=$FICTTY_SHOWCASE_STORE $src/examples/showcase/play.sh"
@@ -100,9 +99,8 @@ if size=$(stty size </dev/tty 2>/dev/null); then
   fi
 fi
 say "Starting the showcase: arrows and Enter to open a screen, t for the theme, Esc back, q to quit"
-say "From a second terminal, paste:  $other"
-say "  then: fictty-tour (an agent drives it), or fictty read note/welcome, fictty theme paper"
-sleep 3
+say "To drive it from a second terminal: open the Agent screen and click a command to copy it"
+sleep 2
 # Hand the showcase the terminal's own device. Under `curl | sh` our input is the pipe, and the
 # generic /dev/tty won't do: macOS can't wait on it (kqueue), so the screen would hang on its
 # first read. ps names the real one (ttys003, pts/1).

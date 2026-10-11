@@ -165,7 +165,7 @@ process reads the store and streams back the balance, the categories and the run
 
 **Tilde:** You can run this exact showcase yourself, in one line:
 
-<div class="demo-link" data-name="The fictty showcase" data-date="2026-10-11" data-script="try/settling-the-stack.sh" data-commit="7c918e6594ab7992e8bf42c3c44353114450f0cb"></div>
+<div class="demo-link" data-name="The fictty showcase" data-date="2026-10-11" data-script="try/settling-the-stack.sh" data-commit="a7378267c49d0756d68601d895175e62b5844475"></div>
 
 It's pinned to the commit this post describes, so it shows what you see here even after fictty
 moves on. It fetches that version into `~/.fictty`, builds it (you'll need

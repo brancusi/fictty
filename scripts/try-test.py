@@ -36,7 +36,7 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("script", help="a URL or a local file")
     ap.add_argument("--expect", action="append", default=None, help="text that must appear (in order)")
-    ap.add_argument("--key", action="append", default=[], help="a key to send after each --expect but the last")
+    ap.add_argument("--key", action="append", default=[], help="keys to send after the matching --expect, comma-separated (enter,down,esc,tab,up or text)")
     ap.add_argument("--second", action="append", default=[], help="a command for a second terminal, run with only ~/.fictty/bin added to PATH once the screen is up; it must succeed")
     ap.add_argument("--timeout", type=float, default=240)
     a = ap.parse_args()
@@ -73,7 +73,9 @@ def main():
             seen = b""
             if i < len(a.key):
                 time.sleep(0.5)
-                os.write(fd, KEYS.get(a.key[i], a.key[i].encode()))
+                for k in a.key[i].split(","):
+                    os.write(fd, KEYS.get(k, k.encode()))
+                    time.sleep(0.3)
         # keep reading the screen's output, as a terminal would, while the second terminal works
         import subprocess, threading
         stop = threading.Event()
