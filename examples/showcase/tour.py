@@ -220,7 +220,7 @@ def parts():
     outline = {"type": "row", "gap": 1, "children": [
         {"type": "col", "children": [
             {"type": "input", "id": "plan_q", "size": 3, "title": "filter", "placeholder": "type to filter the outline"},
-            {"type": "tree", "id": "plan", "bind": "plan", "filter": "plan_q", "title": "tree · x ticks · ←/→ fold",
+            {"type": "tree", "id": "plan", "bind": "plan", "filter": "plan_q", "mark": "▌", "lead": " ", "title": "tree · x ticks · ←/→ fold",
              "item": "{done|true=<pos>☑</>;*=<d>☐</>} {text}\t<d>{$kids|0=;*=$}</>",
              "keys": {"x": {"toggle": "done"}}},
         ]},

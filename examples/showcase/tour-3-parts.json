@@ -338,6 +338,8 @@
               "id": "plan",
               "bind": "plan",
               "filter": "plan_q",
+              "mark": "▌",
+              "lead": " ",
               "title": "tree · x ticks · ←/→ fold",
               "item": "{done|true=<pos>☑</>;*=<d>☐</>} {text}\t<d>{$kids|0=;*=$}</>",
               "keys": {
