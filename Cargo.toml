@@ -1,7 +1,7 @@
 [package]
 name = "fictty"
 description = "A terminal UI that is one value: agents write it, rewrite it live and read it back"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 license = "MIT"
 repository = "https://github.com/brancusi/fictty"
