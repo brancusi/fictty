@@ -77,7 +77,8 @@ embedding apps depend on `fictty` alone.
   (pinned demos and testing them like a reader), `blog-tokens.py` (a post's Tokens panel)
 - `.claude/skills/`: `blog-post` and `ship`, how milestones are written and published
 - `.github/workflows/release.yml`: binaries for a version tag; how to release is
-  [docs/releasing.md](docs/releasing.md) (CI is a background signal, not a gate, for now)
+  [docs/releasing.md](docs/releasing.md). `test.yml`: clippy and the tests on every push, macOS
+  and Linux (CI is a background signal, not a gate, for now)
 
 ## Build, test, run
 
@@ -92,8 +93,9 @@ mise exec -- cargo clippy --all-targets
   assert on state or on the rendered text; or drive `App::new(ui).headless(w, h)` with keys and
   read back `screen()` and `state()`. `App::new(ui).in_window(w, h)` is the same screen drawn by
   the native window under GPUI's test platform (macOS): its layout, its mouse and what it hands
-  the engine are the window's own; read it back with `readback()` and `state()`. New tests go
-  there; the grid goes with the terminal.
+  the engine are the window's own (keys arrive as macOS keystrokes, a paste through the
+  clipboard and ⌘V); read it back with `readback()` and `state()`, and find what to press with
+  `at(id, row, tab)` and `text_at(id)`. New tests go there; the grid goes with the terminal.
 - **See your change without a terminal:** `fictty render ui.json --size 120x40 --keys j,j,tab`
   prints the frame; `--ansi` keeps colours. `fictty screen --nodes` reads a running screen back
   node by node, whatever draws it.

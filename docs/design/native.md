@@ -204,8 +204,16 @@ Where it starts (what phase 0 left, 12 October 2026):
   handover all real. A `Frame` may route the mouse itself (`Frame::pointer`) and send messages
   (`Frame::messages`), so a press at a cell is a GPUI mouse-down in that cell's middle, through
   the window's own handlers. `tests/window.rs` drives it; `tests/fuzz.rs` fuzzes editors, lists,
-  tables and every tour chapter through it (clean at 400 runs each in release). Keys still go in
-  as names, not as GPUI keystrokes, so `key_name` is untested.
+  tables and every tour chapter through it (clean at 400 runs each in release).
+- **Done (12 October): every input through the window under test.** `Frame::input` takes keys,
+  the mouse and pastes: a key is the keystroke macOS would deliver (`window::test::keystroke`,
+  `key_name`'s inverse, checked over every key the fuzz driver presses), a paste goes on the
+  clipboard and comes in as ⌘V, and what the screen copies goes on the clipboard
+  (`Frame::copied`). The window itself now pastes the system clipboard on ⌘V and hovers rows on
+  a move, reading the hover from the state. `Headless::at(id, row, tab)` and `text_at(id)` say
+  where the last frame drew something, so tests press it without pixel arithmetic. A test
+  workflow (`.github/workflows/test.yml`) runs clippy and the tests on macOS and Linux on every
+  push, as a signal.
 - **Input bypasses `Input`.** Keys go straight to `Msg::Key` (fine: GPUI routes them), and clicks
   are GPUI `on_click` handlers sending `Msg`s. The terminal's way, `Input::Pointer` resolved
   against `Drawn::hits`, is there for whatever GPUI doesn't route itself (drags across nodes,

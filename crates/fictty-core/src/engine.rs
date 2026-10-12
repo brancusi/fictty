@@ -217,15 +217,19 @@ impl Inbox {
 pub trait Frame {
     /// Draw the state.
     fn draw(&mut self, st: &State) -> Drawn;
-    /// The mouse at a cell, for a frame that routes it itself, as a window does (each element
-    /// takes its own events): false leaves it to the engine's hit regions.
-    fn pointer(&mut self, _kind: Pointer, _x: u16, _y: u16) -> bool {
+    /// Input for a frame that takes it itself, as a window does (keys as the OS's keystrokes,
+    /// the mouse to whatever element is under it, a paste through the clipboard): what it sent
+    /// comes back from `messages`. False leaves it to the engine (keys by name, the mouse on the
+    /// last frame's hit regions).
+    fn input(&mut self, _input: &Input) -> bool {
         false
     }
     /// The messages the frame sent since it was last asked: a window's clicks, its cell size.
     fn messages(&mut self) -> Vec<Msg> {
         Vec::new()
     }
+    /// The screen copied `text`: a window puts it on its clipboard.
+    fn copied(&mut self, _text: &str) {}
     /// The screen is now `width` × `height` cells.
     fn resize(&mut self, width: u16, height: u16);
     /// The last frame as text, one line per row.
@@ -1383,7 +1387,10 @@ impl Headless {
     /// Keys, by name (`j`, `tab`, `enter`, `c-s`), as if typed.
     pub fn keys(&mut self, keys: &[&str]) -> &mut Headless {
         for k in keys {
-            self.msg(Msg::Key { key: (*k).into() });
+            self.drain();
+            if !self.routed(Input::Key((*k).into())) {
+                self.msg(Msg::Key { key: (*k).into() });
+            }
             // A frame after each, as a running screen draws one: a node a key brought on screen
             // learns its size before the next key types into it.
             self.frame();
@@ -1395,8 +1402,15 @@ impl Headless {
     pub fn msg(&mut self, msg: Msg) -> &mut Headless {
         self.drain();
         self.drawn = false;
+        let copies = self.d.copied.len();
         self.d.apply(&mut self.st, msg);
         self.d.keep(&mut self.st, Duration::ZERO);
+        // What it copied goes on the frame's clipboard, as a running window puts it.
+        if let Some(f) = &mut self.frame {
+            for text in &self.d.copied[copies..] {
+                f.copied(text);
+            }
+        }
         self
     }
 
@@ -1407,13 +1421,37 @@ impl Headless {
         self.drain();
         let kind = Pointer::named(kind);
         // A window routes the mouse itself; a grid leaves it to the last frame's hit regions.
-        if self.frame.as_mut().is_some_and(|f| f.pointer(kind, x, y)) {
-            self.absorb();
-        } else if let Some(m) = pointer(kind, x, y, &self.hits, &self.st, &mut self.drag) {
+        if !self.routed(Input::Pointer { kind, x, y })
+            && let Some(m) = pointer(kind, x, y, &self.hits, &self.st, &mut self.drag)
+        {
             self.msg(m);
         }
         self.frame();
         self
+    }
+
+    /// Input through the frame, if it takes it (a window): what it sent, applied. False when
+    /// the frame leaves it to the engine.
+    fn routed(&mut self, input: Input) -> bool {
+        if !self.frame.as_mut().is_some_and(|f| f.input(&input)) {
+            return false;
+        }
+        self.absorb();
+        true
+    }
+
+    /// The middle cell of what the last frame drew for node `id`, or one of its rows or tabs:
+    /// where a test points the mouse to press it.
+    pub fn at(&mut self, id: &str, row: Option<usize>, tab: Option<usize>) -> Option<(u16, u16)> {
+        self.frame();
+        let h = self.hits.iter().rev().find(|h| h.id == id && h.row == row && h.tab == tab && (row.is_some() || tab.is_some() || !h.text))?;
+        Some((h.rect.x + h.rect.width.saturating_sub(1) / 2, h.rect.y + h.rect.height.saturating_sub(1) / 2))
+    }
+
+    /// Where the last frame drew editor `id`'s text: a test presses at its cells.
+    pub fn text_at(&mut self, id: &str) -> Option<Rect> {
+        self.frame();
+        self.hits.iter().rev().find(|h| h.id == id && h.text).map(|h| h.rect)
     }
 
     /// What the frame sent (a window's clicks), applied in order.
@@ -1428,7 +1466,10 @@ impl Headless {
 
     /// Text pasted (bracketed), as the terminal delivers it.
     pub fn paste(&mut self, text: &str) -> &mut Headless {
-        self.msg(Msg::Paste { text: text.into() });
+        self.drain();
+        if !self.routed(Input::Paste(text.into())) {
+            self.msg(Msg::Paste { text: text.into() });
+        }
         self.frame();
         self
     }

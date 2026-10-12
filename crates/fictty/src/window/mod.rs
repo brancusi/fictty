@@ -25,7 +25,6 @@ use gpui::{
 };
 use serde_json::{Value, json};
 use std::cell::RefCell;
-use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -74,7 +73,7 @@ struct Laid {
     rects: Vec<(String, Bounds<Pixels>)>,
     /// Hit regions, innermost last: a node, maybe a row or a tab, maybe an editor's text. Their
     /// own rectangles are filled in from the bounds when the frame is handed over.
-    hits: Vec<(Bounds<Pixels>, Hit)>,
+    hits: DrawnHits,
     /// Each editor's text area and each list's rows, as bounds to fit cells into, with the
     /// rows a list's item takes (1 for an editor).
     sizes: Vec<(String, Bounds<Pixels>, u16)>,
@@ -83,6 +82,9 @@ struct Laid {
 }
 
 type Shared = Rc<RefCell<Laid>>;
+
+/// A painted frame's hit regions, in pixels, innermost last.
+type DrawnHits = Vec<(Bounds<Pixels>, Hit)>;
 
 /// What's under the mouse in `id`: the whole node, or one row or tab of it, or an editor's text.
 fn hit(id: String, row: Option<usize>, tab: Option<usize>, text: bool) -> Hit {
@@ -136,6 +138,15 @@ impl Engine {
         }
     }
 
+    /// The row the state has the mouse over.
+    fn hover(&self) -> Option<state::Hover> {
+        match self {
+            Engine::Live(live) => live.lock().expect("the engine").state().hover.clone(),
+            #[cfg(feature = "window-test")]
+            Engine::Test(side) => side.borrow().st.hover.clone(),
+        }
+    }
+
     /// A painted frame laid this out: true when the state changed because of it (an editor
     /// learned its size), so another frame should follow.
     fn drew(&self, took: Duration, drawn: Drawn) -> bool {
@@ -158,8 +169,9 @@ struct Portal {
     screen: (u16, u16),
     /// What the frame being built lays out, handed to the engine once it has painted.
     laid: Shared,
-    /// Each editor's text area in the last painted frame, for the mouse.
-    texts: Rc<RefCell<HashMap<String, Bounds<Pixels>>>>,
+    /// The last painted frame's hit regions, in pixels, innermost last: for what GPUI doesn't
+    /// route itself (an editor's cells, the row under the mouse).
+    shown: Rc<RefCell<DrawnHits>>,
     /// The editor a press in its text started a drag in, until the button comes up.
     drag: Option<String>,
     /// The wheel's travel over a node, not yet a whole scroll step.
@@ -178,7 +190,7 @@ impl Portal {
         engine.send(Msg::Caps { caps: state::Caps { graphics: false, cell_w: cell.w, cell_h: cell.h }, text_sizing: false });
         let focus = cx.focus_handle();
         focus.focus(window);
-        Portal { engine, focus, cell, screen: (0, 0), laid: Shared::default(), texts: Rc::default(), drag: None, wheel: (String::new(), 0.0), wake: None }
+        Portal { engine, focus, cell, screen: (0, 0), laid: Shared::default(), shown: Rc::default(), drag: None, wheel: (String::new(), 0.0), wake: None }
     }
 
     fn send(&mut self, msg: Msg, cx: &mut Context<Self>) {
@@ -211,7 +223,7 @@ impl Portal {
 
     /// The cell `at` falls on in editor `id`'s text, in the last painted frame.
     fn in_text(&self, id: &str, at: Point<Pixels>) -> Option<(u16, u16)> {
-        self.texts.borrow().get(id).map(|b| self.cell.within(*b, at))
+        self.shown.borrow().iter().rev().find(|(_, h)| h.text && h.id == id).map(|(b, _)| self.cell.within(*b, at))
     }
 }
 
@@ -643,27 +655,37 @@ impl Portal {
         // Once the frame has painted, what it laid out goes to the engine; if that changed the
         // state (an editor learned its size), another frame follows.
         let handover = {
-            let (laid, texts, engine, cell, wake) = (self.laid.clone(), self.texts.clone(), self.engine.clone(), self.cell, self.wake);
+            let (laid, shown, engine, cell, wake) = (self.laid.clone(), self.shown.clone(), self.engine.clone(), self.cell, self.wake);
             let took = t.elapsed();
-            canvas(|_, _, _| {}, move |_, _, window, _| handover(&laid, &texts, &engine, cell, wake, took, window)).absolute().size_0()
+            canvas(|_, _, _| {}, move |_, _, window, _| handover(&laid, &shown, &engine, cell, wake, took, window)).absolute().size_0()
         };
         div()
             .id("portal")
             .track_focus(&self.focus)
             .on_key_down(cx.listener(|this, e: &KeyDownEvent, _, cx| {
-                if let Some(key) = key_name(e) {
-                    this.send(Msg::Key { key }, cx);
+                let Some(key) = key_name(e) else { return };
+                // ⌘V pastes what's on the system clipboard; caretline knows its own copies when
+                // they come back. With nothing there, the key goes in as itself.
+                if key == "d-v"
+                    && let Some(text) = cx.read_from_clipboard().and_then(|c| c.text())
+                {
+                    return this.send(Msg::Paste { text }, cx);
                 }
+                this.send(Msg::Key { key }, cx);
             }))
             // A drag that started in an editor's text follows the mouse anywhere in the window.
             .on_mouse_move(cx.listener(|this, e: &MouseMoveEvent, _, cx| {
-                let Some(id) = this.drag.clone() else { return };
-                if !e.dragging() {
-                    this.drag = None;
+                if let Some(id) = this.drag.clone().filter(|_| e.dragging()) {
+                    if let Some((col, row)) = this.in_text(&id, e.position) {
+                        this.send(Msg::Drag { id, col, row }, cx);
+                    }
                     return;
                 }
-                if let Some((col, row)) = this.in_text(&id, e.position) {
-                    this.send(Msg::Drag { id, col, row }, cx);
+                this.drag = None;
+                // The row under the mouse, as the terminal's hover: told only when it changes.
+                let hover = this.shown.borrow().iter().rev().find(|(b, h)| h.row.is_some() && b.contains(&e.position)).map(|(_, h)| state::Hover { id: h.id.clone(), row: h.row });
+                if hover != this.engine.hover() {
+                    this.send(Msg::Hover { hover }, cx);
                 }
             }))
             .on_mouse_up(MouseButton::Left, cx.listener(|this, _: &gpui::MouseUpEvent, _, _| this.drag = None))
@@ -729,7 +751,7 @@ fn toast(lk: &Look, t: &state::Toast) -> AnyElement {
 }
 
 /// What a painted frame laid out, to the engine, in cells.
-fn handover(laid: &Shared, texts: &RefCell<HashMap<String, Bounds<Pixels>>>, engine: &Engine, cell: Cell, wake: Option<u64>, took: Duration, window: &mut Window) {
+fn handover(laid: &Shared, shown: &RefCell<DrawnHits>, engine: &Engine, cell: Cell, wake: Option<u64>, took: Duration, window: &mut Window) {
     let l = std::mem::take(&mut *laid.borrow_mut());
     let drawn = Drawn {
         rects: l.rects.into_iter().map(|(id, b)| (id, cell.rect(b))).collect(),
@@ -738,7 +760,7 @@ fn handover(laid: &Shared, texts: &RefCell<HashMap<String, Bounds<Pixels>>>, eng
         areas: l.areas.into_iter().map(|(id, b)| { let (w, h) = cell.fit(b); (id, w, h) }).collect(),
         wake,
     };
-    *texts.borrow_mut() = l.hits.into_iter().filter(|(_, h)| h.text).map(|(b, h)| (h.id, b)).collect();
+    *shown.borrow_mut() = l.hits;
     if engine.drew(took, drawn) {
         window.refresh();
     }

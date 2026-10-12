@@ -205,3 +205,67 @@ fn the_fuzz_drivers_mouse_acts_reach_the_window() {
     let grid = count(App::new(serde_json::from_value(ui).unwrap()).headless(60, 12).unwrap());
     assert!(win.0 > 20 && win.1 >= 5 && win.1 * 4 >= grid.1 * 3, "{} of {} mouse acts changed the view state in the window, {} in the grid", win.1, win.0, grid.1);
 }
+
+#[test]
+fn keys_reach_the_window_as_keystrokes() {
+    let ui = json!({"root": {"type": "editor", "id": "e", "text": ""}, "focus": "e"});
+    let mut s = window(ui, 40, 6);
+    s.keys(&["H", "i", "space", "!", "漢"]);
+    assert_eq!(marked(&mut s, "e"), "Hi !漢▮", "typed, shifted and wide characters");
+    s.keys(&["s-left", "s-left"]);
+    assert_eq!(marked(&mut s, "e"), "Hi ⟦▮!漢⟧", "a modifier with a motion");
+    s.keys(&["bs"]);
+    assert_eq!(marked(&mut s, "e"), "Hi ▮");
+    s.keys(&["d-z"]);
+    assert_eq!(marked(&mut s, "e"), "Hi ⟦▮!漢⟧", "⌘Z undoes, the selection as it was");
+}
+
+#[test]
+fn a_paste_comes_through_the_clipboard_and_a_copy_goes_onto_it() {
+    let ui = json!({"root": {"type": "editor", "id": "e", "text": "one two"}, "focus": "e"});
+    let mut s = window(ui, 40, 6);
+    s.keys(&["d-right"]).paste(" three");
+    assert_eq!(marked(&mut s, "e"), "one two three▮", "pasted as ⌘V with the text on the clipboard");
+    // Copy `one`, then paste it at the end: ⌘C puts it on the clipboard, ⌘V takes it from there.
+    s.keys(&["d-left", "s-a-right", "d-c", "d-right", "d-v"]);
+    assert_eq!(marked(&mut s, "e"), "one two threeone▮");
+    assert_eq!(s.copied().last().map(String::as_str), Some("one"));
+}
+
+#[test]
+fn moving_over_a_row_hovers_it() {
+    let ui = json!({"root": {"type": "list", "id": "l", "items": rows(10)}});
+    let mut s = window(ui, 30, 14);
+    let (x, y) = s.at("l", Some(4), None).expect("row 4 was drawn");
+    s.mouse("move", x, y);
+    assert_eq!(s.state().hover, Some(fictty::state::Hover { id: "l".into(), row: Some(4) }));
+    let (x, y) = s.at("l", Some(2), None).unwrap();
+    s.mouse("move", x, y).mouse("press", x, y).mouse("release", x, y);
+    assert_eq!(s.state().hover.as_ref().and_then(|h| h.row), Some(2));
+    assert_eq!(s.state().local["l"].selected, 2, "pressed where it pointed");
+}
+
+#[test]
+fn the_finders_point_at_what_was_drawn() {
+    let ui = json!({"root": {"type": "row", "children": [
+        {"type": "list", "id": "l", "size": 20, "items": rows(5)},
+        {"type": "tabs", "id": "t", "tabs": ["One", "Two", "Three"], "children": [
+            {"type": "editor", "id": "a", "text": "first"}, {"type": "text", "text": "second"}, {"type": "text", "text": "third"}
+        ]}
+    ]}});
+    let mut s = window(ui, 70, 10);
+    for k in [2, 0, 1] {
+        let (x, y) = s.at("t", None, Some(k)).unwrap_or_else(|| panic!("tab {k}"));
+        s.mouse("press", x, y).mouse("release", x, y);
+        assert_eq!(s.state().local["t"].tab, k);
+    }
+    let (x, y) = s.at("l", Some(3), None).unwrap();
+    s.mouse("press", x, y).mouse("release", x, y);
+    assert_eq!(s.state().local["l"].selected, 3);
+    // Back on the first tab, the editor's text: a press four columns in puts the caret there.
+    let (x, y) = s.at("t", None, Some(0)).unwrap();
+    s.mouse("press", x, y).mouse("release", x, y);
+    let text = s.text_at("a").expect("the editor's text was drawn");
+    s.mouse("press", text.x + 4, text.y).mouse("release", text.x + 4, text.y);
+    assert_eq!(marked(&mut s, "a"), "firs▮t");
+}
