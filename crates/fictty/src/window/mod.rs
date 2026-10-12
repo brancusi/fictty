@@ -14,12 +14,12 @@ mod text;
 
 use crate::engine::{Drawn, Hit, Input, Live, Rect};
 use look::{Ink, Look};
-use crate::model::{Kind, Node, Size};
+use crate::model::{Kind, Md, Node, Size, md_roles};
 use crate::state::{self, Msg, State};
 use anyhow::Result;
 use gpui::{
-    AnyElement, App, Application, Bounds, ClipboardItem, Context, DefiniteLength, FocusHandle, FontWeight, KeyDownEvent, MouseButton, MouseDownEvent, MouseMoveEvent, Pixels,
-    Point, ScrollStrategy, ScrollWheelEvent, SharedString, UniformListScrollHandle, Window, WindowBounds, WindowOptions, canvas, div, font, prelude::*, px, relative, size,
+    AnyElement, App, Application, Bounds, ClipboardItem, Context, DefiniteLength, FocusHandle, FontWeight, HighlightStyle, Hsla, KeyDownEvent, MouseButton, MouseDownEvent, MouseMoveEvent, Pixels,
+    Point, ScrollStrategy, ScrollWheelEvent, SharedString, StyledText, UniformListScrollHandle, Window, WindowBounds, WindowOptions, canvas, div, font, prelude::*, px, relative, size,
     uniform_list,
 };
 use serde_json::{Value, json};
@@ -406,7 +406,7 @@ impl Portal {
         let field = n.field().expect("a text field");
         let single = field.line;
         let doc = state::field_view(st, id).and_then(|(key, view)| match st.store.get(&key).map(|e| &e.body) {
-            Some(crate::store::Body::Text { doc }) => Some((caretline::view::render(doc, view), doc.text.len_chars() == 0)),
+            Some(crate::store::Body::Text { doc }) => Some((caretline::view::render(doc, view), doc)),
             _ => None,
         });
         let mut text = div().relative().size_full().overflow_hidden();
@@ -419,24 +419,53 @@ impl Portal {
             l.hits.push((b, hit(under, None, None, true)));
         }));
         match doc {
-            Some((_, true)) | None => {
-                let empty = field.placeholder.unwrap_or(if doc.is_none() { "…" } else { "" }).to_string();
+            None => {
+                let empty = "…".to_string();
                 let ink = lk.part("input.placeholder", Ink { fg: Some(lk.dim), italic: true, ..Ink::default() });
                 text = text.child(inked(div().h(px(cell.h)), ink).child(empty));
                 if focused {
                     text = text.child(div().absolute().left(px(0.)).top(px(3.)).w(px(2.)).h(px(cell.h - 6.)).bg(caret));
                 }
             }
-            Some((frame, false)) => {
-                use caretline::view::Role;
+            Some((_, d)) if d.text.len_chars() == 0 => {
+                let ink = lk.part("input.placeholder", Ink { fg: Some(lk.dim), italic: true, ..Ink::default() });
+                text = text.child(inked(div().h(px(cell.h)), ink).child(field.placeholder.unwrap_or_default().to_string()));
+                if focused {
+                    text = text.child(div().absolute().left(px(0.)).top(px(3.)).w(px(2.)).h(px(cell.h - 6.)).bg(caret));
+                }
+            }
+            Some((frame, d)) => {
+                use caretline::view::{Role, RowInfo};
+                let md = field.markdown.then(|| md_inks(lk));
+                let kinds: Vec<&str> = field.links.iter().map(|l| l.kind.as_str()).collect();
+                // A document line's Markdown roles, worked out once for all the rows it wraps to.
+                let mut roles: Option<(usize, usize, Vec<Md>)> = None;
                 // Each row is one run of text, shaped once, so selecting never moves a glyph;
                 // selections sit behind it on the cell grid that clicks are mapped on.
                 for y in 0..frame.height {
                     let mut row = String::new();
                     let mut marks: Vec<(u16, u16)> = Vec::new();
+                    let mut runs: Vec<(std::ops::Range<usize>, HighlightStyle)> = Vec::new();
+                    if let (Some(_), Some(RowInfo::Text { line, .. })) = (&md, frame.rows.get(y as usize))
+                        && roles.as_ref().is_none_or(|(l, ..)| l != line)
+                    {
+                        let text: String = d.text.line(*line).chars().filter(|c| !matches!(c, '\n' | '\r')).collect();
+                        roles = Some((*line, d.text.line_to_char(*line), md_roles(&text, &kinds)));
+                    }
                     for x in 0..frame.width {
                         let c = frame.cell(x, y);
+                        let at = row.len();
                         row.push_str(&c.symbol);
+                        if let (Some(inks), Some((_, start, rs)), Some(i)) = (&md, &roles, c.char_idx) {
+                            let role = (i as usize).checked_sub(*start).and_then(|k| rs.get(k)).copied().unwrap_or(Md::Text);
+                            if role != Md::Text {
+                                let h = lk.highlight(inks(role));
+                                match runs.last_mut() {
+                                    Some((r, hl)) if r.end == at && *hl == h => r.end = row.len(),
+                                    _ => runs.push((at..row.len(), h)),
+                                }
+                            }
+                        }
                         if matches!(c.role, Role::Selection | Role::Caret) {
                             match marks.last_mut() {
                                 Some((_, end)) if *end == x => *end = x + 1,
@@ -448,7 +477,13 @@ impl Portal {
                     for (a, b) in marks {
                         text = text.child(div().absolute().left(px(a as f32 * cell.w)).top(px(top)).w(px((b - a) as f32 * cell.w)).h(px(cell.h)).bg(marked));
                     }
-                    text = text.child(div().absolute().left(px(0.)).top(px(top)).h(px(cell.h)).whitespace_nowrap().child(row.trim_end().to_string()));
+                    let shown = row.trim_end().len();
+                    runs.retain_mut(|(r, _)| {
+                        r.end = r.end.min(shown);
+                        r.start < r.end
+                    });
+                    row.truncate(shown);
+                    text = text.child(div().absolute().left(px(0.)).top(px(top)).h(px(cell.h)).whitespace_nowrap().child(StyledText::new(row).with_highlights(runs)));
                 }
                 if let Some((x, y)) = frame.cursor.filter(|_| focused) {
                     let (left, top) = (x as f32 * cell.w, y as f32 * cell.h);
@@ -570,6 +605,23 @@ impl Render for Portal {
             .child(div().absolute().bottom(px(32.)).right(px(16.)).flex().flex_col().gap_1().children(toasts))
             .child(div().h(px(ROW)).px_3().text_xs().text_color(lk.dim).bg(lk.panel).child(status))
             .child(handover)
+    }
+}
+
+/// The inks of Markdown's roles in an editor, from the theme's `md.*` parts.
+fn md_inks<'a>(lk: &'a Look<'a>) -> impl Fn(Md) -> Ink + 'a {
+    move |role| {
+        let ink = |fg: Hsla| Ink { fg: Some(fg), ..Ink::default() };
+        match role {
+            Md::Text => Ink::default(),
+            Md::Heading => lk.part("md.heading", Ink { bold: true, ..ink(lk.accent) }),
+            Md::Bullet => lk.part("md.bullet", ink(lk.accent)),
+            Md::Quote => lk.part("md.quote", Ink { italic: true, ..ink(lk.dim) }),
+            Md::Code => lk.part("md.code", ink(lk.pos)),
+            Md::Task => lk.part("md.task", Ink { bold: true, ..ink(lk.accent) }),
+            Md::Done => lk.part("md.done", Ink { strike: true, ..ink(lk.dim) }),
+            Md::Link => lk.part("md.link", Ink { underline: true, ..ink(lk.accent) }),
+        }
     }
 }
 

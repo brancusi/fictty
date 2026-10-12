@@ -465,60 +465,23 @@ fn md_style(md: &Markdown, line: &str, col: usize, base: Style) -> Style {
     md_styles(md, line, base).get(col).copied().unwrap_or(base)
 }
 
-/// The look of each character of a Markdown line, in one pass over it (a long paragraph is
-/// one line, drawn a cell at a time). Later rules win: code, a list marker, a task, a quote or
-/// heading line, then links.
+/// The look of each character of a Markdown line, by its role (`model::md_roles`).
 fn md_styles(md: &Markdown, line: &str, base: Style) -> Vec<Style> {
-    let chars: Vec<char> = line.chars().collect();
-    let n = chars.len();
-    let mut out = vec![base; n];
-    // Inside a pair of backticks (the backticks too): an odd number before, or an opening one
-    // with another after it.
-    let mut ticks = 0;
-    let last_tick = chars.iter().rposition(|c| *c == '`');
-    for (col, c) in chars.iter().enumerate() {
-        let here = *c == '`';
-        if ticks % 2 == 1 || (here && last_tick.is_some_and(|l| l > col)) {
-            out[col] = md.code;
-        }
-        ticks += here as usize;
-    }
-    let t = line.trim_start();
-    let indent = line.len() - t.len();
-    let marker = if t.starts_with("- ") || t.starts_with("* ") || t.starts_with("+ ") {
-        Some(1)
-    } else {
-        let digits = t.chars().take_while(char::is_ascii_digit).count();
-        (digits > 0 && t[digits..].starts_with(". ")).then_some(digits + 1)
-    };
-    if let Some(m) = marker {
-        for s in out.iter_mut().skip(indent).take(m) {
-            *s = md.bullet;
-        }
-    }
-    // A task: its box, and the rest of a ticked one done.
-    if let Some((b, ticked)) = crate::model::task_box(line) {
-        for (col, s) in out.iter_mut().enumerate() {
-            if col + 1 >= b && col <= b + 1 {
-                *s = md.task;
-            } else if ticked && col > b + 1 {
-                *s = md.done;
-            }
-        }
-    }
-    let heading = t.starts_with('#') && !(md.links.iter().any(|k| k == "tag") && t.chars().nth(1).is_some_and(|c| c.is_alphanumeric()));
-    if heading || t.starts_with("> ") || t == ">" {
-        out.fill(if heading { md.heading } else { md.quote });
-    }
-    if !md.links.is_empty() {
-        let kinds: Vec<&str> = md.links.iter().map(String::as_str).collect();
-        for (a, b, ..) in crate::model::links_in(line, &kinds) {
-            for s in out.iter_mut().take(b).skip(a) {
-                *s = md.link;
-            }
-        }
-    }
-    out
+    use crate::model::Md;
+    let kinds: Vec<&str> = md.links.iter().map(String::as_str).collect();
+    crate::model::md_roles(line, &kinds)
+        .into_iter()
+        .map(|r| match r {
+            Md::Text => base,
+            Md::Heading => md.heading,
+            Md::Bullet => md.bullet,
+            Md::Quote => md.quote,
+            Md::Code => md.code,
+            Md::Task => md.task,
+            Md::Done => md.done,
+            Md::Link => md.link,
+        })
+        .collect()
 }
 
 /// An editor's cells, from caretline's own view of it. Until the runtime has told it its size

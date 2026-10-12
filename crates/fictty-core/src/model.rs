@@ -688,6 +688,79 @@ pub struct LinkSpec {
     pub s_click: Option<Action>,
 }
 
+/// What a character of a Markdown line is, for whatever draws an editor to style it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Md {
+    Text,
+    Heading,
+    /// A list item's marker (`-`, `12.`).
+    Bullet,
+    Quote,
+    /// Inline `code`, its backticks too.
+    Code,
+    /// A task's box (`[x]`).
+    Task,
+    /// The text of a ticked task.
+    Done,
+    /// A link of one of the editor's kinds (`wiki`, `tag`, `url`).
+    Link,
+}
+
+/// The role of each character of a Markdown line, in one pass over it (a long paragraph is one
+/// line). Later rules win: code, a list marker, a task, a quote or heading line, then links of
+/// the kinds given.
+pub fn md_roles(line: &str, links: &[&str]) -> Vec<Md> {
+    let chars: Vec<char> = line.chars().collect();
+    let n = chars.len();
+    let mut out = vec![Md::Text; n];
+    // Inside a pair of backticks (the backticks too): an odd number before, or an opening one
+    // with another after it.
+    let mut ticks = 0;
+    let last_tick = chars.iter().rposition(|c| *c == '`');
+    for (col, c) in chars.iter().enumerate() {
+        let here = *c == '`';
+        if ticks % 2 == 1 || (here && last_tick.is_some_and(|l| l > col)) {
+            out[col] = Md::Code;
+        }
+        ticks += here as usize;
+    }
+    let t = line.trim_start();
+    let indent = line.chars().count() - t.chars().count();
+    let marker = if t.starts_with("- ") || t.starts_with("* ") || t.starts_with("+ ") {
+        Some(1)
+    } else {
+        let digits = t.chars().take_while(char::is_ascii_digit).count();
+        (digits > 0 && t[digits..].starts_with(". ")).then_some(digits + 1)
+    };
+    if let Some(m) = marker {
+        for s in out.iter_mut().skip(indent).take(m) {
+            *s = Md::Bullet;
+        }
+    }
+    // A task: its box, and the rest of a ticked one done.
+    if let Some((b, ticked)) = task_box(line) {
+        for (col, s) in out.iter_mut().enumerate() {
+            if col + 1 >= b && col <= b + 1 {
+                *s = Md::Task;
+            } else if ticked && col > b + 1 {
+                *s = Md::Done;
+            }
+        }
+    }
+    let heading = t.starts_with('#') && !(links.contains(&"tag") && t.chars().nth(1).is_some_and(|c| c.is_alphanumeric()));
+    if heading || t.starts_with("> ") || t == ">" {
+        out.fill(if heading { Md::Heading } else { Md::Quote });
+    }
+    if !links.is_empty() {
+        for (a, b, ..) in links_in(line, links) {
+            for s in out.iter_mut().take(b).skip(a) {
+                *s = Md::Link;
+            }
+        }
+    }
+    out
+}
+
 /// The links in a line, by kind (`wiki`, `tag`, `url`): where each starts and ends (chars) and
 /// what it names (the page, the tag without its `#`, the address).
 pub fn links_in(line: &str, kinds: &[&str]) -> Vec<(usize, usize, String, String)> {
