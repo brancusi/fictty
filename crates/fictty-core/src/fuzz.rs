@@ -4,21 +4,21 @@
 //! notation (`Hello ⟦wor▮⟧ld`). `replay` runs a printed sequence again.
 //!
 //! Built in: nothing panics, every step stays inside its time budget, the same sequence on a
-//! fresh screen gives the same state and frame, and the frame drawn as escapes (ratatui's
-//! crossterm backend, diffed frame to frame as a running screen draws) into a terminal emulator
+//! fresh screen gives the same state and frame, and, for a screen drawn as a grid, the frame
+//! drawn as escapes (diffed frame to frame as a running screen draws) into a terminal emulator
 //! shows exactly the frame. `editing()` adds the editing invariants; an app
 //! adds its own with `check`.
 //!
 //! ```no_run
-//! # use fictty::{App, fuzz};
-//! # let ui: fictty::model::Ui = serde_json::from_str("{}").unwrap();
+//! # use fictty_core::{App, fuzz};
+//! # let ui: fictty_core::model::Ui = serde_json::from_str("{}").unwrap();
 //! let make = || App::new(ui.clone()).headless(60, 12).unwrap();
 //! if let Err(f) = fuzz::run(make, &mut fuzz::editing(), &fuzz::Config::default()) {
 //!     panic!("{f}");
 //! }
 //! ```
 
-use crate::runtime::Headless;
+use crate::engine::Headless;
 use serde_json::Value;
 use std::collections::BTreeMap;
 use std::fmt;

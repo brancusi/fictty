@@ -1217,7 +1217,7 @@ fn plain(text: &str, cur: &Option<String>, out: &mut Vec<Seg>) {
 /// A placeholder's runs fitted to `width` cells: cut with an ellipsis, or padded with spaces on
 /// the right (on the left with `right`).
 fn fit(segs: Vec<Seg>, width: usize, right: bool) -> Vec<Seg> {
-    let cells = |t: &str| ratatui::text::Span::raw(t).width();
+    let cells = |t: &str| unicode_width::UnicodeWidthStr::width(t);
     let total: usize = segs.iter().map(|s| cells(&s.text)).sum();
     let style = segs.first().and_then(|s| s.style.clone());
     if total <= width {
@@ -1328,6 +1328,17 @@ pub fn scalar(v: Option<&Value>) -> String {
         Some(Value::Array(a)) => a.iter().map(|x| scalar(Some(x))).collect::<Vec<_>>().join(", "),
         Some(other) => other.to_string(),
     }
+}
+
+
+/// Whether `name` is a colour by itself (not a theme token): a name (`red`, `light-blue`,
+/// `grey`), a palette index (`0`–`255`) or `#rrggbb`.
+pub fn is_colour(name: &str) -> bool {
+    let n = name.to_lowercase().replace([' ', '-', '_'], "").replace("bright", "light").replace("grey", "gray").replace("silver", "gray");
+    let named = ["reset", "black", "red", "green", "yellow", "blue", "magenta", "cyan", "gray", "darkgray", "white", "lightblack", "lightwhite", "lightgray"];
+    let light = ["red", "green", "yellow", "blue", "magenta", "cyan"];
+    let hex = name.len() == 7 && name.starts_with('#') && name[1..].chars().all(|c| c.is_ascii_hexdigit());
+    named.contains(&n.as_str()) || n.strip_prefix("light").is_some_and(|c| light.contains(&c)) || name.parse::<u8>().is_ok() || hex
 }
 
 #[cfg(test)]

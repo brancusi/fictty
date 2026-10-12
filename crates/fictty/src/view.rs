@@ -16,15 +16,11 @@ use ratatui::widgets::canvas::{Canvas, Map, MapResolution, Points};
 use ratatui::widgets::{Axis, Block, BorderType, Chart, Dataset, Gauge, GraphType, LegendPosition, Paragraph, Sparkline, Wrap};
 use serde_json::{Value, json};
 
-/// What a cell belongs to: a node, and maybe one of its rows (or bars, or points) or tabs.
-#[derive(Clone, Debug, PartialEq)]
-pub struct Hit {
-    pub rect: Rect,
-    pub id: String,
-    pub row: Option<usize>,
-    pub tab: Option<usize>,
-    /// The text area of an editor or input: a click there places the caret.
-    pub text: bool,
+pub use crate::engine::Hit;
+
+/// A ratatui rectangle as the engine's.
+fn cells(r: Rect) -> crate::engine::Rect {
+    crate::engine::Rect::new(r.x, r.y, r.width, r.height)
 }
 
 /// The screen's colours: the UI's `theme`, over these defaults.
@@ -47,6 +43,7 @@ struct Cx<'a> {
     active: Option<&'a ThemeSpec>,
     th: Theme,
     hits: Vec<Hit>,
+    rects: Vec<(String, crate::engine::Rect)>,
     anchors: cl::AnchorMap,
     pics: Vec<Placed>,
     scaled: Vec<Scaled>,
@@ -73,6 +70,8 @@ pub struct Scaled {
 #[derive(Default)]
 pub struct Out {
     pub hits: Vec<Hit>,
+    /// Where each node with an id was laid out.
+    pub rects: Vec<(String, crate::engine::Rect)>,
     pub pics: Vec<Placed>,
     pub scaled: Vec<Scaled>,
     /// The cells each editor got: (id, width, height). The runtime tells an editor when its
@@ -126,7 +125,10 @@ impl Cx<'_> {
     }
 
     fn mark(&mut self, id: &str, row: Option<usize>, tab: Option<usize>, rect: Rect) {
-        self.hits.push(Hit { rect, id: id.to_string(), row, tab, text: false });
+        self.hits.push(Hit { rect: cells(rect), id: id.to_string(), row, tab, text: false });
+        if row.is_none() && tab.is_none() {
+            self.rects.push((id.to_string(), cells(rect)));
+        }
         let key = match row {
             Some(r) => cl::AnchorKey::host("row", &format!("{id}#{r}")),
             None if tab.is_some() => return,
@@ -319,7 +321,7 @@ fn whole_wide(buf: &mut Buffer) {
 
 pub fn draw(st: &State, f: &mut Frame) -> Out {
     let act = active(st);
-    let mut cx = Cx { st, active: act, th: theme(st, act), hits: Vec::new(), anchors: cl::AnchorMap::new(), pics: Vec::new(), scaled: Vec::new(), sizes: Vec::new(), wake: None, toasts_placed: false, laid_out: false, areas: Vec::new() };
+    let mut cx = Cx { st, active: act, th: theme(st, act), hits: Vec::new(), rects: Vec::new(), anchors: cl::AnchorMap::new(), pics: Vec::new(), scaled: Vec::new(), sizes: Vec::new(), wake: None, toasts_placed: false, laid_out: false, areas: Vec::new() };
     let mut base = Style::default();
     if let Some(bg) = cx.th.bg {
         base = base.bg(bg);
@@ -343,7 +345,7 @@ pub fn draw(st: &State, f: &mut Frame) -> Out {
     }
     if !bar {
         whole_wide(f.buffer_mut());
-        return Out { hits: cx.hits, pics: cx.pics, scaled: cx.scaled, sizes: cx.sizes, wake: cx.wake, areas: cx.areas };
+        return Out { hits: cx.hits, rects: cx.rects, pics: cx.pics, scaled: cx.scaled, sizes: cx.sizes, wake: cx.wake, areas: cx.areas };
     }
     let line = match st.status.as_ref().or(st.problems.first()) {
         Some(s) => Line::styled(s.clone(), cx.look("status.error", Style::default().fg(cx.th.neg))),
@@ -358,7 +360,7 @@ pub fn draw(st: &State, f: &mut Frame) -> Out {
     f.render_widget(Paragraph::new(line), left);
     f.render_widget(Paragraph::new(Line::styled(meter, Style::default().fg(Color::Yellow))), right);
     whole_wide(f.buffer_mut());
-    Out { hits: cx.hits, pics: cx.pics, scaled: cx.scaled, sizes: cx.sizes, wake: cx.wake, areas: cx.areas }
+    Out { hits: cx.hits, rects: cx.rects, pics: cx.pics, scaled: cx.scaled, sizes: cx.sizes, wake: cx.wake, areas: cx.areas }
 }
 
 /// The toasts, newest at the bottom, in the body's bottom-right corner, a row up from its edge (a
@@ -746,7 +748,7 @@ fn node(cx: &mut Cx, n: &Node, f: &mut Frame, area: Rect) {
                             cell.modifier.insert(Modifier::DIM);
                         }
                     }
-                    cx.hits.push(Hit { rect: inner, id: String::new(), row: None, tab: None, text: false });
+                    cx.hits.push(Hit { rect: cells(inner), id: String::new(), row: None, tab: None, text: false });
                 }
                 // A floating or modal layer covers what's under it, characters and all.
                 if c.float.is_some() || c.modal {
@@ -893,7 +895,7 @@ fn node(cx: &mut Cx, n: &Node, f: &mut Frame, area: Rect) {
             };
             // An input is one row, in the middle of what it's given.
             let area = if field.line && inner.height > 1 { Rect::new(inner.x, inner.y + (inner.height - 1) / 2, inner.width, 1) } else { inner };
-            cx.hits.push(Hit { rect: area, id: id.clone(), row: None, tab: None, text: true });
+            cx.hits.push(Hit { rect: cells(area), id: id.clone(), row: None, tab: None, text: true });
             editor(f.buffer_mut(), area, doc, view, &looks, field.placeholder, focused);
         }
         Kind::Rule { glyph } => {
@@ -1182,7 +1184,7 @@ fn node(cx: &mut Cx, n: &Node, f: &mut Frame, area: Rect) {
                 f.buffer_mut().set_style(r, ts);
                 draw_parts(f.buffer_mut(), Rect { x: r.x + 1, width: w - 1, ..r }, cx.parts(t, v, ts), 0);
                 if !id.is_empty() {
-                    cx.hits.push(Hit { rect: r, id: id.clone(), row: Some(1000 + k), tab: Some(k), text: false });
+                    cx.hits.push(Hit { rect: cells(r), id: id.clone(), row: Some(1000 + k), tab: Some(k), text: false });
                 }
                 if k == shown {
                     active = Some(r);

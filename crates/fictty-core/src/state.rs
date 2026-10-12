@@ -8,6 +8,15 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
 
+/// What the screen can draw: pictures, and the cell size in pixels. Found by whatever draws it.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct Caps {
+    pub graphics: bool,
+    /// Pixels per cell (0 when unknown).
+    pub cell_w: f32,
+    pub cell_h: f32,
+}
+
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct State {
     pub ui: Ui,
@@ -53,7 +62,7 @@ pub struct State {
     pub now_ms: u64,
     /// What the terminal can draw (pictures, the cell size in pixels, larger text).
     #[serde(default)]
-    pub caps: crate::gfx::Caps,
+    pub caps: Caps,
     /// Whether larger text (OSC 66) is on: the terminal's to say, or `FICTTY_TEXT_SIZE=1`.
     #[serde(default)]
     pub text_sizing: bool,
@@ -429,7 +438,7 @@ pub enum Msg {
     /// The terminal's size in cells, bindable as `$screen` (`width`, `height`).
     Screen { width: u16, height: u16 },
     /// What the terminal can draw.
-    Caps { caps: crate::gfx::Caps, text_sizing: bool },
+    Caps { caps: Caps, text_sizing: bool },
     /// Where this screen runs: its binary, its socket, the folder its UI came from. Bindable as
     /// `$self`, with `cli` (a command line that reaches this screen from any terminal), `env` (a
     /// line that sets a terminal up so `fictty`, and the scripts beside the UI, reach it) and `dir`.
@@ -2550,7 +2559,7 @@ pub fn problems(st: &State) -> Vec<String> {
             out.push(format!("{name}: the theme has no variant {v:?}"));
         }
         if let Some(t) = &n.tone {
-            let known = active.is_some_and(|a| a.tokens.contains_key(t)) || st.ui.theme.contains_key(t) || t.parse::<ratatui::style::Color>().is_ok();
+            let known = active.is_some_and(|a| a.tokens.contains_key(t)) || st.ui.theme.contains_key(t) || crate::model::is_colour(t);
             if !known {
                 out.push(format!("{name}: tone {t:?} isn't a theme token or a colour"));
             }

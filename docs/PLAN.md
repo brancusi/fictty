@@ -148,12 +148,14 @@ run in process, at Headless speed.
 
 The phases of [design/native.md](design/native.md), where each is broken down.
 
-- [ ] Phase 0 · The seam (M): the core as its own crate, the engine on its own thread, readback,
-      the spike's window behind `fictty run --window`
+- [x] Phase 0 · The seam (M): the core as its own crate, the engine on its own thread, readback,
+      the spike's window behind `fictty run --window` (2026-10-11)
 - [ ] Phase 1 · Parity in the window (L): every component, theme and input; the tour and Thought
-      Control run in it; the terminal code goes
+      Control run in it; the terminal code goes. Starts from the spike's window: fill `Drawn`
+      from layout first (rectangles, editor sizes, wake), then resizing, then component by
+      component; native.md lists what phase 0 left
 - [ ] Phase 2 · The agent's portal (M): `watch` and `emit`, drop zones, tabs (`fictty open
-      --tab`), readback with rectangles, screenshots, the command policy
+      --tab`), screenshots, the command policy
 - [ ] Phase 3 · Media (M): images, video, pasted and dropped media, animation
 - [ ] Phase 4 · Typography (M–L): proportional text; caretline measuring through the renderer
 - [ ] Phase 5 · Ship (M): `fictty.app`, signed; `try.sh` opens a window; docs, site, a post;

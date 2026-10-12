@@ -87,7 +87,7 @@ fn a_failure_shrinks_and_prints_a_scenario() {
 fn every_chapter_of_the_tour() {
     // The tour's chapters together use every component. Their buttons run scripts and the speed
     // chapter streams from awk, so commands are off: a fuzzer never runs anything.
-    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("examples/showcase");
+    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples/showcase");
     let mut keys = Config::default().keys;
     keys.extend(["n", "p", "j", "k", "o", "t", "g", "s-g", "/", "?", "1", "2", "3"].map(String::from));
     let cfg = Config { keys, runs: cfg().runs / 4 + 1, ..cfg() };

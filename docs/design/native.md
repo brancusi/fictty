@@ -129,14 +129,20 @@ Each ends with something Aram runs. Sizes: S one session, M a few, L a week or m
 
 The core stands alone, and nothing breaks.
 
-- [ ] Workspace: `crates/fictty-core` and `crates/fictty`; `fictty` re-exports the core
-- [ ] The engine (`Live`) in the core: setup, pump, `wake_on_event`, its own thread; `App::run`
-      becomes "start the engine, then draw" for both the terminal (still there) and the window
-- [ ] Readback in the core: the shown node tree with text, focus and selection (rectangles come
-      from the window). `Headless::screen()` keeps the grid until phase 1 ends; tests move to
-      `readback()` and state assertions as the window reaches each component
-- [ ] Laid-out rectangles out of the view, so hit regions come from layout, not cells
-- [ ] The spike's window behind `fictty run --window`, so every later step is visible
+- [x] Workspace: `crates/fictty-core` and `crates/fictty`; `fictty` re-exports the core
+- [x] The engine (`Live`) in the core: setup, `pump`, `spawn` (its own thread, ringing whatever
+      draws); input through an `Inbox`. `App::run` is "start the engine, then draw" for both the
+      terminal (still there) and the window. Same speed as the old loop in a terminal (stress
+      scenarios, release, in a pty: 108 fps ticker and storms, ~5,600 pushes/s flat out)
+- [x] Readback in the core (`fictty_core::readback`): the shown nodes in order with text, focus,
+      selection and rectangle; `fictty screen --nodes` (`--json`), the `readback` op,
+      `Headless::readback()`. `Headless::screen()` draws through a `Frame` (the terminal's
+      `Grid`) until phase 1 ends; without one it prints the readback
+- [x] Laid-out rectangles out of the view (`Drawn::rects`), in the engine's own `Rect` and `Hit`
+      types, so hit regions no longer depend on ratatui
+- [x] The spike's window behind `fictty run --window` (macOS): the engine's thread rings it;
+      keys, clicks, the clipboard, `screen` (as the readback), `upgrade` and quit go through
+      fictty's own messages. Drop zones wait for phase 2
 - Done when: `cargo test` passes with the core building without ratatui, and the spike runs from
   `main`.
 
@@ -170,6 +176,48 @@ Every component, every theme, every input the terminal had; then the terminal go
 - Done when: the tour runs in the window end to end, Thought Control's screens run in it, and the
   repo has no terminal code.
 
+Where it starts (what phase 0 left, 12 October 2026):
+
+- **The window is still the spike.** `crates/fictty/src/window.rs` (450 lines) draws col, row,
+  stack, text, spinner, button, rule, list and tree (row template only), table, editor and input
+  (lines and a caret, no selection or styles), tabs and toasts. Every other kind is a `[kind]`
+  placeholder. Colours come from a fixed palette, not the theme. `size` in cells uses fixed
+  `COL` (9 px) and `ROW` (24 px), not the font's measured cell.
+- **It reports nothing back yet.** `render` calls `live.drew(…, Drawn::default())`: no hits, no
+  rectangles, no editor sizes, no `wake`. So the window's readback has no rectangles, editors
+  scroll as if they were the start size, and spinners and toasts only move when something else
+  rings. Filling `Drawn` from layout (each node's bounds after prepaint) is the first job: it
+  gives the readback its rectangles and the engine its editor sizes and wake time.
+- **The window never resizes the engine.** It starts at 1200×800 px as 133×33 cells and sends no
+  `Input::Resize` when the window changes. Resizing should send one, in cells of the measured font.
+- **Input bypasses `Input`.** Keys go straight to `Msg::Key` (fine: GPUI routes them), and clicks
+  are GPUI `on_click` handlers sending `Msg`s. The terminal's way, `Input::Pointer` resolved
+  against `Drawn::hits`, is there for whatever GPUI doesn't route itself (drags across nodes,
+  wheel over editors, multi-click timing); decide per input which way it goes, and keep the
+  messages the same either way so state, replay and the fuzz driver don't change.
+- **`Caps` is a terminal idea.** `Msg::Caps` (graphics, cell size in px) came from the kitty
+  probe. The window should send its own cell size so pictures and charts size the same way, and
+  the graphics flag goes with the terminal.
+- **Copy and screens are drained by the frontend.** The engine queues `Effect::Copy` text
+  (`take_copied`) and `screen` requests (`take_screens`); the window answers screens with the
+  readback outline. A screenshot answer (phase 2) slots in the same place.
+- **Grid-reading tests: 75 calls to `screen()`.** 54 in `tests/components.rs`, 16 in
+  `tests/host.rs` (the shape Thought Control's tests have), 5 in the core. `Headless` draws
+  through a `Frame`; without one, `screen()` already returns the readback outline. Move each
+  test to `readback()` or state as its component lands in the window, then drop `Grid` and
+  `headless_with` together with the terminal.
+- **Waiting: use the channel, not `sleep`.** The first threaded terminal loop lost 20 fps
+  because `thread::sleep` overslept by up to 4 ms; waiting on the ring channel with a timeout
+  fixed it. The window doesn't pace itself (GPUI draws at most once a display frame), but any
+  loop that waits should do the same.
+- **Measure the window first.** No release numbers for the window from `main` yet: run
+  `examples/stress/play.sh` against `fictty run --window` for a baseline beside the spike's.
+- **One flaky test goes with the terminal.** `random_acts_leave_the_real_screen_where_they_leave_a_headless_one`
+  (the pty sim) sometimes misses a triple click: four settles of ~80 ms each squeeze the 400 ms
+  multi-click window under load. It fails on the old `main` too; it leaves with `sim`.
+- **One screen per socket.** A second `fictty run` on the default socket refuses
+  (`FICTTY_SOCKET` for another); tabs (phase 2) are the real answer.
+
 ### Phase 2 · The agent's portal (M)
 
 What the window makes possible for agents.
@@ -181,7 +229,7 @@ What the window makes possible for agents.
 - [ ] Tabs: one app, many screens. `fictty open --tab <name> ui.json` opens a tab (starting the
       app if it isn't running); each tab its own engine, store and socket
       (`$FICTTY_DIR/<tab>.sock`); a tab bar; ⌘1–9, ⌘W, ⌘T
-- [ ] Readback with rectangles; `screenshot`
+- [ ] `screenshot` (readback with rectangles landed in phase 0; the window fills them in phase 1)
 - [ ] The command policy for UIs an agent shares: data only by default, commands asked for
 - Done when: the receipts walkthrough runs: an agent opens a tab with a drop zone, Aram drops
   files, the agent hears it through `watch`, files them and the table updates.

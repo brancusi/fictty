@@ -1,26 +1,22 @@
-//! The runtime: everything that isn't state. It owns the terminal, the control socket, child
-//! processes and the watched file, turns what happens into `Msg`s for `update`, and carries out
-//! the `Effect`s that come back.
+//! The engine: everything that runs a screen but doesn't draw it. It owns the control socket,
+//! child processes, the host and the watched file, turns what happens into `Msg`s for `update`,
+//! and carries out the `Effect`s that come back. What draws (a terminal, a window) starts an
+//! engine (`Live`), posts its input (`Inbox`) and reads the state when it draws a frame; tests and
+//! `fictty render` drive one without a thread (`Headless`).
 
 use crate::host::{Host, NoHost, Notifier};
 use crate::model::{Source, ThemeSpec, Ui};
 use crate::state::{Effect, Msg, State, Stats, narrow, update};
-use crate::view;
 use anyhow::{Context, Result, bail};
-use crate::view::Hit;
-use ratatui::crossterm::event::{
-    self, DisableBracketedPaste, DisableMouseCapture, EnableBracketedPaste, EnableMouseCapture, Event as TermEvent, KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseButton,
-    MouseEventKind,
-};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, BTreeSet};
 use std::io::{BufRead, BufReader, Write};
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
-use std::sync::Arc;
 use std::sync::mpsc::{self, Receiver, Sender};
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime};
 
 /// One request line on the control socket.
@@ -78,6 +74,8 @@ pub enum Request {
     Mouse { kind: String, x: u16, y: u16 },
     /// The current frame, as text.
     Screen,
+    /// The shown nodes, in order: kind, id, the text each shows, focus, selection, rectangle.
+    Readback,
     /// Save the whole state, become `binary` (default: this one) and carry on from that state.
     Upgrade {
         #[serde(default)]
@@ -96,11 +94,192 @@ pub enum Request {
     Stats,
 }
 
-/// Everything the loop reacts to arrives on one queue: terminal input, data, socket requests.
+/// A rectangle on the screen, in cells: where a frame laid a node out.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Rect {
+    pub x: u16,
+    pub y: u16,
+    pub width: u16,
+    pub height: u16,
+}
+
+impl Rect {
+    pub fn new(x: u16, y: u16, width: u16, height: u16) -> Rect {
+        Rect { x, y, width, height }
+    }
+
+    pub fn contains(&self, x: u16, y: u16) -> bool {
+        x >= self.x && y >= self.y && x < self.x.saturating_add(self.width) && y < self.y.saturating_add(self.height)
+    }
+}
+
+/// What a cell belongs to: a node, and maybe one of its rows (or bars, or points) or tabs.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Hit {
+    pub rect: Rect,
+    pub id: String,
+    pub row: Option<usize>,
+    pub tab: Option<usize>,
+    /// The text area of an editor or input: a click there places the caret.
+    pub text: bool,
+}
+
+/// What a frame drew, besides what's shown: what the engine needs back from it.
+#[derive(Clone, Debug, Default)]
+pub struct Drawn {
+    /// What's under each cell, for turning the mouse into messages.
+    pub hits: Vec<Hit>,
+    /// Where each node with an id was laid out, for the readback.
+    pub rects: Vec<(String, Rect)>,
+    /// The cells each editor got (id, width, height), and the rows each list showed: an editor
+    /// told its size keeps the caret in view.
+    pub sizes: Vec<(String, u16, u16)>,
+    /// The area each node whose `when` reads `$width` or `$height` was laid out in.
+    pub areas: Vec<(String, u16, u16)>,
+    /// When (on the logical clock) the frame changes by itself next: a toast going, a spinner
+    /// turning.
+    pub wake: Option<u64>,
+}
+
+/// The mouse, as whatever draws reports it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Pointer {
+    /// The left button down, with Shift or not.
+    Press { shift: bool },
+    /// Moved with the button held.
+    Drag,
+    Release,
+    Move,
+    WheelUp,
+    WheelDown,
+}
+
+impl Pointer {
+    /// A pointer by the names `Headless::mouse` takes: `press`, `s-press`, `drag`, `release`,
+    /// `move`, `wheel-up`, `wheel-down`.
+    pub fn named(kind: &str) -> Pointer {
+        match kind {
+            "press" => Pointer::Press { shift: false },
+            "s-press" => Pointer::Press { shift: true },
+            "drag" => Pointer::Drag,
+            "release" => Pointer::Release,
+            "wheel-up" => Pointer::WheelUp,
+            "wheel-down" => Pointer::WheelDown,
+            _ => Pointer::Move,
+        }
+    }
+
+    /// A pointer by the socket's names: `click`, `up`, `down`, `move`.
+    fn requested(kind: &str) -> Pointer {
+        match kind {
+            "click" => Pointer::Press { shift: false },
+            "up" => Pointer::WheelUp,
+            "down" => Pointer::WheelDown,
+            _ => Pointer::Move,
+        }
+    }
+}
+
+/// Input from whatever draws the screen: keys by name, the mouse at a cell, pastes, a new size.
+#[derive(Clone, Debug, PartialEq)]
+pub enum Input {
+    Key(String),
+    Pointer { kind: Pointer, x: u16, y: u16 },
+    Paste(String),
+    Resize { width: u16, height: u16 },
+}
+
+/// Everything the engine reacts to arrives on one queue: input, data, socket requests.
 enum Event {
     Msg(Msg),
     Request(Request, Sender<Value>),
-    Term(TermEvent),
+    Input(Input),
+}
+
+/// Where whatever draws a running screen posts its input: it joins the engine's queue, in order,
+/// with everything else.
+#[derive(Clone)]
+pub struct Inbox(Sender<Event>);
+
+impl Inbox {
+    /// False once the engine has stopped.
+    pub fn input(&self, input: Input) -> bool {
+        self.0.send(Event::Input(input)).is_ok()
+    }
+
+    pub fn msg(&self, msg: Msg) -> bool {
+        self.0.send(Event::Msg(msg)).is_ok()
+    }
+}
+
+/// A screen's way of drawing itself for `Headless`: the terminal's grid, until the window's
+/// readback replaces it. Without one, a headless screen reads back its nodes as an outline.
+pub trait Frame {
+    /// Draw the state.
+    fn draw(&mut self, st: &State) -> Drawn;
+    /// The screen is now `width` × `height` cells.
+    fn resize(&mut self, width: u16, height: u16);
+    /// The last frame as text, one line per row.
+    fn text(&self) -> String;
+    /// The last frame with its colours, as ANSI escapes.
+    fn ansi(&self) -> String {
+        self.text()
+    }
+    /// Draw every frame from now on as a terminal would show it too (the fuzz driver's check):
+    /// true when that starts now.
+    fn wire(&mut self) -> bool {
+        false
+    }
+    /// The last frame as the terminal shows it, once `wire` started.
+    fn terminal(&self) -> Option<String> {
+        None
+    }
+}
+
+/// A mouse event as a message, by what was drawn under it last frame (the innermost hit).
+/// A press in an editor's text starts a drag (`drag`), and moves with the button held stretch its
+/// selection until the button comes up.
+fn pointer(kind: Pointer, x: u16, y: u16, hits: &[Hit], st: &State, drag: &mut Option<(String, Rect)>) -> Option<Msg> {
+    let at = |want_row: bool| hits.iter().rev().find(|h| h.rect.contains(x, y) && (!want_row || h.row.is_some()));
+    match kind {
+        Pointer::Drag if drag.is_some() => {
+            let (id, r) = drag.as_ref()?;
+            let col = x.saturating_sub(r.x).min(r.width.saturating_sub(1));
+            let row = y.saturating_sub(r.y).min(r.height);
+            Some(Msg::Drag { id: id.clone(), col, row })
+        }
+        Pointer::Release => {
+            *drag = None;
+            None
+        }
+        Pointer::Press { shift } => {
+            let h = at(false)?;
+            if h.text {
+                *drag = Some((h.id.clone(), h.rect));
+                return Some(Msg::Point { id: h.id.clone(), col: x - h.rect.x, row: y - h.rect.y, extend: shift });
+            }
+            Some(Msg::Click { id: h.id.clone(), row: h.row.filter(|r| *r < 1000), tab: h.tab })
+        }
+        Pointer::WheelDown | Pointer::WheelUp => {
+            let by = if kind == Pointer::WheelDown { 1 } else { -1 };
+            let h = hits.iter().rev().find(|h| h.row.is_none() && h.rect.contains(x, y))?;
+            Some(Msg::Scroll { id: h.id.clone(), by })
+        }
+        Pointer::Move | Pointer::Drag => {
+            let hover = at(true).map(|h| crate::state::Hover { id: h.id.clone(), row: h.row });
+            (hover != st.hover).then_some(Msg::Hover { hover })
+        }
+    }
+}
+
+/// An input as a message for `update`, by the last frame's hits.
+fn input_msg(input: Input, hits: &[Hit], st: &State, drag: &mut Option<(String, Rect)>) -> Option<Msg> {
+    match input {
+        Input::Key(key) => Some(Msg::Key { key }),
+        Input::Pointer { kind, x, y } => pointer(kind, x, y, hits, st, drag),
+        Input::Paste(text) => Some(Msg::Paste { text }),
+        Input::Resize { width, height } => Some(Msg::Screen { width, height }),
+    }
 }
 
 pub fn default_socket() -> PathBuf {
@@ -179,8 +358,6 @@ fn exec(argv: &[String]) -> Result<(), String> {
     }
 }
 
-/// Runs `update` and carries out its effects. Fetches and runs go to threads that report back as
-/// messages; `blocking` (for headless renders) does them inline instead.
 /// Whether a source runs a command to get its value.
 fn is_command(src: &Source) -> bool {
     src.stream.is_some() || src.cmd.is_some() || src.shell.is_some()
@@ -189,6 +366,8 @@ fn is_command(src: &Source) -> bool {
 /// Why a command didn't run on a screen whose commands are off.
 const OFF: &str = "commands are off";
 
+/// Runs `update` and carries out its effects. Fetches and runs go to threads that report back as
+/// messages; `blocking` (for headless renders) does them inline instead.
 struct Driver {
     tx: Sender<Event>,
     in_flight: BTreeSet<String>,
@@ -205,7 +384,7 @@ struct Driver {
     /// Zero on the logical clock (`State::now_ms`).
     started: Instant,
     host: Arc<dyn Host>,
-    /// What a headless screen put on the clipboard, oldest first.
+    /// What the screen put on the clipboard and nobody has taken yet, oldest first.
     copied: Vec<String>,
     /// Each hosted entry's revision as the host has it (loaded or saved), and when one that
     /// differs last changed.
@@ -260,15 +439,8 @@ impl Driver {
                 }
                 Effect::Quit => self.quit = true,
                 Effect::Reply(r) => self.reply = Some(r),
-                // The terminal puts it on the clipboard (OSC 52); a headless render has none.
-                Effect::Copy(text) if !self.blocking => {
-                    use base64::Engine;
-                    let b64 = base64::engine::general_purpose::STANDARD.encode(text.as_bytes());
-                    let mut out = std::io::stdout();
-                    let _ = write!(out, "\x1b]52;c;{b64}\x07");
-                    let _ = out.flush();
-                }
-                // A headless screen keeps what it would have copied, for tests to read.
+                // Whatever draws puts it on the clipboard (`Live::take_copied`); a headless
+                // screen keeps it, for tests to read.
                 Effect::Copy(text) => self.copied.push(text),
                 Effect::Load(path) => match load(Path::new(&path)) {
                     Ok(ui) => queue.extend(update(st, Msg::Push { ui })),
@@ -542,7 +714,7 @@ impl Driver {
             Request::Toast { text, tone, ms } => Msg::Toast { text, tone, ms },
             Request::Click { id, row, tab } => Msg::Click { id, row, tab },
             // The loop answers these itself (they need the last frame).
-            Request::Mouse { .. } | Request::Screen | Request::Upgrade { .. } => return json!({"ok": false}),
+            Request::Mouse { .. } | Request::Screen | Request::Readback | Request::Upgrade { .. } => return json!({"ok": false}),
         };
         self.apply(st, msg);
         let mut reply = json!({"ok": st.status.is_none(), "version": st.version, "status": st.status});
@@ -578,12 +750,14 @@ pub fn load_themes(path: &Path) -> Result<BTreeMap<String, crate::model::ThemeSp
     serde_json::from_str(&raw).with_context(|| format!("{} is not a set of themes", path.display()))
 }
 
-/// A screen to run: its UI (a value, or a file), and what it starts from. The `fictty` binary is
-/// one user of this; an app that embeds fictty is another, with a `Host` for its own data.
+/// A screen to run: its UI (a value, or a file), and what it starts from. Whatever draws it starts
+/// its engine (`live`); tests drive it without one (`headless`).
 ///
 /// ```no_run
-/// # let ui: fictty::model::Ui = serde_json::from_str(r#"{"root": {"type": "text", "text": "hi"}}"#).unwrap();
-/// fictty::App::new(ui).socket("/tmp/my.sock").run().unwrap();
+/// # let ui: fictty_core::model::Ui = serde_json::from_str(r#"{"root": {"type": "text", "text": "hi"}}"#).unwrap();
+/// let live = fictty_core::App::new(ui).socket("/tmp/my.sock").live(80, 24).unwrap();
+/// let screen = live.spawn(|| true);
+/// println!("{}", fictty_core::readback::outline(&screen.lock().unwrap().readback()));
 /// ```
 pub struct App {
     ui: Option<Ui>,
@@ -708,9 +882,19 @@ impl App {
         })
     }
 
-    /// Without a terminal: a screen of `width`×`height` cells that renders to text, for tests
-    /// and `fictty render`. Sources are fetched and host actions done inline.
+    /// Without a thread or a socket: a screen of `width`×`height` cells, for tests and `fictty
+    /// render`. Sources are fetched and host actions done inline. Its `screen` is the readback
+    /// as an outline; `headless_with` gives it a frame to draw.
     pub fn headless(self, width: u16, height: u16) -> Result<Headless> {
+        self.headless_frame(width, height, None)
+    }
+
+    /// As `headless`, drawn by `frame` (the terminal's grid).
+    pub fn headless_with(self, width: u16, height: u16, frame: Box<dyn Frame>) -> Result<Headless> {
+        self.headless_frame(width, height, Some(frame))
+    }
+
+    fn headless_frame(self, width: u16, height: u16, frame: Option<Box<dyn Frame>>) -> Result<Headless> {
         let mut st = self.start()?;
         let ui = self.first_ui(&st)?;
         let (tx, _) = mpsc::channel();
@@ -720,18 +904,16 @@ impl App {
         d.commands = self.commands;
         d.apply(&mut st, Msg::Screen { width, height });
         d.apply(&mut st, Msg::Push { ui });
-        let term = ratatui::Terminal::new(ratatui::backend::TestBackend::new(width, height))?;
         let mut h = Headless {
             st,
             d,
-            term,
+            frame,
+            size: (width, height),
             notes,
-            last: ratatui::buffer::Buffer::empty(ratatui::layout::Rect::new(0, 0, width, height)),
             drawn: false,
             hits: Vec::new(),
+            rects: Vec::new(),
             drag: None,
-            #[cfg(feature = "fuzz")]
-            wire: None,
             #[cfg(feature = "fuzz")]
             host_act: None,
         };
@@ -740,16 +922,17 @@ impl App {
         Ok(h)
     }
 
-    /// Run in this terminal until `quit`.
-    pub fn run(mut self) -> Result<()> {
+    /// Start the screen's engine: the socket answers, sources run, the host starts, a restored
+    /// state (after an upgrade, `$FICTTY_RESTORE`) carries on. `width` × `height` is the screen's
+    /// size in cells to start with. Whatever draws it pumps it (`Live::pump`), or hands it its
+    /// own thread (`Live::spawn`).
+    pub fn live(mut self, width: u16, height: u16) -> Result<Live> {
         if self.restore.is_none() {
             self.restore = std::env::var_os("FICTTY_RESTORE").map(PathBuf::from);
         }
-        let App { file, watch, socket, store, host, .. } = &self;
-        let (watch, socket, host) = (*watch, socket.clone(), host.clone());
         // Restoring (after an upgrade): the saved state, every selection and focus as it was.
         let mut st = self.start()?;
-        let mut saved_writes = st.store_writes;
+        let saved_writes = st.store_writes;
         let ui = self.first_ui(&st)?;
         // A restored screen's streams and timers died with the old process: its first push
         // fetches every source again.
@@ -757,15 +940,16 @@ impl App {
         let (tx, rx) = mpsc::channel();
         // Commands the screen runs (sources, `run`) can talk back to it: a helper script reads the
         // store with `$FICTTY read …`. Set before any thread starts.
-        // SAFETY: no other thread exists yet, so nothing reads the environment concurrently.
+        // SAFETY: called before the screen starts threads of its own, and before whatever draws
+        // it starts any that read the environment.
         unsafe {
-            std::env::set_var("FICTTY_SOCKET", &socket);
+            std::env::set_var("FICTTY_SOCKET", &self.socket);
             std::env::remove_var("FICTTY_RESTORE");
             if let Ok(me) = std::env::current_exe() {
                 std::env::set_var("FICTTY", me);
             }
         }
-        serve(&socket, tx.clone())?;
+        serve(&self.socket, tx.clone())?;
         // The host's notices join the queue like everything else.
         let (ntx, nrx) = mpsc::channel::<Msg>();
         let fwd = tx.clone();
@@ -776,205 +960,261 @@ impl App {
                 }
             }
         });
-        host.start(Notifier::new(ntx));
-        let mut d = Driver::new(tx, false, host);
+        self.host.start(Notifier::new(ntx));
+        let mut d = Driver::new(tx, false, self.host.clone());
         d.commands = self.commands;
         // A restored state's clock carries on from where it was.
         d.started = Instant::now().checked_sub(Duration::from_millis(st.now_ms)).unwrap_or_else(Instant::now);
         // The size before the first push, as a headless screen has it: a UI whose `when` reads
         // `$screen` starts on the right layout, and its starting focus on a node that's shown.
-        if let Ok((width, height)) = ratatui::crossterm::terminal::size() {
-            d.apply(&mut st, Msg::Screen { width, height });
-        }
+        d.apply(&mut st, Msg::Screen { width, height });
         d.apply(&mut st, Msg::Push { ui });
-        let here = match file {
+        let here = match &self.file {
             Some(f) => std::fs::canonicalize(f).ok().and_then(|f| f.parent().map(Path::to_path_buf)).unwrap_or_default(),
             None => std::env::current_dir().unwrap_or_default(),
         };
         let bin = std::env::current_exe().map(|p| p.display().to_string()).unwrap_or_else(|_| "fictty".into());
-        let sock = std::fs::canonicalize(&socket).unwrap_or_else(|_| socket.clone());
+        let sock = std::fs::canonicalize(&self.socket).unwrap_or_else(|_| self.socket.clone());
         d.apply(&mut st, Msg::Host { bin, socket: sock.display().to_string(), dir: here.display().to_string() });
-        let caps = |sizing: bool| Msg::Caps { caps: crate::gfx::Caps::detect(), text_sizing: sizing };
-        let mut kitty = crate::gfx::Kitty::default();
-        let mut seen = file.as_deref().and_then(mtime);
+        let seen = self.file.as_deref().filter(|_| self.watch).and_then(mtime);
+        Ok(Live {
+            st,
+            d,
+            rx: Some(rx),
+            screens: Vec::new(),
+            meter: Meter::new(),
+            socket: self.socket,
+            hits: Vec::new(),
+            rects: Vec::new(),
+            drag: None,
+            wake: None,
+            last_tick: Instant::now(),
+            file: self.file.filter(|_| self.watch),
+            seen,
+            store: self.store,
+            saved_writes,
+        })
+    }
+}
+/// A running screen: the state and the engine (sources, streams, the host, the socket, the
+/// watched file, the store file), with no drawing. Whatever draws it reads `state` for each frame,
+/// tells it what the frame drew (`drew`), and answers `screen` requests from it.
+pub struct Live {
+    st: State,
+    d: Driver,
+    /// The queue, until `spawn` hands it to the engine's thread.
+    rx: Option<Receiver<Event>>,
+    /// `screen` requests waiting for the next frame.
+    screens: Vec<Sender<Value>>,
+    meter: Meter,
+    socket: PathBuf,
+    /// The last frame's hit regions and node rectangles.
+    hits: Vec<Hit>,
+    rects: Vec<(String, Rect)>,
+    /// An editor a press started a drag in.
+    drag: Option<(String, Rect)>,
+    /// When the last frame said it would change by itself.
+    wake: Option<u64>,
+    /// The last tick for an animation.
+    last_tick: Instant,
+    /// The UI file, when it's watched, and when it last changed.
+    file: Option<PathBuf>,
+    seen: Option<SystemTime>,
+    /// The store's file, and the writes it holds.
+    store: Option<PathBuf>,
+    saved_writes: u64,
+}
 
-        generic_tty()?;
-        let mut term = ratatui::init();
-        // Larger text: the terminal's to say (a probe), unless FICTTY_TEXT_SIZE forces it.
-        let sizing = match std::env::var("FICTTY_TEXT_SIZE").as_deref() {
-            Ok("1") => true,
-            Ok("0") => false,
-            _ => crate::gfx::probe_text_sizing(),
-        };
-        // (The probe clears what it printed; ratatui's first frame draws every cell.)
-        d.apply(&mut st, caps(sizing));
-        if let Ok(size) = term.size() {
-            d.apply(&mut st, Msg::Screen { width: size.width, height: size.height });
+/// How often an animation moves (120 fps).
+const FRAME: Duration = Duration::from_micros(8_333);
+
+impl Live {
+    /// Where input for this screen goes.
+    pub fn inbox(&self) -> Inbox {
+        Inbox(self.d.tx.clone())
+    }
+
+    /// Take in everything that has arrived (sources, the socket, the host, input) without
+    /// waiting, and do the engine's chores. Whether the screen may have changed.
+    pub fn pump(&mut self) -> bool {
+        let batch: Vec<Event> = self.rx.as_ref().map(|rx| rx.try_iter().take(10_000).collect()).unwrap_or_default();
+        self.step(batch)
+    }
+
+    /// A batch of events, then the chores: hosted entries saved, the store file written, sources
+    /// that are due fetched, the watched file reloaded, the clock moved for whatever animates.
+    fn step(&mut self, batch: Vec<Event>) -> bool {
+        let n = apply_batch(batch, &mut self.d, &mut self.st, (&self.hits, &self.rects), &mut self.screens, &mut self.drag);
+        self.meter.msgs += n;
+        let mut changed = n > 0;
+        self.d.keep(&mut self.st, Duration::from_millis(500));
+        if let Some(p) = self.store.as_deref().filter(|_| self.st.store_writes != self.saved_writes) {
+            match save_store(p, &self.st) {
+                Ok(()) => self.saved_writes = self.st.store_writes,
+                Err(e) => self.st.status = Some(format!("saving the store: {e:#}")),
+            }
         }
-        let _ = ratatui::crossterm::execute!(std::io::stdout(), EnableMouseCapture, EnableBracketedPaste);
-        // Say a fictty screen runs here (a terminal user var, OSC 1337), so a terminal set up for
-        // it (`fictty setup wezterm`) sends ⌘ keys here and nowhere else. Others ignore it.
-        let _ = write!(std::io::stdout(), "\x1b]1337;SetUserVar=fictty=MQ==\x07");
-        // Keys with every modifier told apart (⌘ as `d-`, Ctrl-Home, Shift-Enter), where the
-        // terminal speaks the kitty keyboard protocol.
-        let enhanced = ratatui::crossterm::terminal::supports_keyboard_enhancement().unwrap_or(false);
-        if enhanced {
-            use ratatui::crossterm::event::{KeyboardEnhancementFlags as F, PushKeyboardEnhancementFlags};
-            let _ = ratatui::crossterm::execute!(std::io::stdout(), PushKeyboardEnhancementFlags(F::DISAMBIGUATE_ESCAPE_CODES | F::REPORT_ALTERNATE_KEYS));
+        self.d.tick(&mut self.st);
+        if let Some(p) = &self.file {
+            let now = mtime(p);
+            if now != self.seen {
+                self.seen = now;
+                match load(p) {
+                    Ok(ui) => self.d.apply(&mut self.st, Msg::Push { ui }),
+                    Err(e) => self.st.status = Some(format!("{e:#}")),
+                }
+                changed = true;
+            }
         }
-        let started = d.started;
-        let res = (|| -> Result<()> {
-            // Draw only when something changed, at most once per frame budget (120 fps).
-            let budget = Duration::from_micros(8_333);
-            // Terminal input joins the same queue as everything else.
-            let input = d.tx.clone();
-            std::thread::spawn(move || {
-                while let Ok(ev) = event::read() {
-                    if input.send(Event::Term(ev)).is_err() {
-                        return;
-                    }
-                }
-            });
-            let mut dirty = true;
-            let mut last_draw = Instant::now() - budget;
-            let mut window = Window::new();
-            // What's under each cell in the last frame: the view's, for turning the mouse into messages.
-            let mut hits: Vec<Hit> = Vec::new();
-            let mut screens: Vec<Sender<Value>> = Vec::new();
-            let mut scaled_last: Vec<view::Scaled> = Vec::new();
-            // When the last frame said it would change by itself (a toast going, a spinner).
-            let mut wake: Option<u64> = None;
-            // The editor a press in its text started a drag in, and where it is.
-            let mut drag: Option<(String, ratatui::layout::Rect)> = None;
-            while !d.quit {
-                // Animations (a pulsing ring) need time to move: tick every frame while one shows.
-                let animating = st.ui.layers.iter().any(|l| l.pulse.is_some());
-                let now = started.elapsed().as_millis() as u64;
-                if (animating && last_draw.elapsed() >= budget) || wake.is_some_and(|w| now >= w) {
-                    wake = None;
-                    d.apply(&mut st, Msg::Tick { now_ms: started.elapsed().as_millis() as u64 });
-                    dirty = true;
-                }
-                dirty |= !screens.is_empty();
-                if dirty && last_draw.elapsed() >= budget {
-                    let t = Instant::now();
-                    let mut text = None;
-                    let mut pics = Vec::new();
-                    let mut scaled = Vec::new();
-                    let mut sizes = Vec::new();
-                    let mut areas = Vec::new();
-                    term.draw(|f| {
-                        let out = view::draw(&st, f);
-                        (hits, pics, scaled, sizes, wake, areas) = (out.hits, out.pics, out.scaled, out.sizes, out.wake, out.areas);
-                        if !screens.is_empty() {
-                            text = Some(buffer_text(f.buffer_mut()));
-                        }
-                    })?;
-                    // Pictures and larger text go out after the cells, in one write.
-                    let mut extra = kitty.sync(&pics, st.caps);
-                    if scaled != scaled_last {
-                        for t in &scaled {
-                            extra.extend(osc66(t));
-                        }
-                        scaled_last = scaled;
-                    }
-                    if !extra.is_empty() {
-                        let mut out = std::io::stdout().lock();
-                        out.write_all(&extra)?;
-                        out.flush()?;
-                    }
-                    if let Some(text) = text {
-                        for s in screens.drain(..) {
-                            let _ = s.send(json!({"ok": true, "screen": text}));
-                        }
-                    }
-                    window.frame(t.elapsed());
-                    last_draw = Instant::now();
-                    dirty = resize_editors(&mut d, &mut st, sizes) | report_areas(&mut d, &mut st, areas);
-                }
-                // Sleep until the next frame is due (when there's something to draw) or a while.
-                let mut wait = if dirty || animating { budget.saturating_sub(last_draw.elapsed()) } else { Duration::from_millis(50) };
-                if let Some(w) = wake {
-                    wait = wait.min(Duration::from_millis(w.saturating_sub(started.elapsed().as_millis() as u64)));
-                }
+        // Animations (a pulsing ring) need time to move: a tick every frame while one shows, and
+        // one when the last frame said it would change (a toast going, a spinner turning).
+        let now = self.now();
+        if (self.animating() && self.last_tick.elapsed() >= FRAME) || self.wake.is_some_and(|w| now >= w) {
+            self.wake = None;
+            self.last_tick = Instant::now();
+            self.d.apply(&mut self.st, Msg::Tick { now_ms: now });
+            changed = true;
+        }
+        if let Some(stats) = self.meter.report(self.st.stats.frames) {
+            self.d.apply(&mut self.st, Msg::Stats { stats });
+            changed = true;
+        }
+        changed
+    }
+
+    fn now(&self) -> u64 {
+        self.d.started.elapsed().as_millis() as u64
+    }
+
+    fn animating(&self) -> bool {
+        self.st.ui.layers.iter().any(|l| l.pulse.is_some())
+    }
+
+    /// How long the engine can wait for the next event before a chore is due.
+    fn idle(&self) -> Duration {
+        let mut wait = if self.animating() { FRAME.saturating_sub(self.last_tick.elapsed()) } else { Duration::from_millis(50) };
+        if let Some(w) = self.wake {
+            wait = wait.min(Duration::from_millis(w.saturating_sub(self.now())));
+        }
+        wait
+    }
+
+    /// Run the engine on its own thread: it waits for events, takes them in as fast as they
+    /// arrive and calls `ring` whenever the screen may have changed, so whatever draws it draws
+    /// then (at most once a frame, however often it rings). The thread ends when the screen quits
+    /// (after a last ring) or `ring` says to stop by returning false.
+    pub fn spawn(mut self, ring: impl Fn() -> bool + Send + 'static) -> Arc<Mutex<Live>> {
+        let rx = self.rx.take().expect("a screen's engine starts once");
+        let live = Arc::new(Mutex::new(self));
+        let shared = live.clone();
+        std::thread::spawn(move || {
+            loop {
+                let wait = shared.lock().map_or(Duration::from_millis(50), |l| l.idle());
                 let mut batch = Vec::new();
-                if let Ok(ev) = rx.recv_timeout(wait) {
-                    batch.push(ev);
-                    batch.extend(rx.try_iter().take(10_000));
-                }
-                let resized = batch.iter().any(|e| matches!(e, Event::Term(TermEvent::Resize(..))));
-                let n = apply_batch(batch, &mut d, &mut st, &hits, &mut screens, &mut drag);
-                window.msgs += n;
-                dirty |= n > 0;
-                d.keep(&mut st, Duration::from_millis(500));
-            if let Some(p) = store.as_deref().filter(|_| st.store_writes != saved_writes) {
-                    match save_store(p, &st) {
-                        Ok(()) => saved_writes = st.store_writes,
-                        Err(e) => st.status = Some(format!("saving the store: {e:#}")),
+                match rx.recv_timeout(wait) {
+                    Ok(ev) => {
+                        batch.push(ev);
+                        batch.extend(rx.try_iter().take(10_000));
                     }
+                    Err(mpsc::RecvTimeoutError::Timeout) => {}
+                    Err(mpsc::RecvTimeoutError::Disconnected) => return,
                 }
-                if resized {
-                    if let Ok(size) = term.size() {
-                        d.apply(&mut st, Msg::Screen { width: size.width, height: size.height });
-                    }
-                    // The cell size can change with the window (a font size change, another display).
-                    d.apply(&mut st, caps(sizing));
-                    scaled_last.clear();
+                let Ok(mut l) = shared.lock() else { return };
+                let changed = l.step(batch);
+                let quit = l.d.quit;
+                drop(l);
+                if (changed || quit) && !ring() {
+                    return;
                 }
-                if let Some(bin) = d.upgrade.take() {
-                    let path = std::env::temp_dir().join(format!("fictty-state-{}.json", std::process::id()));
-                    std::fs::write(&path, serde_json::to_vec(&st)?)?;
-                    let mut out = std::io::stdout().lock();
-                    out.write_all(&kitty.clear())?;
-                    out.flush()?;
-                    drop(out);
-                    d.stop_streams();
-                    let _ = std::fs::remove_file(&socket);
-                    use std::os::unix::process::CommandExt;
-                    // The same command line, as the new binary, told where the state is.
-                    let mut cmd = Command::new(&bin);
-                    cmd.args(std::env::args_os().skip(1)).env("FICTTY_RESTORE", &path);
-                    // Only returns if the exec failed.
-                    let err = cmd.exec();
-                    st.status = Some(format!("upgrade to {bin} failed: {err}"));
-                    serve(&socket, d.tx.clone())?;
-                    dirty = true;
-                }
-                d.tick(&mut st);
-                if watch && let Some(p) = &file {
-                    let now = mtime(p);
-                    if now != seen {
-                        seen = now;
-                        match load(p) {
-                            Ok(ui) => d.apply(&mut st, Msg::Push { ui }),
-                            Err(e) => st.status = Some(format!("{e:#}")),
-                        }
-                        dirty = true;
-                    }
-                }
-                if let Some(stats) = window.report(st.stats.frames) {
-                    d.apply(&mut st, Msg::Stats { stats });
-                    dirty = true;
+                if quit {
+                    return;
                 }
             }
-            Ok(())
-        })();
-        let _ = std::io::stdout().write_all(&kitty.clear());
-        if enhanced {
-            let _ = ratatui::crossterm::execute!(std::io::stdout(), ratatui::crossterm::event::PopKeyboardEnhancementFlags);
+        });
+        live
+    }
+
+    /// A message now (an input from a window, which routes its own clicks), through the engine
+    /// like any other.
+    pub fn msg(&mut self, msg: Msg) {
+        self.d.apply(&mut self.st, msg);
+    }
+
+    /// An input now, landing on the last frame.
+    pub fn input(&mut self, input: Input) {
+        if let Some(m) = input_msg(input, &self.hits, &self.st, &mut self.drag) {
+            self.d.apply(&mut self.st, m);
         }
-        let _ = ratatui::crossterm::execute!(std::io::stdout(), DisableMouseCapture, DisableBracketedPaste);
-        let _ = write!(std::io::stdout(), "\x1b]1337;SetUserVar=fictty=\x07");
-        ratatui::restore();
-        let _ = std::fs::remove_file(&socket);
-        res
+    }
+
+    pub fn state(&self) -> &State {
+        &self.st
+    }
+
+    /// The shown nodes, with the last frame's rectangles.
+    pub fn readback(&self) -> Vec<crate::readback::Shown> {
+        crate::readback::readback(&self.st, &self.rects)
+    }
+
+    /// The frame drew, taking `took`: what it drew goes back to the engine (editors learn their
+    /// size, the mouse lands on what's there). True when the state changed because of it, so
+    /// another frame should follow.
+    pub fn drew(&mut self, took: Duration, drawn: Drawn) -> bool {
+        self.meter.frame(took);
+        let Drawn { hits, rects, sizes, areas, wake } = drawn;
+        (self.hits, self.rects, self.wake) = (hits, rects, wake);
+        resize_editors(&mut self.d, &mut self.st, sizes) | report_areas(&mut self.d, &mut self.st, areas)
+    }
+
+    /// `screen` requests waiting for a frame; answer each with what it shows.
+    pub fn take_screens(&mut self) -> Vec<Sender<Value>> {
+        std::mem::take(&mut self.screens)
+    }
+
+    /// What the screen put on the clipboard since the last call, oldest first.
+    pub fn take_copied(&mut self) -> Vec<String> {
+        std::mem::take(&mut self.d.copied)
+    }
+
+    /// Whether the screen has quit.
+    pub fn quit(&self) -> bool {
+        self.d.quit
+    }
+
+    /// The binary an `upgrade` request asked the screen to become, once.
+    pub fn take_upgrade(&mut self) -> Option<String> {
+        self.d.upgrade.take()
+    }
+
+    /// Become `bin`, carrying on from this state: it's saved, the streams stop, the socket goes,
+    /// and the same command line runs as `bin`, told where the state is (`$FICTTY_RESTORE`).
+    /// Returns only if that failed, with the screen serving again.
+    pub fn upgrade(&mut self, bin: &str) -> Result<()> {
+        let path = std::env::temp_dir().join(format!("fictty-state-{}.json", std::process::id()));
+        std::fs::write(&path, serde_json::to_vec(&self.st)?)?;
+        self.d.stop_streams();
+        let _ = std::fs::remove_file(&self.socket);
+        use std::os::unix::process::CommandExt;
+        let mut cmd = Command::new(bin);
+        cmd.args(std::env::args_os().skip(1)).env("FICTTY_RESTORE", &path);
+        // Only returns if the exec failed.
+        let err = cmd.exec();
+        self.st.status = Some(format!("upgrade to {bin} failed: {err}"));
+        serve(&self.socket, self.d.tx.clone())
+    }
+}
+
+impl Drop for Live {
+    fn drop(&mut self) {
+        self.d.stop_streams();
+        let _ = std::fs::remove_file(&self.socket);
     }
 }
 
 /// Apply a batch of queued events. A source's value replaces the last one, so of several queued
 /// values for one source only the newest is applied (the rest still count as received). Returns
 /// how many events arrived.
-fn apply_batch(batch: Vec<Event>, d: &mut Driver, st: &mut State, hits: &[Hit], screens: &mut Vec<Sender<Value>>, drag: &mut Option<(String, ratatui::layout::Rect)>) -> usize {
+fn apply_batch(batch: Vec<Event>, d: &mut Driver, st: &mut State, (hits, rects): (&[Hit], &[(String, Rect)]), screens: &mut Vec<Sender<Value>>, drag: &mut Option<(String, Rect)>) -> usize {
     let n = batch.len();
     let mut newest: BTreeMap<String, usize> = BTreeMap::new();
     for (i, ev) in batch.iter().enumerate() {
@@ -984,107 +1224,41 @@ fn apply_batch(batch: Vec<Event>, d: &mut Driver, st: &mut State, hits: &[Hit], 
     }
     for (i, ev) in batch.into_iter().enumerate() {
         match ev {
-            Event::Msg(Msg::Data { name, .. }) if newest.get(&name) != Some(&i) => d.in_flight.remove(&name),
-            Event::Msg(m) => {
-                d.apply(st, m);
-                true
+            Event::Msg(Msg::Data { name, .. }) if newest.get(&name) != Some(&i) => {
+                d.in_flight.remove(&name);
             }
+            Event::Msg(m) => d.apply(st, m),
             Event::Request(Request::Upgrade { binary }, reply) => {
                 let bin = binary.or_else(|| std::env::current_exe().ok().map(|p| p.display().to_string())).unwrap_or_default();
                 let _ = reply.send(json!({"ok": true, "upgrading": bin}));
                 d.upgrade = Some(bin);
-                true
             }
-            Event::Request(Request::Screen, reply) => {
-                screens.push(reply);
-                true
+            Event::Request(Request::Screen, reply) => screens.push(reply),
+            Event::Request(Request::Readback, reply) => {
+                let _ = reply.send(json!({"ok": true, "nodes": crate::readback::readback(st, rects)}));
             }
             Event::Request(Request::Mouse { kind, x, y }, reply) => {
-                let kind = match kind.as_str() {
-                    "click" => MouseEventKind::Down(MouseButton::Left),
-                    "up" => MouseEventKind::ScrollUp,
-                    "down" => MouseEventKind::ScrollDown,
-                    _ => MouseEventKind::Moved,
-                };
-                let msg = mouse(kind, KeyModifiers::NONE, x, y, hits, st, &mut None);
+                let msg = pointer(Pointer::requested(&kind), x, y, hits, st, &mut None);
                 let what = msg.as_ref().map(|m| serde_json::to_value(m).unwrap_or_default());
                 if let Some(m) = msg {
                     d.apply(st, m);
                 }
                 let _ = reply.send(json!({"ok": true, "msg": what}));
-                true
             }
             Event::Request(req, reply) => {
                 let _ = reply.send(d.request(st, req));
-                true
             }
-            Event::Term(TermEvent::Key(k)) if k.kind == KeyEventKind::Press => {
-                if let Some(key) = key_name(k) {
-                    d.apply(st, Msg::Key { key });
+            Event::Input(input) => {
+                if let Some(m) = input_msg(input, hits, st, drag) {
+                    d.apply(st, m);
                 }
-                true
             }
-            Event::Term(TermEvent::Mouse(m)) => {
-                if let Some(msg) = mouse(m.kind, m.modifiers, m.column, m.row, hits, st, drag) {
-                    d.apply(st, msg);
-                }
-                true
-            }
-            Event::Term(TermEvent::Paste(text)) => {
-                d.apply(st, Msg::Paste { text });
-                true
-            }
-            Event::Term(_) => true,
-        };
+        }
     }
     n
 }
-
-/// A mouse event as a message, by what was drawn under it last frame (the innermost hit).
-/// A press in an editor's text starts a drag (`drag`), and moves with the button held stretch its
-/// selection until the button comes up.
-fn mouse(kind: MouseEventKind, mods: KeyModifiers, x: u16, y: u16, hits: &[Hit], st: &State, drag: &mut Option<(String, ratatui::layout::Rect)>) -> Option<Msg> {
-    let at = |want_row: bool| {
-        hits.iter().rev().find(|h| h.rect.contains(ratatui::layout::Position { x, y }) && (!want_row || h.row.is_some()))
-    };
-    match kind {
-        MouseEventKind::Drag(MouseButton::Left) if drag.is_some() => {
-            let (id, r) = drag.as_ref()?;
-            let col = x.saturating_sub(r.x).min(r.width.saturating_sub(1));
-            let row = y.saturating_sub(r.y).min(r.height);
-            return Some(Msg::Drag { id: id.clone(), col, row });
-        }
-        MouseEventKind::Up(MouseButton::Left) => {
-            *drag = None;
-            return None;
-        }
-        _ => {}
-    }
-    match kind {
-        MouseEventKind::Down(MouseButton::Left) => {
-            let h = at(false)?;
-            if h.text {
-                *drag = Some((h.id.clone(), h.rect));
-                let extend = mods.contains(KeyModifiers::SHIFT);
-                return Some(Msg::Point { id: h.id.clone(), col: x - h.rect.x, row: y - h.rect.y, extend });
-            }
-            Some(Msg::Click { id: h.id.clone(), row: h.row.filter(|r| *r < 1000), tab: h.tab })
-        }
-        MouseEventKind::ScrollDown | MouseEventKind::ScrollUp => {
-            let by = if kind == MouseEventKind::ScrollDown { 1 } else { -1 };
-            let h = hits.iter().rev().find(|h| h.row.is_none() && h.rect.contains(ratatui::layout::Position { x, y }))?;
-            Some(Msg::Scroll { id: h.id.clone(), by })
-        }
-        MouseEventKind::Moved | MouseEventKind::Drag(_) => {
-            let hover = at(true).map(|h| crate::state::Hover { id: h.id.clone(), row: h.row });
-            (hover != st.hover).then_some(Msg::Hover { hover })
-        }
-        _ => None,
-    }
-}
-
 /// Counts frames and messages over half-second windows.
-struct Window {
+struct Meter {
     start: Instant,
     frames: u64,
     draw: Duration,
@@ -1092,9 +1266,9 @@ struct Window {
     msgs: usize,
 }
 
-impl Window {
-    fn new() -> Window {
-        Window { start: Instant::now(), frames: 0, draw: Duration::ZERO, max: Duration::ZERO, msgs: 0 }
+impl Meter {
+    fn new() -> Meter {
+        Meter { start: Instant::now(), frames: 0, draw: Duration::ZERO, max: Duration::ZERO, msgs: 0 }
     }
 
     fn frame(&mut self, took: Duration) {
@@ -1117,7 +1291,7 @@ impl Window {
             msgs: self.msgs as f64 / secs,
             frames: total + self.frames,
         };
-        *self = Window::new();
+        *self = Meter::new();
         Some(stats)
     }
 }
@@ -1172,154 +1346,28 @@ pub fn send(socket: &Path, req: Value) -> Result<Value> {
     Ok(serde_json::from_str(&line)?)
 }
 
-/// A frame as ANSI text: an SGR (truecolour) wherever the style changes.
-fn buffer_ansi(buf: &ratatui::buffer::Buffer) -> String {
-    use ratatui::style::{Color, Modifier};
-    let sgr = |c: &ratatui::buffer::Cell| {
-        let mut p = vec!["0".to_string()];
-        for (m, code) in [(Modifier::BOLD, "1"), (Modifier::DIM, "2"), (Modifier::ITALIC, "3"), (Modifier::UNDERLINED, "4"), (Modifier::REVERSED, "7"), (Modifier::CROSSED_OUT, "9")] {
-            if c.modifier.contains(m) {
-                p.push(code.into());
-            }
-        }
-        if let Color::Rgb(r, g, b) = c.fg {
-            p.push(format!("38;2;{r};{g};{b}"));
-        }
-        if let Color::Rgb(r, g, b) = c.bg {
-            p.push(format!("48;2;{r};{g};{b}"));
-        }
-        format!("\x1b[{}m", p.join(";"))
-    };
-    let mut out = String::new();
-    for y in 0..buf.area.height {
-        let mut last = String::new();
-        for x in 0..buf.area.width {
-            let c = &buf[(x, y)];
-            let s = sgr(c);
-            if s != last {
-                out.push_str(&s);
-                last = s;
-            }
-            out.push_str(c.symbol());
-        }
-        out.push_str("\x1b[0m\n");
-    }
-    out
-}
-
-/// Larger text at a cell (kitty's text sizing, OSC 66), in its colours.
-fn osc66(t: &view::Scaled) -> Vec<u8> {
-    use ratatui::style::{Color, Modifier};
-    let mut sgr = vec!["0".to_string()];
-    if t.style.add_modifier.contains(Modifier::BOLD) {
-        sgr.push("1".into());
-    }
-    if let Some(Color::Rgb(r, g, b)) = t.style.fg {
-        sgr.push(format!("38;2;{r};{g};{b}"));
-    }
-    format!("\x1b[{};{}H\x1b[{}m\x1b]66;s={};{}\x07\x1b[0m", t.y + 1, t.x + 1, sgr.join(";"), t.scale, t.text).into_bytes()
-}
-
-fn buffer_text(buf: &ratatui::buffer::Buffer) -> String {
-    let mut out = String::new();
-    for y in 0..buf.area.height {
-        let line: String = (0..buf.area.width).map(|x| buf[(x, y)].symbol().to_string()).collect();
-        out.push_str(line.trim_end());
-        out.push('\n');
-    }
-    out
-}
-
-/// A screen without a terminal (`App::headless`): send it keys and messages, read its frame and
-/// its state. Everything the host sends arrives before the next read.
+/// A screen without a thread or a socket (`App::headless`): send it keys and messages, read its
+/// frame and its state. Everything the host sends arrives before the next read.
 pub struct Headless {
     st: State,
     d: Driver,
-    term: ratatui::Terminal<ratatui::backend::TestBackend>,
+    /// What draws it, if anything: the terminal's grid.
+    frame: Option<Box<dyn Frame>>,
+    size: (u16, u16),
     notes: Receiver<Msg>,
-    /// The last frame as drawn. Not the backend's buffer: that one only takes the cells a frame
-    /// changed, and keeps a stale character under a wide one's second cell, which no terminal
-    /// shows.
-    last: ratatui::buffer::Buffer,
-    /// Whether `last` is the state's frame as it is now.
+    /// Whether the last frame is the state's as it is now.
     drawn: bool,
-    /// The last frame's hit regions, so the mouse lands where a running screen's would.
+    /// The last frame's hit regions and node rectangles, so the mouse lands where a running
+    /// screen's would.
     hits: Vec<Hit>,
-    /// An editor a press started a drag in, as the runtime keeps it.
-    drag: Option<(String, ratatui::layout::Rect)>,
-    /// Once asked for (`terminal`): every frame drawn again the way a running screen draws it,
-    /// as escapes from the crossterm backend, diffed against the frame before, into an emulator.
-    #[cfg(feature = "fuzz")]
-    wire: Option<Wire>,
+    rects: Vec<(String, Rect)>,
+    /// An editor a press started a drag in, as the engine keeps it.
+    drag: Option<(String, Rect)>,
     /// What the app does for the fuzz driver's host acts (`fuzz::Act::Host`): an agent's write,
     /// a file changing under a source.
     #[cfg(feature = "fuzz")]
     #[allow(clippy::type_complexity)]
     host_act: Option<Box<dyn FnMut(&mut Headless, &str)>>,
-}
-
-/// A frame's way to a terminal: ratatui's crossterm backend writing escapes into a buffer, and
-/// vt100 reading them.
-#[cfg(feature = "fuzz")]
-struct Wire {
-    term: ratatui::Terminal<ratatui::backend::CrosstermBackend<Tap>>,
-    out: Arc<std::sync::Mutex<Vec<u8>>>,
-    vt: vt100::Parser,
-}
-
-/// What the backend writes, kept for the emulator to read.
-#[cfg(feature = "fuzz")]
-struct Tap(Arc<std::sync::Mutex<Vec<u8>>>);
-
-#[cfg(feature = "fuzz")]
-impl Write for Tap {
-    fn write(&mut self, b: &[u8]) -> std::io::Result<usize> {
-        self.0.lock().expect("the tap").extend_from_slice(b);
-        Ok(b.len())
-    }
-
-    fn flush(&mut self) -> std::io::Result<()> {
-        Ok(())
-    }
-}
-
-#[cfg(feature = "fuzz")]
-impl Wire {
-    fn new(w: u16, h: u16) -> Wire {
-        let out = Arc::new(std::sync::Mutex::new(Vec::new()));
-        let backend = ratatui::backend::CrosstermBackend::new(Tap(out.clone()));
-        let viewport = ratatui::Viewport::Fixed(ratatui::layout::Rect::new(0, 0, w, h));
-        let term = ratatui::Terminal::with_options(backend, ratatui::TerminalOptions { viewport }).expect("a terminal on a buffer");
-        Wire { term, out, vt: vt100::Parser::new(h, w, 0) }
-    }
-
-    fn draw(&mut self, st: &State) {
-        let _ = self.term.draw(|f| {
-            view::draw(st, f);
-        });
-        let bytes = std::mem::take(&mut *self.out.lock().expect("the tap"));
-        self.vt.process(&bytes);
-    }
-
-    /// The emulator's grid as text, as `buffer_text` writes a frame.
-    fn text(&self) -> String {
-        let screen = self.vt.screen();
-        let (h, w) = screen.size();
-        let mut out = String::new();
-        for y in 0..h {
-            let mut line = String::new();
-            for x in 0..w {
-                match screen.cell(y, x) {
-                    // `buffer_text` writes a wide character's second cell as a space.
-                    Some(c) if c.has_contents() && !c.is_wide_continuation() => line.push_str(c.contents()),
-                    _ => line.push(' '),
-                }
-            }
-            out.push_str(line.trim_end());
-            out.push('\n');
-        }
-        out
-    }
 }
 
 impl Headless {
@@ -1347,17 +1395,8 @@ impl Headless {
     /// `drag` (with the button held), `release`, `move`, `wheel-up` or `wheel-down`. It lands on
     /// the last frame, as on a running screen.
     pub fn mouse(&mut self, kind: &str, x: u16, y: u16) -> &mut Headless {
-        let (kind, mods) = match kind {
-            "press" => (MouseEventKind::Down(MouseButton::Left), KeyModifiers::NONE),
-            "s-press" => (MouseEventKind::Down(MouseButton::Left), KeyModifiers::SHIFT),
-            "drag" => (MouseEventKind::Drag(MouseButton::Left), KeyModifiers::NONE),
-            "release" => (MouseEventKind::Up(MouseButton::Left), KeyModifiers::NONE),
-            "wheel-up" => (MouseEventKind::ScrollUp, KeyModifiers::NONE),
-            "wheel-down" => (MouseEventKind::ScrollDown, KeyModifiers::NONE),
-            _ => (MouseEventKind::Moved, KeyModifiers::NONE),
-        };
         self.drain();
-        if let Some(m) = mouse(kind, mods, x, y, &self.hits, &self.st, &mut self.drag) {
+        if let Some(m) = pointer(Pointer::named(kind), x, y, &self.hits, &self.st, &mut self.drag) {
             self.msg(m);
         }
         self.frame();
@@ -1371,35 +1410,31 @@ impl Headless {
         self
     }
 
-    /// The terminal resized to `width` × `height` cells.
+    /// The screen resized to `width` × `height` cells.
     pub fn resize(&mut self, width: u16, height: u16) -> &mut Headless {
         self.drawn = false;
-        self.term.backend_mut().resize(width, height);
-        let _ = self.term.resize(ratatui::layout::Rect::new(0, 0, width, height));
-        // The terminal resized: the emulator's grid too, and ratatui draws the whole frame again.
-        #[cfg(feature = "fuzz")]
-        if let Some(w) = &mut self.wire {
-            w.vt.screen_mut().set_size(height, width);
-            let _ = w.term.resize(ratatui::layout::Rect::new(0, 0, width, height));
+        self.size = (width, height);
+        if let Some(f) = &mut self.frame {
+            f.resize(width, height);
         }
         self.msg(Msg::Screen { width, height });
         self.frame();
         self
     }
 
-    /// The frame as a terminal shows it: drawn through the crossterm backend (diffed against the
-    /// frame before, as a running screen draws) into a vt100 emulator, read back as text. It
-    /// should always equal `screen`; where it doesn't, the escapes are wrong. Frames from the
-    /// first call on go through it.
+    /// The frame as a terminal shows it: drawn the way a running screen draws (diffed against
+    /// the frame before) into an emulator, read back as text. It should always equal `screen`;
+    /// where it doesn't, the escapes are wrong. Frames from the first call on go through it.
     #[cfg(feature = "fuzz")]
     pub fn terminal(&mut self) -> String {
-        if self.wire.is_none() {
-            let (w, h) = self.size();
-            self.wire = Some(Wire::new(w, h));
+        if self.frame.as_mut().is_some_and(|f| f.wire()) {
             self.drawn = false;
         }
         self.frame();
-        self.wire.as_ref().map(Wire::text).unwrap_or_default()
+        match self.frame.as_ref().and_then(|f| f.terminal()) {
+            Some(t) => t,
+            None => self.screen(),
+        }
     }
 
     /// Whether the screen has quit (a `quit` action, or Ctrl-C outside a text field): a running
@@ -1410,8 +1445,7 @@ impl Headless {
 
     /// The screen's size in cells.
     pub fn size(&self) -> (u16, u16) {
-        let a = self.term.backend().buffer().area;
-        (a.width, a.height)
+        self.size
     }
 
     /// A request as the control socket takes it (`{"op": "write", "key": …}`), answered as the
@@ -1420,8 +1454,9 @@ impl Headless {
         self.drain();
         self.drawn = false;
         let reply = match serde_json::from_value::<Request>(req) {
-            // The loop answers these on a running screen, from its last frame.
+            // A running screen answers these from its last frame.
             Ok(Request::Screen) => return json!({"ok": true, "screen": self.screen()}),
+            Ok(Request::Readback) => return json!({"ok": true, "nodes": self.readback()}),
             Ok(Request::Mouse { kind, x, y }) => {
                 let kind = match kind.as_str() {
                     "click" => "press",
@@ -1466,16 +1501,29 @@ impl Headless {
         &self.st
     }
 
-    /// The frame as text, one line per row (trailing spaces trimmed).
+    /// The frame as text, one line per row (trailing spaces trimmed); without a frame to draw
+    /// it, the readback as an outline.
     pub fn screen(&mut self) -> String {
         self.frame();
-        buffer_text(&self.last)
+        match &self.frame {
+            Some(f) => f.text(),
+            None => crate::readback::outline(&self.readback()),
+        }
     }
 
     /// The frame with its colours and attributes, as ANSI (truecolour) escapes.
     pub fn ansi(&mut self) -> String {
         self.frame();
-        buffer_ansi(&self.last)
+        match &self.frame {
+            Some(f) => f.ansi(),
+            None => self.screen(),
+        }
+    }
+
+    /// The shown nodes, in order, with where the last frame laid each out.
+    pub fn readback(&mut self) -> Vec<crate::readback::Shown> {
+        self.frame();
+        crate::readback::readback(&self.st, &self.rects)
     }
 
     fn drain(&mut self) {
@@ -1493,28 +1541,15 @@ impl Headless {
             return;
         }
         self.drawn = true;
-        let (mut sizes, mut areas, mut hits) = (Vec::new(), Vec::new(), Vec::new());
-        let (st, last) = (&self.st, &mut self.last);
-        let _ = self.term.draw(|f| {
-            let out = view::draw(st, f);
-            (sizes, areas, hits) = (out.sizes, out.areas, out.hits);
-            *last = f.buffer_mut().clone();
-        });
+        let Some(f) = &mut self.frame else { return };
+        let Drawn { hits, rects, sizes, areas, .. } = f.draw(&self.st);
+        (self.hits, self.rects) = (hits, rects);
         if resize_editors(&mut self.d, &mut self.st, sizes) | report_areas(&mut self.d, &mut self.st, areas) {
-            let (st, last) = (&self.st, &mut self.last);
-            let _ = self.term.draw(|f| {
-                hits = view::draw(st, f).hits;
-                *last = f.buffer_mut().clone();
-            });
-        }
-        self.hits = hits;
-        #[cfg(feature = "fuzz")]
-        if let Some(w) = &mut self.wire {
-            w.draw(&self.st);
+            let Drawn { hits, rects, .. } = f.draw(&self.st);
+            (self.hits, self.rects) = (hits, rects);
         }
     }
 }
-
 fn agent() -> String {
     "agent".into()
 }
@@ -1568,20 +1603,6 @@ fn refusal(reply: &Value) -> String {
     }
 }
 
-/// macOS can't wait on input from the generic `/dev/tty` (kqueue refuses it), so a screen whose
-/// input is `/dev/tty` would spin on its first read. Say so instead; the terminal's own device
-/// (`/dev/ttys003`) works.
-fn generic_tty() -> Result<()> {
-    if cfg!(target_os = "macos") {
-        // SAFETY: ttyname returns null or a pointer to a static string, read before any other call.
-        let name = unsafe { libc::ttyname(0) };
-        if !name.is_null() && unsafe { std::ffi::CStr::from_ptr(name) }.to_bytes() == b"/dev/tty" {
-            anyhow::bail!("input is /dev/tty, which macOS can't wait on; run fictty with the terminal's own device (`tty` in that terminal names it) as its input");
-        }
-    }
-    Ok(())
-}
-
 /// The local wall-clock time, `HH:MM:SS`, for the activity log.
 fn clock() -> String {
     let now = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).map_or(0, |d| d.as_secs()) as libc::time_t;
@@ -1623,52 +1644,6 @@ fn report_areas(d: &mut Driver, st: &mut State, areas: Vec<(String, u16, u16)>) 
         }
     }
     changed
-}
-
-/// A key's name: the key (`a`, `A`, `enter`, `left`, `f5`), after its modifiers in the order `c-`
-/// (Ctrl), `a-` (Alt/Option), `d-` (Super/⌘), `s-` (Shift). Shift on a letter alone is its case
-/// (`A`); with another modifier it's `s-` and the letter is lowercase (`s-d-z`, ⇧⌘Z).
-pub fn key_name(k: KeyEvent) -> Option<String> {
-    let m = k.modifiers;
-    let (ctrl, alt, sup, mut shift) = (m.contains(KeyModifiers::CONTROL), m.contains(KeyModifiers::ALT), m.contains(KeyModifiers::SUPER), m.contains(KeyModifiers::SHIFT));
-    let base = match k.code {
-        KeyCode::Char(' ') => "space".into(),
-        KeyCode::Char(c) if ctrl || alt || sup => {
-            shift |= c.is_uppercase();
-            c.to_lowercase().to_string()
-        }
-        KeyCode::Char(c) => {
-            shift = false;
-            c.to_string()
-        }
-        KeyCode::Tab => "tab".into(),
-        KeyCode::BackTab => {
-            shift = true;
-            "tab".into()
-        }
-        KeyCode::Enter => "enter".into(),
-        KeyCode::Esc => "esc".into(),
-        KeyCode::Backspace => "bs".into(),
-        KeyCode::Up => "up".into(),
-        KeyCode::Down => "down".into(),
-        KeyCode::Left => "left".into(),
-        KeyCode::Right => "right".into(),
-        KeyCode::Home => "home".into(),
-        KeyCode::End => "end".into(),
-        KeyCode::Delete => "del".into(),
-        KeyCode::PageUp => "pgup".into(),
-        KeyCode::PageDown => "pgdn".into(),
-        KeyCode::F(n) => format!("f{n}"),
-        _ => return None,
-    };
-    let mut name = String::new();
-    for (on, p) in [(ctrl, "c-"), (alt, "a-"), (sup, "d-"), (shift, "s-")] {
-        if on {
-            name.push_str(p);
-        }
-    }
-    name.push_str(&base);
-    Some(name)
 }
 
 #[cfg(test)]
@@ -1722,23 +1697,5 @@ mod tests {
         // Nothing left to save.
         d.keep(&mut st, Duration::ZERO);
         assert_eq!(host.calls.lock().unwrap().len(), 3);
-    }
-
-    #[test]
-    fn key_names_put_modifiers_in_one_order() {
-        let k = |code, mods| key_name(KeyEvent::new(code, mods)).unwrap();
-        assert_eq!(k(KeyCode::Char('a'), KeyModifiers::NONE), "a");
-        assert_eq!(k(KeyCode::Char('A'), KeyModifiers::SHIFT), "A");
-        assert_eq!(k(KeyCode::Char('c'), KeyModifiers::CONTROL), "c-c");
-        assert_eq!(k(KeyCode::Char('b'), KeyModifiers::ALT), "a-b");
-        assert_eq!(k(KeyCode::Char('a'), KeyModifiers::SUPER), "d-a");
-        assert_eq!(k(KeyCode::Char('Z'), KeyModifiers::SUPER | KeyModifiers::SHIFT), "d-s-z");
-        assert_eq!(k(KeyCode::Char('z'), KeyModifiers::SUPER | KeyModifiers::SHIFT), "d-s-z");
-        assert_eq!(k(KeyCode::Left, KeyModifiers::SHIFT), "s-left");
-        assert_eq!(k(KeyCode::Left, KeyModifiers::ALT | KeyModifiers::SHIFT), "a-s-left");
-        assert_eq!(k(KeyCode::BackTab, KeyModifiers::SHIFT), "s-tab");
-        assert_eq!(k(KeyCode::Home, KeyModifiers::CONTROL), "c-home");
-        assert_eq!(k(KeyCode::Delete, KeyModifiers::SUPER), "d-del");
-        assert_eq!(k(KeyCode::Char(' '), KeyModifiers::NONE), "space");
     }
 }

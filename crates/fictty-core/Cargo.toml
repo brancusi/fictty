@@ -1,0 +1,21 @@
+[package]
+name = "fictty-core"
+description = "fictty's core: the UI as one value, its state and pure update, the store and the engine, with nothing that draws"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+publish = false
+
+[features]
+# The fuzz driver (`fictty_core::fuzz`), for an app's tests.
+fuzz = []
+
+[dependencies]
+anyhow = "1"
+caretline = "0.5"
+libc = "0.2"
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }
+unicode-width = "0.2"

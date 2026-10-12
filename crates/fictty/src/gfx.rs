@@ -6,7 +6,6 @@
 //! content), sends it, and re-places only what moved.
 
 use base64::Engine;
-use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use std::hash::{Hash, Hasher};
 use std::io::Write;
@@ -305,38 +304,29 @@ fn dot(w: u32, h: u32, color: Rgb, glow: f32) -> Canvas {
 
 // ---- the protocol ---------------------------------------------------------------------------
 
-/// What the terminal can do, found once at start.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
-pub struct Caps {
-    pub graphics: bool,
-    /// Pixels per cell (0 when unknown).
-    pub cell_w: f32,
-    pub cell_h: f32,
-}
+pub use crate::state::Caps;
 
-impl Caps {
-    /// Kitty graphics by terminal (Ghostty, kitty, WezTerm), `FICTTY_GRAPHICS=0|1` to force,
-    /// and the cell size from the window's pixel size.
-    pub fn detect() -> Caps {
-        let env = |k: &str| std::env::var(k).unwrap_or_default();
-        let term = format!("{} {}", env("TERM_PROGRAM"), env("TERM")).to_lowercase();
-        let mut graphics = term.contains("ghostty") || term.contains("kitty") || term.contains("wezterm");
-        match env("FICTTY_GRAPHICS").as_str() {
-            "0" => graphics = false,
-            "1" => graphics = true,
-            _ => {}
-        }
-        let (mut cell_w, mut cell_h) = (0.0, 0.0);
-        if let Ok(ws) = ratatui::crossterm::terminal::window_size()
-            && ws.columns > 0
-            && ws.rows > 0
-            && ws.width > 0
-        {
-            cell_w = ws.width as f32 / ws.columns as f32;
-            cell_h = ws.height as f32 / ws.rows as f32;
-        }
-        Caps { graphics: graphics && cell_h > 0.0, cell_w, cell_h }
+/// What the terminal can draw: kitty graphics by terminal (Ghostty, kitty, WezTerm),
+/// `FICTTY_GRAPHICS=0|1` to force, and the cell size from the window's pixel size.
+pub fn detect() -> Caps {
+    let env = |k: &str| std::env::var(k).unwrap_or_default();
+    let term = format!("{} {}", env("TERM_PROGRAM"), env("TERM")).to_lowercase();
+    let mut graphics = term.contains("ghostty") || term.contains("kitty") || term.contains("wezterm");
+    match env("FICTTY_GRAPHICS").as_str() {
+        "0" => graphics = false,
+        "1" => graphics = true,
+        _ => {}
     }
+    let (mut cell_w, mut cell_h) = (0.0, 0.0);
+    if let Ok(ws) = ratatui::crossterm::terminal::window_size()
+        && ws.columns > 0
+        && ws.rows > 0
+        && ws.width > 0
+    {
+        cell_w = ws.width as f32 / ws.columns as f32;
+        cell_h = ws.height as f32 / ws.rows as f32;
+    }
+    Caps { graphics: graphics && cell_h > 0.0, cell_w, cell_h }
 }
 
 /// Whether the terminal draws kitty's larger text (OSC 66): print two characters at twice the

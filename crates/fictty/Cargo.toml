@@ -1,0 +1,47 @@
+[package]
+name = "fictty"
+description = "A UI that is one value: agents write it, rewrite it live and read it back"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+keywords = ["tui", "terminal", "agents", "declarative", "gpui"]
+categories = ["command-line-interface", "gui"]
+publish = false
+
+[features]
+# The fuzz driver (`fictty::fuzz`), for an app's tests.
+fuzz = ["fictty-core/fuzz", "dep:vt100"]
+# A screen in a pseudo-terminal with an emulator on the other end (`fictty::sim`), for tests.
+sim = ["dep:vt100"]
+
+[[bin]]
+name = "fictty"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = "1"
+base64 = "0.22"
+caretline = "0.5"
+caretline-layers = { version = "0.2.0", default-features = false }
+clap = { version = "4", features = ["derive", "env"] }
+fictty-core = { path = "../fictty-core" }
+libc = "0.2"
+miniz_oxide = "0.8"
+ratatui = "0.30"
+resvg = { version = "0.48", default-features = false, features = ["text", "system-fonts"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }
+# A terminal emulator, for the fuzz driver's check that the escapes draw the frame.
+vt100 = { version = "0.16", optional = true }
+
+# The native window (`fictty run --window`), macOS first. Pinned: GPUI's API moves between
+# releases, so versions change deliberately, one commit each. Runtime shaders need no Xcode.
+[target.'cfg(target_os = "macos")'.dependencies]
+gpui = { version = "=0.2.2", default-features = false, features = ["font-kit", "runtime_shaders"] }
+futures = "0.3"
+
+[dev-dependencies]
+# The tests use the fuzz driver.
+fictty = { path = ".", features = ["fuzz", "sim"] }

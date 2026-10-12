@@ -877,3 +877,51 @@ fn a_state_read_back_works_its_tree_out_again() {
     assert_eq!(fictty::state::focus_order(&back), live);
 }
 
+
+#[test]
+fn the_readback_has_each_nodes_rectangle_from_the_grid() {
+    let ui = json!({"root": {"type": "row", "children": [
+        {"type": "input", "id": "name", "size": 20},
+        {"type": "button", "id": "go", "label": "Go"}
+    ]}, "focus": "name", "status_bar": false});
+    let mut s = App::new(serde_json::from_value(ui).unwrap()).headless(40, 3).unwrap();
+    s.keys(&["h", "i"]);
+    let nodes = s.readback();
+    let name = nodes.iter().find(|n| n.id.as_deref() == Some("name")).unwrap();
+    assert_eq!((name.text.as_str(), name.focus), ("hi", true));
+    assert_eq!(name.rect, Some(fictty::engine::Rect::new(0, 0, 20, 3)));
+    let go = nodes.iter().find(|n| n.id.as_deref() == Some("go")).unwrap();
+    assert_eq!(go.rect, Some(fictty::engine::Rect::new(20, 0, 20, 3)));
+    // The socket's op answers the same.
+    let r = s.request(json!({"op": "readback"}));
+    assert_eq!(r["nodes"][1]["id"], "name");
+}
+
+#[test]
+fn a_live_screen_runs_its_engine_on_its_own_thread() {
+    let sock = std::env::temp_dir().join(format!("fl-{}.sock", std::process::id()));
+    let ui = json!({"root": {"type": "text", "id": "t", "text": "n={n}", "bind": "n"}, "data": {"n": {"value": {"n": 1}}}});
+    let live = App::new(serde_json::from_value(ui).unwrap()).socket(&sock).into_core().live(40, 5).unwrap();
+    let (tx, rx) = std::sync::mpsc::channel();
+    let live = live.spawn(move || tx.send(()).is_ok());
+    // An agent's request goes through the engine's thread, which rings.
+    let r = fictty::runtime::send(&sock, json!({"op": "write", "key": "k", "write": "put", "value": "v"})).unwrap();
+    assert_eq!(r["ok"], true);
+    rx.recv_timeout(std::time::Duration::from_secs(5)).expect("a ring");
+    assert_eq!(live.lock().unwrap().state().store["k"].read()["value"], "v");
+    // The source's value arrives from a thread of its own.
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    while fictty::runtime::send(&sock, json!({"op": "readback"})).unwrap()["nodes"][0]["text"] != "n=1" {
+        assert!(std::time::Instant::now() < deadline, "the source's value should show");
+        let _ = rx.recv_timeout(std::time::Duration::from_millis(50));
+    }
+    // Input from whatever draws it joins the same queue.
+    let inbox = live.lock().unwrap().inbox();
+    inbox.input(fictty::engine::Input::Key("c-c".into()));
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    while !live.lock().unwrap().quit() {
+        assert!(std::time::Instant::now() < deadline, "the screen should quit");
+        let _ = rx.recv_timeout(std::time::Duration::from_millis(50));
+    }
+    drop(live);
+}

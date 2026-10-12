@@ -23,30 +23,45 @@ These come first; every review checks them.
   other components is a project component or a recipe, not Rust.
 - **Special cases are a smell.** A one-off guard or a branch for one UI means the model is wrong.
   Fix the model instead.
-- **Agents must be able to see it.** Every feature shows up in `fictty screen` (the frame as text)
-  or `fictty get --state` (JSON).
+- **Agents must be able to see it.** Every feature shows up in `fictty screen` (the frame as text,
+  or `--nodes`) or `fictty get --state` (JSON).
 
 ## Layout
 
-- `src/model.rs`: the UI value (nodes, kinds, sources, actions, theme, layers) and the template
-  language (`{path}`, `{±x}`, maps, conditionals, `<style>…</>` markup)
-- `src/state.rs`: `State`, `Msg`, `Effect`, `update`, key resolution, focus and selection
-- `src/view.rs`: the pure view: draws every component, returns hit regions and pictures
-- `src/gfx.rs`: pixels: the kitty graphics protocol, rasterising, SVG (resvg), caching
-- `src/runtime.rs`: the terminal, the event queue, data sources, the socket, `upgrade`; `App`
-  (how a screen starts, for the binary and for apps that embed fictty) and `Headless`
-- `src/lists.rs`: Markdown lists as text: renumbering, styles by depth (pure, text to edits)
-- `src/fuzz.rs`: the fuzz driver (the `fuzz` feature): generated acts on `Headless`, properties,
-  shrinking, replay
-- `src/sim.rs`: a screen in a pseudo-terminal with a vt100 emulator (the `sim` feature): keys as
-  a terminal's bytes, the mouse, pastes, resizes
-- `src/host.rs`: `Host`, what an embedding app provides (sources, actions, kept store entries),
-  and the `Notifier` it talks back with
-- `src/main.rs`: the CLI, one subcommand per socket operation
-- `tests/`: the library from outside: `components.rs` (each component, driven and read back),
-  `editing.rs` (the editing-keys contract), `host.rs` (an embedding app), `fuzz.rs` (random
-  input over editors and every chapter of the tour; `FUZZ_RUNS=2000` in a release build to go
-  deeper), `sim.rs` (the binary in a pty)
+Two crates in one workspace. `crates/fictty-core` is the value and the engine, with nothing that
+draws (it never compiles ratatui or GPUI); `crates/fictty` draws it and re-exports the core, so
+embedding apps depend on `fictty` alone.
+
+- `crates/fictty-core/src/model.rs`: the UI value (nodes, kinds, sources, actions, theme, layers)
+  and the template language (`{path}`, `{±x}`, maps, conditionals, `<style>…</>` markup)
+- `crates/fictty-core/src/state.rs`: `State`, `Msg`, `Effect`, `update`, key resolution, focus and
+  selection
+- `crates/fictty-core/src/engine.rs`: what runs a screen: the socket and its `Request`s, data
+  sources, the host, saving, `upgrade`; `App` (how a screen starts), `Live` (the engine for
+  whatever draws, on its own thread with `spawn`), `Inbox` and `Input`, `Headless` (driven
+  inline, drawn by a `Frame` if given one); `Rect`, `Hit`, `Drawn`
+- `crates/fictty-core/src/readback.rs`: the screen as an agent reads it, node by node
+- `crates/fictty-core/src/lists.rs`: Markdown lists as text: renumbering, styles by depth (pure,
+  text to edits)
+- `crates/fictty-core/src/fuzz.rs`: the fuzz driver (the `fuzz` feature): generated acts on
+  `Headless`, properties, shrinking, replay
+- `crates/fictty-core/src/host.rs`: `Host`, what an embedding app provides (sources, actions, kept
+  store entries), and the `Notifier` it talks back with
+- `crates/fictty/src/view.rs`: the pure view (the terminal's grid): draws every component, returns
+  hit regions, rectangles and pictures
+- `crates/fictty/src/gfx.rs`: pixels: the kitty graphics protocol, rasterising, SVG (resvg),
+  caching
+- `crates/fictty/src/runtime.rs`: the terminal: `App` (the core's, plus `run` and a grid-drawn
+  `headless`), the draw loop on the engine's rings, terminal input as the engine's, `Grid`
+- `crates/fictty/src/window.rs`: the native window (`fictty run --window`, macOS), GPUI; the
+  spike, growing to parity in phase 1 of [docs/design/native.md](docs/design/native.md)
+- `crates/fictty/src/sim.rs`: a screen in a pseudo-terminal with a vt100 emulator (the `sim`
+  feature): keys as a terminal's bytes, the mouse, pastes, resizes
+- `crates/fictty/src/main.rs`: the CLI, one subcommand per socket operation
+- `crates/fictty/tests/`: the library from outside: `components.rs` (each component, driven and
+  read back), `editing.rs` (the editing-keys contract), `host.rs` (an embedding app), `fuzz.rs`
+  (random input over editors and every chapter of the tour; `FUZZ_RUNS=2000` in a release build
+  to go deeper), `sim.rs` (the binary in a pty)
 - `examples/`: UIs and their feeds. `showcase/` is the demo the one-liners run (the tour's chapters
   are written by `tour.py`; `autopilot.sh` is its agent); `stress/` and
   `finance/` are standalone; `thc/` and `pixels/` need Thought Control installed (they move to
@@ -69,14 +84,17 @@ mise exec -- cargo clippy --all-targets
 ```
 
 - Tests live next to the code (`#[cfg(test)]` in `state.rs`, `model.rs`, `view.rs`) and in
-  `tests/`. `update` and `view` are pure, so test them directly: build a `State`, apply messages,
+  `crates/fictty/tests/`. `update` and `view` are pure, so test them directly: build a `State`, apply messages,
   assert on state or on the rendered text; or drive `App::new(ui).headless(w, h)` with keys and
   read back `screen()` and `state()`.
 - **See your change without a terminal:** `fictty render ui.json --size 120x40 --keys j,j,tab`
-  prints the frame; `--ansi` keeps colours.
+  prints the frame; `--ansi` keeps colours. `fictty screen --nodes` reads a running screen back
+  node by node, whatever draws it.
 - **Drive a running screen** the way an agent would: `fictty run ui.json` in one terminal, then
   `push`, `patch`, `key`, `mouse`, `layers`, `screen`, `get --state`, `get --stats` from another.
   `FICTTY_SOCKET=/tmp/x.sock` runs a second screen beside the first (keep socket paths short).
+  `fictty run --window ui.json` opens the native window instead: a GUI app, so as with terminals,
+  ask the person to open it, then drive it over the socket.
 - Performance claims need a release build and numbers: `examples/stress/play.sh` against a running
   screen prints fps, draw time and messages a second. Measure before and after.
 - Don't launch terminal applications (Ghostty, iTerm, WezTerm) from an agent session to test;

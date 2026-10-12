@@ -52,6 +52,8 @@ fictty patch header node.json                             # replace one node by 
 fictty key j x                                            # type keys
 fictty get --state                                        # everything on screen, as JSON
 fictty run --watch my.json                                # hot reload while you edit
+fictty screen --nodes                                     # the shown nodes: kind, id, focus, text, where
+fictty run --window my.json                               # in a native window (macOS, early)
 fictty render examples/tasks.json --size 100x30 --keys j  # no terminal
 fictty read ledger                                        # one store entry: rev, by, value or text
 fictty put ledger rows.json --if-rev 12                   # write it, unless someone wrote since 12
@@ -225,7 +227,8 @@ fictty::App::new(ui)
 - **Tests without a terminal**: `App::new(ui).host(h).headless(80, 24)?` gives a screen to send
   `keys(&["j", "x"])`, the mouse (`mouse("press", x, y)`, also `s-press`, `drag`, `release`,
   `move`, `wheel-up`, `wheel-down`), `paste(text)`, `resize(w, h)` and messages to, and to read
-  back as text (`screen()`, `ansi()`) or state (`state()`). Sources are fetched and actions done
+  back as text (`screen()`, `ansi()`), as nodes (`readback()`: each shown node's kind, id, text,
+  focus, selection and rectangle) or state (`state()`). Sources are fetched and actions done
   inline. `App::commands(false)` stops `run` actions and command sources (each fails with
   "commands are off"), so a test never starts a script. See `tests/host.rs`.
 - **Fuzzing** (the `fuzz` feature): `fictty::fuzz::run(make, &mut checks, &config)` plays random
