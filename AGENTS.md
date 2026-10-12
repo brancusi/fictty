@@ -102,12 +102,15 @@ mise exec -- cargo clippy --all-targets
 - **Drive a running screen** the way an agent would: `fictty run ui.json` in one terminal, then
   `push`, `patch`, `key`, `mouse`, `layers`, `screen`, `get --state`, `get --stats` from another.
   `FICTTY_SOCKET=/tmp/x.sock` runs a second screen beside the first (keep socket paths short).
-  `fictty run --window ui.json` opens the native window instead: a GUI app, so as with terminals,
-  ask the person to open it, then drive it over the socket.
+  `fictty run --window ui.json` opens the native window instead. An agent may launch it itself
+  (in the background, on its own `FICTTY_SOCKET`), drive it over the socket, and close it when
+  done (`fictty key c-c`, or stop the process). macOS stops drawing a window that's covered, so
+  tell the person it's open and ask them to bring it to the front to look.
 - Performance claims need a release build and numbers: `examples/stress/play.sh` against a running
   screen prints fps, draw time and messages a second. Measure before and after.
 - Don't launch terminal applications (Ghostty, iTerm, WezTerm) from an agent session to test;
-  use `render`, or ask the person to run the screen and drive it over the socket.
+  use `render`, the native window (above), or ask the person to run the screen in a terminal and
+  drive it over the socket.
 
 ## Dependencies
 
