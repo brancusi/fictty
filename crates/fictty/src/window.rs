@@ -460,25 +460,26 @@ impl Portal {
             }
             Some((frame, false)) => {
                 use caretline::view::Role;
+                // Each row is one run of text, shaped once, so selecting never moves a glyph;
+                // selections sit behind it on the cell grid that clicks are mapped on.
                 for y in 0..frame.height {
-                    // Runs of cells with one look, as spans.
-                    let mut runs: Vec<(Role, String)> = Vec::new();
+                    let mut row = String::new();
+                    let mut marks: Vec<(u16, u16)> = Vec::new();
                     for x in 0..frame.width {
                         let c = frame.cell(x, y);
-                        let role = match c.role {
-                            Role::Selection | Role::Caret => c.role,
-                            _ => Role::Text,
-                        };
-                        match runs.last_mut() {
-                            Some((r, s)) if *r == role => s.push_str(&c.symbol),
-                            _ => runs.push((role, c.symbol.to_string())),
+                        row.push_str(&c.symbol);
+                        if matches!(c.role, Role::Selection | Role::Caret) {
+                            match marks.last_mut() {
+                                Some((_, end)) if *end == x => *end = x + 1,
+                                _ => marks.push((x, x + 1)),
+                            }
                         }
                     }
-                    let spans = runs.into_iter().map(|(role, s)| match role {
-                        Role::Selection | Role::Caret => div().bg(p.selected).child(s),
-                        _ => div().child(s),
-                    });
-                    text = text.child(div().flex().flex_row().h(px(cell.h)).whitespace_nowrap().children(spans));
+                    let top = y as f32 * cell.h;
+                    for (a, b) in marks {
+                        text = text.child(div().absolute().left(px(a as f32 * cell.w)).top(px(top)).w(px((b - a) as f32 * cell.w)).h(px(cell.h)).bg(p.selected));
+                    }
+                    text = text.child(div().absolute().left(px(0.)).top(px(top)).h(px(cell.h)).whitespace_nowrap().child(row.trim_end().to_string()));
                 }
                 if let Some((x, y)) = frame.cursor.filter(|_| focused) {
                     let (left, top) = (x as f32 * cell.w, y as f32 * cell.h);
