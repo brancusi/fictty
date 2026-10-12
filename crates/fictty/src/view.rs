@@ -386,16 +386,11 @@ fn toasts(cx: &mut Cx, buf: &mut Buffer, body: Rect) {
     }
 }
 
-/// How long each spinner frame shows (ms).
-const SPIN_MS: u64 = 80;
-
 /// The spinner's glyph now, and a wake for the next one.
 fn spin(cx: &mut Cx) -> &'static str {
-    const FRAMES: [&str; 10] = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
-    let now = cx.st.now_ms;
-    let next = (now / SPIN_MS + 1) * SPIN_MS;
+    let (glyph, next) = crate::state::spinner(cx.st.now_ms);
     cx.wake = Some(cx.wake.map_or(next, |w| w.min(next)));
-    FRAMES[(now / SPIN_MS % FRAMES.len() as u64) as usize]
+    glyph
 }
 
 /// A toast's style: the theme's part for its tone (`toast.neg`), else `toast`, else the panel.

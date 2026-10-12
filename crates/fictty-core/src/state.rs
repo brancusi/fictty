@@ -2615,6 +2615,15 @@ fn reachable(st: &State, id: &str) -> bool {
     all.iter().any(|n| n.id.as_deref() == Some(id))
 }
 
+/// How long each spinner frame shows (ms).
+const SPIN_MS: u64 = 80;
+
+/// A spinner's glyph at `now_ms`, and when (on the clock) the next one shows.
+pub fn spinner(now_ms: u64) -> (&'static str, u64) {
+    const FRAMES: [&str; 10] = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+    (FRAMES[(now_ms / SPIN_MS % FRAMES.len() as u64) as usize], (now_ms / SPIN_MS + 1) * SPIN_MS)
+}
+
 /// Whether a node shows: its `when` holds (see `Node::when`).
 pub fn shown(st: &State, n: &Node) -> bool {
     let area = n.id.as_ref().and_then(|id| st.local.get(id)).and_then(|l| l.area);

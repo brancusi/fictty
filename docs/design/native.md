@@ -183,21 +183,21 @@ Where it starts (what phase 0 left, 12 October 2026):
   (lines and a caret, no selection or styles), tabs and toasts. Every other kind is a `[kind]`
   placeholder. Colours come from a fixed palette, not the theme. `size` in cells uses fixed
   `COL` (9 px) and `ROW` (24 px), not the font's measured cell.
-- **It reports nothing back yet.** `render` calls `live.drew(…, Drawn::default())`: no hits, no
-  rectangles, no editor sizes, no `wake`. So the window's readback has no rectangles, editors
-  scroll as if they were the start size, and spinners and toasts only move when something else
-  rings. Filling `Drawn` from layout (each node's bounds after prepaint) is the first job: it
-  gives the readback its rectangles and the engine its editor sizes and wake time.
-- **The window never resizes the engine.** It starts at 1200×800 px as 133×33 cells and sends no
-  `Input::Resize` when the window changes. Resizing should send one, in cells of the measured font.
+- **Done (12 October): the window reports its layout.** A measuring canvas in each node notes its
+  bounds as GPUI prepaints; once the frame paints they go to the engine as `Drawn`: rectangles
+  (the readback has them), hits (`fictty mouse` lands), editor and list sizes, `$width` areas and
+  the wake time (spinners turn, toasts go on their own). A column is the monospace font's
+  advance (Menlo, 8.43 px at 14 px), a row 24 px; the window sends that as `Msg::Caps` and its
+  size in cells as a resize. Editors draw caretline's own frame of them (caret, selection, wrap,
+  scroll), and a press, drag or wheel in their text is `Point`, `Drag` and `Scroll`, so double
+  and triple clicks work. Still to come for editors: Markdown styles, links, task boxes.
 - **Input bypasses `Input`.** Keys go straight to `Msg::Key` (fine: GPUI routes them), and clicks
   are GPUI `on_click` handlers sending `Msg`s. The terminal's way, `Input::Pointer` resolved
   against `Drawn::hits`, is there for whatever GPUI doesn't route itself (drags across nodes,
   wheel over editors, multi-click timing); decide per input which way it goes, and keep the
   messages the same either way so state, replay and the fuzz driver don't change.
-- **`Caps` is a terminal idea.** `Msg::Caps` (graphics, cell size in px) came from the kitty
-  probe. The window should send its own cell size so pictures and charts size the same way, and
-  the graphics flag goes with the terminal.
+- **`Caps` is a terminal idea.** The window sends its own cell size; the graphics flag goes with
+  the terminal.
 - **Copy and screens are drained by the frontend.** The engine queues `Effect::Copy` text
   (`take_copied`) and `screen` requests (`take_screens`); the window answers screens with the
   readback outline. A screenshot answer (phase 2) slots in the same place.
