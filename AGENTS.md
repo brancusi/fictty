@@ -53,8 +53,10 @@ embedding apps depend on `fictty` alone.
   caching
 - `crates/fictty/src/runtime.rs`: the terminal: `App` (the core's, plus `run` and a grid-drawn
   `headless`), the draw loop on the engine's rings, terminal input as the engine's, `Grid`
-- `crates/fictty/src/window.rs`: the native window (`fictty run --window`, macOS), GPUI; the
-  spike, growing to parity in phase 1 of [docs/design/native.md](docs/design/native.md)
+- `crates/fictty/src/window/`: the native window (`fictty run --window`, macOS), GPUI, growing to
+  parity in phase 1 of [docs/design/native.md](docs/design/native.md): `mod.rs` (the view, input,
+  what a frame laid out back to the engine), `look.rs` (the theme as colours and inks),
+  `text.rs` (templates with markup as styled runs, tabs and fills)
 - `crates/fictty/src/sim.rs`: a screen in a pseudo-terminal with a vt100 emulator (the `sim`
   feature): keys as a terminal's bytes, the mouse, pastes, resizes
 - `crates/fictty/src/main.rs`: the CLI, one subcommand per socket operation

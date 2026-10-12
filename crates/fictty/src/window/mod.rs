@@ -9,13 +9,17 @@
 //! a last canvas hands them over once the frame has painted. Sizes are in cells of the editors'
 //! monospace font, as in a terminal.
 
+mod look;
+mod text;
+
 use crate::engine::{Drawn, Hit, Input, Live, Rect};
+use look::{Ink, Look};
 use crate::model::{Kind, Node, Size};
 use crate::state::{self, Msg, State};
 use anyhow::Result;
 use gpui::{
-    AnyElement, App, Application, Bounds, ClipboardItem, Context, DefiniteLength, FocusHandle, FontWeight, Hsla, KeyDownEvent, MouseButton, MouseDownEvent, MouseMoveEvent, Pixels,
-    Point, ScrollStrategy, ScrollWheelEvent, SharedString, UniformListScrollHandle, Window, WindowBounds, WindowOptions, canvas, div, font, prelude::*, px, relative, rgb, size,
+    AnyElement, App, Application, Bounds, ClipboardItem, Context, DefiniteLength, FocusHandle, FontWeight, KeyDownEvent, MouseButton, MouseDownEvent, MouseMoveEvent, Pixels,
+    Point, ScrollStrategy, ScrollWheelEvent, SharedString, UniformListScrollHandle, Window, WindowBounds, WindowOptions, canvas, div, font, prelude::*, px, relative, size,
     uniform_list,
 };
 use serde_json::{Value, json};
@@ -89,49 +93,25 @@ fn measure(laid: &Shared, note: impl FnOnce(&mut Laid, Bounds<Pixels>) + 'static
     canvas(move |b, _, _| note(&mut laid.borrow_mut(), b), |_, _, _, _| {}).absolute().inset_0().into_any_element()
 }
 
-#[derive(Clone, Copy)]
-struct Palette {
-    bg: Hsla,
-    panel: Hsla,
-    fg: Hsla,
-    dim: Hsla,
-    accent: Hsla,
-    border: Hsla,
-    selected: Hsla,
-}
-
-fn palette() -> Palette {
-    Palette {
-        bg: rgb(0x0f1418).into(),
-        panel: rgb(0x161d22).into(),
-        fg: rgb(0xe3eaee).into(),
-        dim: rgb(0x93a3ad).into(),
-        accent: rgb(0x5fd1c6).into(),
-        border: rgb(0x2a353d).into(),
-        selected: rgb(0x1d3b3a).into(),
+/// Ink on an element: its colours, weight and slant.
+fn inked<E: Styled>(mut el: E, ink: Ink) -> E {
+    let (fg, bg) = if ink.reverse { (ink.bg, ink.fg) } else { (ink.fg, ink.bg) };
+    if let Some(c) = fg {
+        el = el.text_color(c);
     }
-}
-
-/// A fictty colour name (`cyan`, `#rrggbb`) as GPUI's.
-fn color(name: &str, p: &Palette) -> Option<Hsla> {
-    if let Some(hex) = name.strip_prefix('#') {
-        return u32::from_str_radix(hex, 16).ok().map(|c| rgb(c).into());
+    if let Some(c) = bg {
+        el = el.bg(c);
     }
-    let c = match name {
-        "accent" => return Some(p.accent),
-        "dim" | "muted" => return Some(p.dim),
-        "red" | "neg" => 0xf07178,
-        "green" | "pos" => 0x8bd49c,
-        "yellow" => 0xf0c674,
-        "blue" => 0x6cb6ff,
-        "magenta" => 0xd291e4,
-        "cyan" => 0x5fd1c6,
-        "white" => 0xffffff,
-        "gray" | "grey" | "darkgray" => 0x7a8791,
-        "black" => 0x000000,
-        _ => return None,
-    };
-    Some(rgb(c).into())
+    if ink.bold {
+        el = el.font_weight(FontWeight::BOLD);
+    }
+    if ink.italic {
+        el = el.italic();
+    }
+    if ink.dim {
+        el = el.opacity(0.6);
+    }
+    el
 }
 
 struct Portal {
@@ -203,11 +183,6 @@ fn key_name(e: &KeyDownEvent) -> Option<String> {
     Some(name)
 }
 
-/// What a template shows, filled from `v`.
-fn filled(template: &str, v: &Value) -> String {
-    crate::model::segments(template, v).into_iter().map(|s| s.text).collect()
-}
-
 /// A node's share of its row or column, as flexbox: cells become pixels, `30%` a fraction,
 /// `*` and `2*` a grow factor.
 fn sized(el: gpui::Stateful<gpui::Div>, n: &Node, along_row: bool, cell: Cell) -> gpui::Stateful<gpui::Div> {
@@ -230,11 +205,10 @@ fn sized(el: gpui::Stateful<gpui::Div>, n: &Node, along_row: bool, cell: Cell) -
 }
 
 impl Portal {
-    fn node(&mut self, st: &State, n: &Node, along_row: bool, path: &str, cx: &mut Context<Self>) -> AnyElement {
+    fn node(&mut self, st: &State, lk: &Look, n: &Node, along_row: bool, path: &str, cx: &mut Context<Self>) -> AnyElement {
         if !state::shown(st, n) {
             return div().into_any_element();
         }
-        let p = palette();
         let id = n.id.clone().unwrap_or_default();
         let key = if id.is_empty() { path.to_string() } else { id.clone() };
         let focused = !id.is_empty() && st.focus.as_deref() == Some(id.as_str());
@@ -249,29 +223,22 @@ impl Portal {
                 l.hits.push((b, hit(id, None, None, false)));
             }));
         }
-        if let Some(s) = &n.style {
-            if let Some(c) = s.fg.as_deref().and_then(|c| color(c, &p)) {
-                el = el.text_color(c);
-            }
-            if let Some(c) = s.bg.as_deref().and_then(|c| color(c, &p)) {
-                el = el.bg(c);
-            }
-            if s.bold {
-                el = el.font_weight(FontWeight::BOLD);
-            }
-        }
+        let own = lk.style(n.style.as_ref());
+        el = inked(el, own);
         let v = state::bound(st, n).unwrap_or(&Value::Null);
         // A title or a border: a panel with rounded corners, the title on top.
         if n.title.is_some() || n.border {
-            el = el.bg(p.panel).rounded_lg().border_1().border_color(if focused { p.accent } else { p.border }).p_2().gap_1();
+            let edge = if focused { lk.part("border.focused", Ink { fg: Some(lk.accent), ..Ink::default() }) } else { lk.part("border", Ink { fg: Some(lk.border), ..Ink::default() }) };
+            el = el.bg(lk.panel).rounded_lg().border_1().border_color(edge.fg.unwrap_or(lk.border)).p_2().gap_1();
             if let Some(t) = &n.title {
-                el = el.child(div().text_sm().text_color(if focused { p.accent } else { p.dim }).font_weight(FontWeight::SEMIBOLD).child(filled(t, v)));
+                let ink = if focused { lk.part("title.focused", Ink { fg: Some(lk.accent), bold: true, ..Ink::default() }) } else { lk.part("title", Ink { fg: Some(lk.dim), bold: true, ..Ink::default() }) };
+                el = el.child(div().flex_none().w_full().text_sm().child(text::line(lk, t, v, ink, false)));
             }
         }
         let body: AnyElement = match &n.kind {
             Kind::Col { children, gap } | Kind::Row { children, gap } => {
                 let row = matches!(n.kind, Kind::Row { .. });
-                let kids: Vec<AnyElement> = children.iter().enumerate().map(|(k, c)| self.node(st, c, row, &format!("{key}.{k}"), cx)).collect();
+                let kids: Vec<AnyElement> = children.iter().enumerate().map(|(k, c)| self.node(st, lk, c, row, &format!("{key}.{k}"), cx)).collect();
                 let d = div().relative().flex().size_full().min_h(px(0.)).min_w(px(0.)).gap(px(gap.unwrap_or(0) as f32 * if row { cell.w } else { cell.h }));
                 let d = if row { d.flex_row() } else { d.flex_col() };
                 // `$width` and `$height` in a child's `when` are this node's inner size.
@@ -281,41 +248,36 @@ impl Portal {
             }
             Kind::Stack { children } => {
                 let shown: Vec<(usize, Node)> = children.iter().enumerate().filter(|(_, c)| state::shown(st, c)).map(|(k, c)| (k, c.clone())).collect();
-                let kids: Vec<AnyElement> = shown.iter().map(|(k, c)| div().absolute().inset_0().flex().child(self.node(st, c, false, &format!("{key}.{k}"), cx)).into_any_element()).collect();
+                let kids: Vec<AnyElement> = shown.iter().map(|(k, c)| div().absolute().inset_0().flex().child(self.node(st, lk, c, false, &format!("{key}.{k}"), cx)).into_any_element()).collect();
                 div().relative().size_full().children(kids).into_any_element()
             }
-            Kind::Text { text } => {
-                let lines: Vec<AnyElement> = text.split('\n').filter(|l| crate::model::shows(l, v)).map(|l| div().child(filled(l, v)).into_any_element()).collect();
-                div().flex().flex_col().children(lines).into_any_element()
-            }
+            Kind::Text { text } => text::lines(lk, text, v, Ink::default()),
             Kind::Spinner { text } => {
                 let (glyph, next) = state::spinner(st.now_ms);
                 self.soon(next);
-                div().flex().flex_row().gap_2().child(div().text_color(p.accent).child(glyph)).child(filled(text, v)).into_any_element()
+                let ink = lk.part("spinner", Ink { fg: Some(lk.accent), ..Ink::default() });
+                div().flex().flex_row().gap_2().child(inked(div(), ink).child(glyph)).child(text::line(lk, text, v, Ink::default(), false)).into_any_element()
             }
             Kind::Button { label } => {
-                let label = filled(label, v);
+                let label = text::plain(label, v);
+                let ink = if focused { lk.part("button.focused", Ink { fg: Some(lk.bg), bg: Some(lk.accent), bold: true, ..Ink::default() }) } else { lk.part("button", Ink { fg: Some(lk.fg), bg: Some(lk.ring), ..Ink::default() }) };
                 let target = id.clone();
-                div()
-                    .id(SharedString::from(format!("btn-{key}")))
-                    .px_3()
-                    .py_1()
-                    .rounded_md()
-                    .bg(if focused { p.accent } else { p.panel })
-                    .text_color(if focused { p.bg } else { p.fg })
-                    .cursor_pointer()
-                    .hover(|s| s.bg(p.selected))
+                let hover = lk.hover;
+                inked(div().id(SharedString::from(format!("btn-{key}"))).px_3().rounded_md().cursor_pointer(), ink)
+                    .when(!focused, |d| d.hover(move |s| s.bg(hover)))
                     .on_click(cx.listener(move |this, _, _, cx| this.send(Msg::Click { id: target.clone(), row: None, tab: None }, cx)))
                     .child(label)
                     .into_any_element()
             }
-            Kind::Rule { .. } => div().h(px(1.)).w_full().bg(p.border).into_any_element(),
+            Kind::Rule { .. } => div().h(px(1.)).w_full().bg(own.fg.unwrap_or(lk.border)).into_any_element(),
             Kind::List { rows, .. } | Kind::Tree { rows, .. } => self.list(st, n, &id, rows.item.clone(), focused, cx),
             Kind::Table { columns, .. } => {
                 let rows = state::items(st, n).to_vec();
                 let sel = state::selected(st, &id);
                 let columns = columns.clone();
-                let head = div().flex().flex_row().h(px(cell.h)).text_sm().text_color(p.dim).children(columns.iter().map(|c| div().flex_1().child(c.title.clone())));
+                let head_ink = lk.part("table.header", Ink { fg: Some(lk.accent), bold: true, ..Ink::default() });
+                let head = inked(div().flex().flex_row().h(px(cell.h)), head_ink).children(columns.iter().map(|c| div().flex_1().child(c.title.clone())));
+                let chosen = selected_ink(lk, focused);
                 let body: Vec<AnyElement> = rows
                     .iter()
                     .enumerate()
@@ -330,9 +292,9 @@ impl Portal {
                             .flex_row()
                             .h(px(cell.h))
                             .child(measure(&self.laid, move |l, b| l.hits.push((b, hit(under, Some(k), None, false)))))
-                            .when(k == sel, |d| d.bg(if focused { p.selected } else { p.panel }))
+                            .when(k == sel, |d| inked(d, chosen))
                             .on_click(cx.listener(move |this, _, _, cx| this.send(Msg::Click { id: target.clone(), row: Some(k), tab: None }, cx)))
-                            .children(columns.iter().map(|c| div().flex_1().child(filled(&c.value, r))))
+                            .children(columns.iter().map(|c| div().flex_1().min_w_0().child(text::line(lk, &c.value, r, Ink::default(), false))))
                             .into_any_element()
                     })
                     .collect();
@@ -341,10 +303,12 @@ impl Portal {
                 let rows_area = div().relative().flex().flex_col().flex_1().min_h(px(0.)).child(measure(&self.laid, move |l, b| l.sizes.push((fits, b)))).children(body);
                 div().flex().flex_col().size_full().child(head).child(rows_area).into_any_element()
             }
-            Kind::Editor { .. } | Kind::Input { .. } => self.editor(st, n, &id, focused, cx),
+            Kind::Editor { .. } | Kind::Input { .. } => self.editor(st, lk, n, &id, focused, cx),
             Kind::Tabs { tabs, children, .. } => {
                 let at = state::tab_of(st, n).min(children.len().saturating_sub(1));
                 let tabs = tabs.clone();
+                let active = lk.part("tabs.active", Ink { fg: Some(lk.bg), bg: Some(lk.accent), bold: true, ..Ink::default() });
+                let idle = lk.part("tabs.idle", Ink { fg: Some(lk.dim), ..Ink::default() });
                 let child = children.get(at).cloned();
                 let bar = div().flex().flex_row().gap_2().children(tabs.iter().enumerate().map(|(k, t)| {
                     let target = id.clone();
@@ -356,28 +320,27 @@ impl Portal {
                         .px_2()
                         .rounded_md()
                         .cursor_pointer()
-                        .when(k == at, |d| d.bg(p.selected).text_color(p.accent))
+                        .map(|d| if k == at { inked(d, active) } else { inked(d, idle) })
                         .on_click(cx.listener(move |this, _, _, cx| this.send(Msg::Click { id: target.clone(), row: None, tab: Some(k) }, cx)))
-                        .child(filled(t, v))
+                        .child(text::plain(t, v))
                 }));
-                let shown = child.map(|c| self.node(st, &c, false, &format!("{key}.{at}"), cx)).unwrap_or_else(|| div().into_any_element());
+                let shown = child.map(|c| self.node(st, lk, &c, false, &format!("{key}.{at}"), cx)).unwrap_or_else(|| div().into_any_element());
                 div().flex().flex_col().size_full().gap_1().child(bar).child(div().flex().flex_1().min_h(px(0.)).child(shown)).into_any_element()
             }
             Kind::Toasts {} => {
                 if let Some(at) = st.toasts.iter().map(|t| t.until).min() {
                     self.soon(at);
                 }
-                let ts: Vec<AnyElement> = st.toasts.iter().rev().map(|t| div().px_2().rounded_md().bg(p.selected).child(t.text.clone()).into_any_element()).collect();
+                let ts: Vec<AnyElement> = st.toasts.iter().rev().map(|t| toast(lk, t)).collect();
                 div().flex().flex_col().gap_1().children(ts).into_any_element()
             }
-            _ => div().text_color(p.dim).child(format!("[{}]", n.kind_name())).into_any_element(),
+            _ => div().text_color(lk.dim).child(format!("[{}]", n.kind_name())).into_any_element(),
         };
         el = el.child(body);
         el.into_any_element()
     }
 
     fn list(&mut self, st: &State, n: &Node, id: &str, item: Option<String>, focused: bool, cx: &mut Context<Self>) -> AnyElement {
-        let p = palette();
         let count = state::items(st, n).len();
         let sel = state::selected(st, id);
         let handle = self.scrolls.entry(id.to_string()).or_default().clone();
@@ -398,13 +361,16 @@ impl Portal {
                 let st = live.state();
                 let Some(n) = st.tree().find(&target) else { return Vec::new() };
                 let rows = state::items(st, n);
+                let lk = Look::new(st);
+                let chosen = selected_ink(&lk, focused);
+                let hover = lk.hover;
                 range
                     .filter(|k| *k < rows.len())
                     .map(|k| {
                         let r = &rows[k];
                         let text = match &item {
-                            Some(t) => filled(t, r),
-                            None => crate::model::scalar(Some(r)),
+                            Some(t) => text::line(&lk, t, r, Ink::default(), false),
+                            None => div().child(crate::model::scalar(Some(r))).into_any_element(),
                         };
                         let target = target.clone();
                         let under = target.clone();
@@ -415,8 +381,9 @@ impl Portal {
                             .h(px(cell.h))
                             .px_2()
                             .rounded_sm()
-                            .when(k == sel, |d| d.bg(if focused { p.selected } else { p.panel }).text_color(if focused { p.accent } else { p.fg }))
-                            .hover(|s| s.bg(p.panel))
+                            .flex()
+                            .items_center()
+                            .map(|d| if k == sel { inked(d, chosen) } else { d.hover(move |s| s.bg(hover)) })
                             .on_click(cx.listener(move |this, _, _, cx| this.send(Msg::Click { id: target.clone(), row: Some(k), tab: None }, cx)))
                             .child(text)
                     })
@@ -432,8 +399,9 @@ impl Portal {
     /// An editor or input, drawn from caretline's own frame of it: the text at the monospace
     /// font's cell size, so the caret, selections, wrapping and clicks land where caretline puts
     /// them. The frame is the size the last frame laid the editor out in (`Msg::Size`).
-    fn editor(&mut self, st: &State, n: &Node, id: &str, focused: bool, cx: &mut Context<Self>) -> AnyElement {
-        let p = palette();
+    fn editor(&mut self, st: &State, lk: &Look, n: &Node, id: &str, focused: bool, cx: &mut Context<Self>) -> AnyElement {
+        let marked = lk.part("editor.selection", Ink { bg: Some(lk.ring), ..Ink::default() }).bg.unwrap_or(lk.ring);
+        let caret = lk.part("editor.caret", Ink { bg: Some(lk.accent), ..Ink::default() }).bg.unwrap_or(lk.accent);
         let cell = self.cell;
         let field = n.field().expect("a text field");
         let single = field.line;
@@ -453,9 +421,10 @@ impl Portal {
         match doc {
             Some((_, true)) | None => {
                 let empty = field.placeholder.unwrap_or(if doc.is_none() { "…" } else { "" }).to_string();
-                text = text.child(div().h(px(cell.h)).text_color(p.dim).italic().child(empty));
+                let ink = lk.part("input.placeholder", Ink { fg: Some(lk.dim), italic: true, ..Ink::default() });
+                text = text.child(inked(div().h(px(cell.h)), ink).child(empty));
                 if focused {
-                    text = text.child(div().absolute().left(px(0.)).top(px(3.)).w(px(2.)).h(px(cell.h - 6.)).bg(p.accent));
+                    text = text.child(div().absolute().left(px(0.)).top(px(3.)).w(px(2.)).h(px(cell.h - 6.)).bg(caret));
                 }
             }
             Some((frame, false)) => {
@@ -477,13 +446,13 @@ impl Portal {
                     }
                     let top = y as f32 * cell.h;
                     for (a, b) in marks {
-                        text = text.child(div().absolute().left(px(a as f32 * cell.w)).top(px(top)).w(px((b - a) as f32 * cell.w)).h(px(cell.h)).bg(p.selected));
+                        text = text.child(div().absolute().left(px(a as f32 * cell.w)).top(px(top)).w(px((b - a) as f32 * cell.w)).h(px(cell.h)).bg(marked));
                     }
                     text = text.child(div().absolute().left(px(0.)).top(px(top)).h(px(cell.h)).whitespace_nowrap().child(row.trim_end().to_string()));
                 }
                 if let Some((x, y)) = frame.cursor.filter(|_| focused) {
                     let (left, top) = (x as f32 * cell.w, y as f32 * cell.h);
-                    text = text.child(div().absolute().left(px(left)).top(px(top + 3.)).w(px(2.)).h(px(cell.h - 6.)).bg(p.accent));
+                    text = text.child(div().absolute().left(px(left)).top(px(top + 3.)).w(px(2.)).h(px(cell.h - 6.)).bg(caret));
                 }
             }
         }
@@ -495,7 +464,7 @@ impl Portal {
             .size_full()
             .px_2()
             .font_family(MONO)
-            .when(single, |d| d.justify_center().bg(p.panel).rounded_md().border_1().border_color(if focused { p.accent } else { p.border }))
+            .when(single, |d| d.justify_center().bg(lk.bg).rounded_md().border_1().border_color(if focused { lk.accent } else { lk.border }))
             // A press in the text puts the caret there (twice a word, three times the line) and
             // starts a drag; the wheel scrolls it. The same messages a terminal's mouse makes.
             .on_mouse_down(
@@ -524,7 +493,6 @@ impl Portal {
 impl Render for Portal {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let t = Instant::now();
-        let p = palette();
         let live = self.live.clone();
         let mut live = live.lock().unwrap();
         // The window's size in cells: `$screen`, as a terminal's resize sends it.
@@ -542,7 +510,8 @@ impl Render for Portal {
             cx.write_to_clipboard(ClipboardItem::new_string(text));
         }
         let st = live.state();
-        let body = self.node(st, st.tree(), false, "root", cx);
+        let lk = Look::new(st);
+        let body = self.node(st, &lk, st.tree(), false, "root", cx);
         // A lasting write going, or a toast, changes the frame too.
         for at in st.expiring.iter().map(|e| e.at).chain(st.toasts.iter().map(|t| t.until)) {
             self.soon(at);
@@ -555,7 +524,7 @@ impl Render for Portal {
             st.stats.msgs as u64,
             st.status.as_ref().map(|s| format!(" · {s}")).unwrap_or_default()
         );
-        let toasts: Vec<AnyElement> = st.toasts.iter().rev().take(3).map(|t| div().px_3().py_1().rounded_md().bg(p.selected).text_color(p.fg).child(t.text.clone()).into_any_element()).collect();
+        let toasts: Vec<AnyElement> = st.toasts.iter().rev().take(3).map(|t| toast(&lk, t)).collect();
         // Agents' `screen` requests get a readback of what's drawn.
         if !asked.is_empty() {
             let text = crate::readback::outline(&live.readback());
@@ -593,15 +562,31 @@ impl Render for Portal {
             .relative()
             .flex()
             .flex_col()
-            .bg(p.bg)
-            .text_color(p.fg)
+            .bg(lk.bg)
+            .text_color(lk.fg)
             .text_size(px(TYPE))
             .line_height(px(ROW))
             .child(div().flex().flex_1().min_h(px(0.)).p_3().child(body))
             .child(div().absolute().bottom(px(32.)).right(px(16.)).flex().flex_col().gap_1().children(toasts))
-            .child(div().h(px(ROW)).px_3().text_xs().text_color(p.dim).bg(p.panel).child(status))
+            .child(div().h(px(ROW)).px_3().text_xs().text_color(lk.dim).bg(lk.panel).child(status))
             .child(handover)
     }
+}
+
+/// A selected row's ink, focused or not.
+fn selected_ink(lk: &Look, focused: bool) -> Ink {
+    if focused {
+        lk.part("row.selected", Ink { fg: Some(lk.accent), bg: Some(lk.ring), ..Ink::default() })
+    } else {
+        lk.part("row.selected.blur", Ink { bg: Some(lk.panel), ..Ink::default() })
+    }
+}
+
+/// A toast, in its tone's colour.
+fn toast(lk: &Look, t: &state::Toast) -> AnyElement {
+    let ink = lk.part("toast", Ink { fg: Some(lk.fg), bg: Some(lk.panel), ..Ink::default() });
+    let edge = t.tone.as_deref().and_then(|c| lk.color(c)).unwrap_or(lk.accent);
+    inked(div().px_3().py_1().rounded_md().border_1().border_color(edge), ink).child(t.text.clone()).into_any_element()
 }
 
 /// What a painted frame laid out, to the engine, in cells.
