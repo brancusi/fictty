@@ -132,7 +132,8 @@ pub struct Node {
     /// focused (lists, tables) and can be replaced alone (`patch`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub id: Option<String>,
-    /// Its share of the parent row/col: `12` (cells), `"30%"`, `"*"` (the default) or `"2*"`.
+    /// Its share of the parent row/col: `12` (cells), `"48px"`, `"30%"`, `"*"` (the default) or
+    /// `"2*"`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub size: Option<Size>,
     /// A title draws a border with it.
@@ -197,7 +198,7 @@ pub struct Node {
     pub kind: Kind,
 }
 
-/// Where a floating node sits in its stack: `width` and `height` (cells, `"50%"`; default the
+/// Where a floating node sits in its stack: `width` and `height` (cells, `"50%"`, `"240px"`; default the
 /// whole stack) and `at` (`center`, the default, or `top`, `bottom`, `left`, `right` and the
 /// corners, `top-right`), `margin` cells in from the edge it's at.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
@@ -593,6 +594,38 @@ pub struct Column {
 pub enum Size {
     Cells(u16),
     Spec(String),
+}
+
+/// A size, read: what a `Size` asks of its row or column.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Measure {
+    /// `12` or `"12"`: that many columns or rows.
+    Cells(u16),
+    /// `"48px"`: exact in a window; a terminal rounds it to its cells.
+    Px(f32),
+    /// `"30%"` of the parent.
+    Percent(f32),
+    /// `"*"`, `"2*"`: a share of what's left (anything unreadable is one share).
+    Share(u16),
+}
+
+impl Size {
+    pub fn measure(&self) -> Measure {
+        let s = match self {
+            Size::Cells(n) => return Measure::Cells(*n),
+            Size::Spec(s) => s.trim(),
+        };
+        if let Some(p) = s.strip_suffix('%') {
+            return p.trim().parse().map_or(Measure::Share(1), Measure::Percent);
+        }
+        if let Some(p) = s.strip_suffix("px") {
+            return p.trim().parse().map_or(Measure::Share(1), Measure::Px);
+        }
+        if let Some(w) = s.strip_suffix('*') {
+            return Measure::Share(if w.is_empty() { 1 } else { w.trim().parse().unwrap_or(1) });
+        }
+        s.parse().map_or(Measure::Share(1), Measure::Cells)
+    }
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]

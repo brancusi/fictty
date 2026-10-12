@@ -2,7 +2,7 @@
 //! Besides the frame it returns the hit regions (what is under each cell, for the mouse), and
 //! it places the UI's layers with caretline-layers over what it drew.
 
-use crate::model::{Float, Kind, LayerSpec, Look, Node, Seg, Size, Style as NodeStyle, ThemeSpec, Variant, fill, lookup, number, scalar, segments};
+use crate::model::{Float, Kind, LayerSpec, Look, Measure, Node, Seg, Size, Style as NodeStyle, ThemeSpec, Variant, fill, lookup, number, scalar, segments};
 use crate::state::{Slot, State, bound, field_view, items, selected, shown, shown_in, sized, split_bind, tab_of, value_of};
 use crate::gfx::{Pic, Placed, Rgb};
 use caretline_layers as cl;
@@ -402,22 +402,20 @@ fn toast_look(cx: &Cx, tone: Option<&str>) -> Style {
     }
 }
 
-/// A floating node's place in its stack.
-fn float_rect(fl: &Float, area: Rect) -> Rect {
+/// A floating node's place in its stack, with the cell's size in pixels.
+fn float_rect(fl: &Float, area: Rect, (cw, ch): (f32, f32)) -> Rect {
     let m = fl.margin.unwrap_or(0);
-    let dim = |s: Option<&Size>, full: u16| -> u16 {
-        let n = match s {
-            None => full,
-            Some(Size::Cells(n)) => *n,
-            Some(Size::Spec(t)) => match t.trim().strip_suffix('%') {
-                Some(p) => p.trim().parse::<u32>().map_or(full, |p| (full as u32 * p / 100) as u16),
-                None => t.trim().parse().unwrap_or(full),
-            },
+    let dim = |s: Option<&Size>, full: u16, cell: f32| -> u16 {
+        let n = match s.map(Size::measure) {
+            Some(Measure::Cells(n)) => n,
+            Some(Measure::Px(p)) => in_cells(p, cell),
+            Some(Measure::Percent(p)) => (full as f32 * p / 100.0) as u16,
+            None | Some(Measure::Share(_)) => full,
         };
         n.min(full)
     };
-    let w = dim(fl.width.as_ref(), area.width.saturating_sub(2 * m));
-    let h = dim(fl.height.as_ref(), area.height.saturating_sub(2 * m));
+    let w = dim(fl.width.as_ref(), area.width.saturating_sub(2 * m), cw);
+    let h = dim(fl.height.as_ref(), area.height.saturating_sub(2 * m), if ch > 0.0 { ch } else { 16.0 });
     let at = fl.at.as_deref().unwrap_or("center");
     let x = if at.contains("left") {
         area.x + m
@@ -684,7 +682,8 @@ fn node(cx: &mut Cx, n: &Node, f: &mut Frame, area: Rect) {
             }
             let showing: Vec<&Node> = children.iter().filter(|c| shown_in(st, c, Some(here))).collect();
             let along = if matches!(n.kind, Kind::Col { .. }) { inner.height } else { inner.width };
-            let cs: Vec<Constraint> = showing.iter().map(|c| bounded(constraint(c.size.as_ref()), c.min, c.max, along)).collect();
+            let cell = if matches!(n.kind, Kind::Col { .. }) { if st.caps.cell_h > 0.0 { st.caps.cell_h } else { 16.0 } } else { st.caps.cell_w };
+            let cs: Vec<Constraint> = showing.iter().map(|c| bounded(constraint(c.size.as_ref(), cell), c.min, c.max, along)).collect();
             let areas = match n.kind {
                 Kind::Col { .. } => Layout::vertical(cs).spacing(gap.unwrap_or(0)).split(inner),
                 _ => Layout::horizontal(cs).spacing(gap.unwrap_or(0)).split(inner),
@@ -696,7 +695,7 @@ fn node(cx: &mut Cx, n: &Node, f: &mut Frame, area: Rect) {
         }
         Kind::Stack { children } => {
             for c in children.iter().filter(|c| shown(st, c)) {
-                let at = c.float.as_ref().map_or(inner, |fl| float_rect(fl, inner));
+                let at = c.float.as_ref().map_or(inner, |fl| float_rect(fl, inner, (st.caps.cell_w, st.caps.cell_h)));
                 if c.modal {
                     // What's behind a dialog dims, and a click there goes nowhere.
                     let buf = f.buffer_mut();
@@ -951,7 +950,7 @@ fn node(cx: &mut Cx, n: &Node, f: &mut Frame, area: Rect) {
         }
         Kind::Table { columns, .. } => {
             let rows = items(st, n);
-            let widths: Vec<Constraint> = columns.iter().map(|c| constraint(c.size.as_ref())).collect();
+            let widths: Vec<Constraint> = columns.iter().map(|c| constraint(c.size.as_ref(), st.caps.cell_w)).collect();
             if inner.height == 0 {
                 return;
             }
@@ -1470,21 +1469,19 @@ fn bounded(c: Constraint, min: Option<u16>, max: Option<u16>, along: u16) -> Con
     }
 }
 
-pub fn constraint(s: Option<&Size>) -> Constraint {
-    match s {
+pub fn constraint(s: Option<&Size>, cell: f32) -> Constraint {
+    match s.map(Size::measure) {
         None => Constraint::Fill(1),
-        Some(Size::Cells(n)) => Constraint::Length(*n),
-        Some(Size::Spec(s)) => {
-            let s = s.trim();
-            if let Some(p) = s.strip_suffix('%') {
-                p.parse().map(Constraint::Percentage).unwrap_or(Constraint::Fill(1))
-            } else if let Some(w) = s.strip_suffix('*') {
-                Constraint::Fill(if w.is_empty() { 1 } else { w.parse().unwrap_or(1) })
-            } else {
-                s.parse().map(Constraint::Length).unwrap_or(Constraint::Fill(1))
-            }
-        }
+        Some(Measure::Cells(n)) => Constraint::Length(n),
+        Some(Measure::Px(p)) => Constraint::Length(in_cells(p, cell)),
+        Some(Measure::Percent(p)) => Constraint::Percentage(p.round().clamp(0.0, 100.0) as u16),
+        Some(Measure::Share(w)) => Constraint::Fill(w),
     }
+}
+
+/// Pixels as whole cells of `cell` pixels (a cell of 8 × 16 where the terminal didn't say).
+fn in_cells(p: f32, cell: f32) -> u16 {
+    (p / if cell > 0.0 { cell } else { 8.0 }).round().clamp(0.0, u16::MAX as f32) as u16
 }
 
 // ---- big digits ---------------------------------------------------------------------------

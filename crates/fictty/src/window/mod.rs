@@ -16,12 +16,12 @@ mod text;
 
 use crate::engine::{Drawn, Hit, Live, Rect};
 use look::{Ink, Look};
-use crate::model::{Kind, Md, Node, Size, md_roles};
+use crate::model::{Float, Kind, Md, Measure, Node, Size, md_roles};
 use crate::state::{self, Msg, State};
 use anyhow::Result;
 use gpui::{
-    AnyElement, App, Application, Bounds, ClipboardItem, Context, DefiniteLength, FocusHandle, FontWeight, HighlightStyle, Hsla, KeyDownEvent, MouseButton, MouseDownEvent, MouseMoveEvent, Pixels,
-    Point, ScrollWheelEvent, SharedString, StyledText, Window, WindowBounds, WindowOptions, canvas, div, font, prelude::*, px, relative, size,
+    AnyElement, App, Application, Bounds, ClipboardItem, Context, DefiniteLength, DispatchPhase, FocusHandle, FontWeight, HighlightStyle, Hsla, KeyDownEvent, MouseButton, MouseDownEvent, MouseMoveEvent, Pixels,
+    MouseUpEvent, Point, ScrollWheelEvent, SharedString, StyledText, Window, WindowBounds, WindowOptions, canvas, div, font, prelude::*, px, relative, size,
 };
 use serde_json::{Value, json};
 use std::cell::RefCell;
@@ -92,9 +92,11 @@ fn hit(id: String, row: Option<usize>, tab: Option<usize>, text: bool) -> Hit {
 }
 
 /// A canvas that notes, as it's laid out, the bounds it filled: absolute, so it takes no room.
+/// What's noted is what shows: the bounds clipped to what holds it (a node squeezed out of its
+/// parent's room is clipped away, and so is its hit).
 fn measure(laid: &Shared, note: impl FnOnce(&mut Laid, Bounds<Pixels>) + 'static) -> AnyElement {
     let laid = laid.clone();
-    canvas(move |b, _, _| note(&mut laid.borrow_mut(), b), |_, _, _, _| {}).absolute().inset_0().into_any_element()
+    canvas(move |b, window, _| note(&mut laid.borrow_mut(), b.intersect(&window.content_mask().bounds)), |_, _, _, _| {}).absolute().inset_0().into_any_element()
 }
 
 /// Ink on an element: its colours, weight and slant.
@@ -221,6 +223,23 @@ impl Portal {
         }
     }
 
+    /// The mouse moved: a drag that started in an editor's text follows it anywhere in the
+    /// window; otherwise the row under it is hovered, as the terminal's hover, told only when it
+    /// changes. Under it means the innermost thing there: not a row a dialog covers.
+    fn moved(&mut self, e: &MouseMoveEvent, cx: &mut Context<Self>) {
+        if let Some(id) = self.drag.clone().filter(|_| e.dragging()) {
+            if let Some((col, row)) = self.in_text(&id, e.position) {
+                self.send(Msg::Drag { id, col, row }, cx);
+            }
+            return;
+        }
+        self.drag = None;
+        let hover = self.shown.borrow().iter().rev().find(|(b, _)| b.contains(&e.position)).filter(|(_, h)| h.row.is_some()).map(|(_, h)| state::Hover { id: h.id.clone(), row: h.row });
+        if hover != self.engine.hover() {
+            self.send(Msg::Hover { hover }, cx);
+        }
+    }
+
     /// The cell `at` falls on in editor `id`'s text, in the last painted frame.
     fn in_text(&self, id: &str, at: Point<Pixels>) -> Option<(u16, u16)> {
         self.shown.borrow().iter().rev().find(|(_, h)| h.text && h.id == id).map(|(b, _)| self.cell.within(*b, at))
@@ -255,24 +274,43 @@ fn key_name(e: &KeyDownEvent) -> Option<String> {
     Some(name)
 }
 
-/// A node's share of its row or column, as flexbox: cells become pixels, `30%` a fraction,
-/// `*` and `2*` a grow factor.
+/// A node's share of its row or column, as flexbox: cells and pixels a basis it may shrink from
+/// (as a terminal's layout gives a fixed size up when there isn't room), `30%` a fraction, `*`
+/// and `2*` a grow factor; `min` and `max` bound it, in cells.
 fn sized(el: gpui::Stateful<gpui::Div>, n: &Node, along_row: bool, cell: Cell) -> gpui::Stateful<gpui::Div> {
-    match &n.size {
-        Some(Size::Cells(c)) if along_row => el.flex_none().w(px(*c as f32 * cell.w)),
-        Some(Size::Cells(c)) => el.flex_none().h(px(*c as f32 * cell.h)),
-        Some(Size::Spec(s)) if s.ends_with('%') => {
-            let f = s.trim_end_matches('%').parse::<f32>().unwrap_or(100.0) / 100.0;
-            let l: DefiniteLength = relative(f);
-            if along_row { el.flex_none().w(l) } else { el.flex_none().h(l) }
-        }
-        Some(Size::Spec(s)) => {
-            let grow = s.trim_end_matches('*').parse::<f32>().unwrap_or(1.0);
+    let per = if along_row { cell.w } else { cell.h };
+    let fixed = |mut el: gpui::Stateful<gpui::Div>, l: DefiniteLength| {
+        el.style().flex_grow = Some(0.);
+        el.flex_shrink().flex_basis(l).min_w(px(0.)).min_h(px(0.))
+    };
+    let mut el = match n.size.as_ref().map(Size::measure) {
+        Some(Measure::Cells(c)) => fixed(el, px(c as f32 * per).into()),
+        Some(Measure::Px(p)) => fixed(el, px(p).into()),
+        Some(Measure::Percent(p)) => fixed(el, relative(p / 100.0)),
+        Some(Measure::Share(w)) => {
             let mut el = el.flex_basis(px(0.)).min_w(px(0.)).min_h(px(0.)).flex_shrink();
-            el.style().flex_grow = Some(grow);
+            el.style().flex_grow = Some(w as f32);
             el
         }
         None => el.flex_1().min_w(px(0.)).min_h(px(0.)),
+    };
+    if let Some(m) = n.min {
+        el = if along_row { el.min_w(px(m as f32 * per)) } else { el.min_h(px(m as f32 * per)) };
+    }
+    if let Some(m) = n.max {
+        el = if along_row { el.max_w(px(m as f32 * per)) } else { el.max_h(px(m as f32 * per)) };
+    }
+    el
+}
+
+/// One side of a float, as a length: cells, pixels or a fraction of its stack; the whole stack
+/// by default.
+fn float_side(s: Option<&Size>, per: f32) -> DefiniteLength {
+    match s.map(Size::measure) {
+        Some(Measure::Cells(c)) => px(c as f32 * per).into(),
+        Some(Measure::Px(p)) => px(p).into(),
+        Some(Measure::Percent(p)) => relative(p / 100.0),
+        None | Some(Measure::Share(_)) => relative(1.0),
     }
 }
 
@@ -298,10 +336,22 @@ impl Portal {
         let own = lk.style(n.style.as_ref());
         el = inked(el, own);
         let v = state::bound(st, n).unwrap_or(&Value::Null);
+        let panel = n.title.is_some() || n.border;
+        // `pad` cells and rows inside the border (a panel's own inset besides).
+        let (x, y) = n.pad.map_or((0, 0), |p| p.xy());
+        let inset = if panel { 8.0 } else { 0.0 };
+        if panel || (x, y) != (0, 0) {
+            el = el.px(px(inset + x as f32 * cell.w)).py(px(inset + y as f32 * cell.h));
+        }
+        el = match n.align.as_deref() {
+            Some("center") => el.text_center(),
+            Some("right") => el.text_right(),
+            _ => el,
+        };
         // A title or a border: a panel with rounded corners, the title on top.
-        if n.title.is_some() || n.border {
+        if panel {
             let edge = if focused { lk.part("border.focused", Ink { fg: Some(lk.accent), ..Ink::default() }) } else { lk.part("border", Ink { fg: Some(lk.border), ..Ink::default() }) };
-            el = el.bg(lk.panel).rounded_lg().border_1().border_color(edge.fg.unwrap_or(lk.border)).p_2().gap_1();
+            el = el.bg(lk.panel).rounded_lg().border_1().border_color(edge.fg.unwrap_or(lk.border)).gap_1();
             if let Some(t) = &n.title {
                 let ink = if focused { lk.part("title.focused", Ink { fg: Some(lk.accent), bold: true, ..Ink::default() }) } else { lk.part("title", Ink { fg: Some(lk.dim), bold: true, ..Ink::default() }) };
                 el = el.child(div().flex_none().w_full().text_sm().child(text::line(lk, t, v, ink, false)));
@@ -320,7 +370,31 @@ impl Portal {
             }
             Kind::Stack { children } => {
                 let shown: Vec<(usize, Node)> = children.iter().enumerate().filter(|(_, c)| state::shown(st, c)).map(|(k, c)| (k, c.clone())).collect();
-                let kids: Vec<AnyElement> = shown.iter().map(|(k, c)| div().absolute().inset_0().flex().child(self.node(st, lk, c, false, &format!("{key}.{k}"), cx)).into_any_element()).collect();
+                let mut kids: Vec<AnyElement> = Vec::new();
+                for (k, c) in shown {
+                    let path = format!("{key}.{k}");
+                    if c.modal {
+                        // What's behind a dialog dims, and a press there goes nowhere.
+                        kids.push(
+                            div()
+                                .id(SharedString::from(format!("scrim-{path}")))
+                                .absolute()
+                                .inset_0()
+                                .bg(lk.scrim)
+                                .occlude()
+                                .child(measure(&self.laid, |l, b| l.hits.push((b, hit(String::new(), None, None, false)))))
+                                .into_any_element(),
+                        );
+                    }
+                    kids.push(match c.float.clone() {
+                        Some(fl) => self.float(st, lk, c, &fl, &path, cx),
+                        None => {
+                            let covers = c.modal;
+                            let shown = self.node(st, lk, &c, false, &path, cx);
+                            div().absolute().inset_0().flex().when(covers, |d| d.bg(lk.bg).occlude()).child(shown).into_any_element()
+                        }
+                    });
+                }
                 div().relative().size_full().children(kids).into_any_element()
             }
             Kind::Text { text } => text::lines(lk, text, v, Ink::default()),
@@ -335,7 +409,19 @@ impl Portal {
                 let ink = if focused { lk.part("button.focused", Ink { fg: Some(lk.bg), bg: Some(lk.accent), bold: true, ..Ink::default() }) } else { lk.part("button", Ink { fg: Some(lk.fg), bg: Some(lk.ring), ..Ink::default() }) };
                 let target = id.clone();
                 let hover = lk.hover;
-                inked(div().id(SharedString::from(format!("btn-{key}"))).px_3().rounded_md().cursor_pointer(), ink)
+                // The face, as wide as its label, where `align` puts it, down the middle.
+                el = match n.align.as_deref() {
+                    Some("center") => el.items_center(),
+                    Some("right") => el.items_end(),
+                    _ => el.items_start(),
+                }
+                .justify_center();
+                let face = (!id.is_empty()).then(|| {
+                    let under = id.clone();
+                    measure(&self.laid, move |l, b| l.hits.push((b, hit(under, None, None, false))))
+                });
+                inked(div().id(SharedString::from(format!("btn-{key}"))).relative().flex_none().px_3().rounded_md().cursor_pointer(), ink)
+                    .children(face)
                     .when(!focused, |d| d.hover(move |s| s.bg(hover)))
                     .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, _, cx| this.send(Msg::Click { id: target.clone(), row: None, tab: None }, cx)))
                     .child(label)
@@ -419,6 +505,36 @@ impl Portal {
         };
         el = el.child(body);
         el.into_any_element()
+    }
+
+    /// A node floating in its stack where its `float` says: its own size (the stack's by default),
+    /// at a side, a corner or the middle, `margin` cells in from the edge. It covers what's under
+    /// it, the mouse too.
+    fn float(&mut self, st: &State, lk: &Look, n: Node, fl: &Float, path: &str, cx: &mut Context<Self>) -> AnyElement {
+        let cell = self.cell;
+        let m = fl.margin.unwrap_or(0) as f32;
+        let at = fl.at.as_deref().unwrap_or("center");
+        let wrap = div().absolute().inset_0().flex().px(px(m * cell.w)).py(px(m * cell.h));
+        let wrap = if at.contains("left") {
+            wrap.justify_start()
+        } else if at.contains("right") {
+            wrap.justify_end()
+        } else {
+            wrap.justify_center()
+        };
+        let wrap = if at.contains("top") {
+            wrap.items_start()
+        } else if at.contains("bottom") {
+            wrap.items_end()
+        } else {
+            wrap.items_center()
+        };
+        let (w, h) = (float_side(fl.width.as_ref(), cell.w), float_side(fl.height.as_ref(), cell.h));
+        // Its float sizes it, not `size`: it fills the box.
+        let n = Node { size: None, min: None, max: None, ..n };
+        let shown = self.node(st, lk, &n, false, path, cx);
+        let face = div().id(SharedString::from(format!("float-{path}"))).flex().flex_col().flex_none().w(w).h(h).max_w_full().max_h_full().bg(lk.bg).occlude().child(shown);
+        wrap.child(face).into_any_element()
     }
 
     /// A list's rows, from where the state says it's scrolled: as many as fit, each the rows its
@@ -654,10 +770,27 @@ impl Portal {
         let toasts: Vec<AnyElement> = st.toasts.iter().rev().take(3).map(|t| toast(&lk, t)).collect();
         // Once the frame has painted, what it laid out goes to the engine; if that changed the
         // state (an editor learned its size), another frame follows.
+        // The mouse's moves and releases are the window's, wherever they land: over a dialog or a
+        // float too, which keep presses from what's under them.
         let handover = {
             let (laid, shown, engine, cell, wake) = (self.laid.clone(), self.shown.clone(), self.engine.clone(), self.cell, self.wake);
             let took = t.elapsed();
-            canvas(|_, _, _| {}, move |_, _, window, _| handover(&laid, &shown, &engine, cell, wake, took, window)).absolute().size_0()
+            let (moves, ups) = (cx.entity().downgrade(), cx.entity().downgrade());
+            canvas(|_, _, _| {}, move |_, _, window, _| {
+                handover(&laid, &shown, &engine, cell, wake, took, window);
+                window.on_mouse_event(move |e: &MouseMoveEvent, phase, _, cx| {
+                    if phase == DispatchPhase::Bubble {
+                        let _ = moves.update(cx, |this, cx| this.moved(e, cx));
+                    }
+                });
+                window.on_mouse_event(move |e: &MouseUpEvent, phase, _, cx| {
+                    if phase == DispatchPhase::Bubble && e.button == MouseButton::Left {
+                        let _ = ups.update(cx, |this: &mut Portal, _| this.drag = None);
+                    }
+                });
+            })
+            .absolute()
+            .size_0()
         };
         div()
             .id("portal")
@@ -673,22 +806,6 @@ impl Portal {
                 }
                 this.send(Msg::Key { key }, cx);
             }))
-            // A drag that started in an editor's text follows the mouse anywhere in the window.
-            .on_mouse_move(cx.listener(|this, e: &MouseMoveEvent, _, cx| {
-                if let Some(id) = this.drag.clone().filter(|_| e.dragging()) {
-                    if let Some((col, row)) = this.in_text(&id, e.position) {
-                        this.send(Msg::Drag { id, col, row }, cx);
-                    }
-                    return;
-                }
-                this.drag = None;
-                // The row under the mouse, as the terminal's hover: told only when it changes.
-                let hover = this.shown.borrow().iter().rev().find(|(b, h)| h.row.is_some() && b.contains(&e.position)).map(|(_, h)| state::Hover { id: h.id.clone(), row: h.row });
-                if hover != this.engine.hover() {
-                    this.send(Msg::Hover { hover }, cx);
-                }
-            }))
-            .on_mouse_up(MouseButton::Left, cx.listener(|this, _: &gpui::MouseUpEvent, _, _| this.drag = None))
             .size_full()
             .relative()
             .flex()

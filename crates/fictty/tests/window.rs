@@ -269,3 +269,269 @@ fn the_finders_point_at_what_was_drawn() {
     s.mouse("press", text.x + 4, text.y).mouse("release", text.x + 4, text.y);
     assert_eq!(marked(&mut s, "a"), "firs▮t");
 }
+
+// ---- layout ---------------------------------------------------------------------------------
+
+/// A list of files, a detail beside it on a wide screen, and a modal dialog over both.
+fn dialog() -> Value {
+    json!({
+        "root": {"type": "stack", "id": "stack", "children": [
+            {"type": "row", "children": [
+                {"type": "list", "id": "files", "items": ["a.txt", "b.txt"],
+                 "keys": {"d": {"put": "confirm", "value": true}}},
+                {"type": "text", "id": "detail", "text": "wide detail", "when": "$screen.width>=60"}
+            ]},
+            {"type": "col", "id": "ask", "title": "Delete?", "modal": true, "when": "confirm",
+             "float": {"width": 30, "height": 5},
+             "children": [
+                {"type": "text", "text": "This can't be undone.", "size": 1},
+                {"type": "row", "size": 1, "children": [
+                    {"type": "button", "id": "yes", "label": "Delete",
+                     "click": {"do": [{"put": "confirm", "value": false}, {"toast": "Deleted", "tone": "neg"}]}},
+                    {"type": "button", "id": "no", "label": "Keep", "click": {"put": "confirm", "value": false}}
+                ]}
+            ]}
+        ]},
+        "store": {"confirm": false}
+    })
+}
+
+/// Whether node `id` shows.
+fn shows(s: &mut fictty::Headless, id: &str) -> bool {
+    s.readback().iter().any(|n| n.id.as_deref() == Some(id))
+}
+
+#[test]
+fn when_hides_a_node_and_gives_its_room_away() {
+    let mut wide = window(dialog(), 80, 8);
+    assert!(shows(&mut wide, "detail"));
+    let (files, detail) = (node(&mut wide, "files").rect.unwrap(), node(&mut wide, "detail").rect.unwrap());
+    assert_eq!(files.x + files.width, detail.x, "side by side: {files:?} {detail:?}");
+    let mut narrow = window(dialog(), 50, 8);
+    assert!(!shows(&mut narrow, "detail"));
+    let (files, stack) = (node(&mut narrow, "files").rect.unwrap(), node(&mut narrow, "stack").rect.unwrap());
+    assert_eq!(files.width, stack.width, "the list takes the detail's room: {files:?} in {stack:?}");
+}
+
+#[test]
+fn a_modal_floats_over_the_screen_and_keeps_the_focus() {
+    let mut s = window(dialog(), 80, 14);
+    assert!(!shows(&mut s, "ask"));
+    s.keys(&["d"]);
+    let (ask, stack) = (node(&mut s, "ask"), node(&mut s, "stack").rect.unwrap());
+    assert_eq!(ask.title.as_deref(), Some("Delete?"));
+    let r = ask.rect.unwrap();
+    assert_eq!((r.width, r.height), (30, 5), "the float's size: {r:?}");
+    assert!((2 * r.x + r.width).abs_diff(2 * stack.x + stack.width) <= 1, "across the middle: {r:?} in {stack:?}");
+    assert!((2 * r.y + r.height).abs_diff(2 * stack.y + stack.height) <= 1, "down the middle: {r:?} in {stack:?}");
+    assert!(shows(&mut s, "yes") && shows(&mut s, "no"));
+    assert_eq!(s.state().focus.as_deref(), Some("yes"), "focus moves into the dialog");
+    s.keys(&["tab"]);
+    assert_eq!(s.state().focus.as_deref(), Some("no"));
+    s.keys(&["tab"]);
+    assert_eq!(s.state().focus.as_deref(), Some("yes"), "and stays there");
+    // A press behind the dialog, on the list's second row, goes nowhere.
+    let (x, y) = s.at("files", Some(1), None).expect("the list's rows are drawn under the scrim");
+    assert!(!(r.x..r.x + r.width).contains(&x) || !(r.y..r.y + r.height).contains(&y), "outside the dialog");
+    s.mouse("press", x, y).mouse("release", x, y);
+    assert_eq!(s.state().focus.as_deref(), Some("yes"));
+    assert_eq!(s.state().local["files"].selected, 0, "the row under the scrim wasn't chosen");
+    // A press on the dialog's button does what it says.
+    let (x, y) = s.at("yes", None, None).unwrap();
+    s.mouse("press", x, y).mouse("release", x, y);
+    assert!(!shows(&mut s, "ask"));
+    assert_eq!(s.state().toasts.last().map(|t| t.text.as_str()), Some("Deleted"), "the toast shows");
+    assert_eq!(s.state().focus.as_deref(), Some("files"), "focus goes back");
+}
+
+#[test]
+fn a_float_sits_where_it_says_with_its_margin() {
+    let ui = json!({"root": {"type": "stack", "id": "s", "children": [
+        {"type": "list", "id": "under", "items": rows(20)},
+        {"type": "text", "id": "badge", "text": "3 new", "float": {"width": 10, "height": 2, "at": "top-right", "margin": 1}},
+        {"type": "text", "id": "foot", "text": "bottom", "float": {"width": "50%", "height": 1, "at": "bottom-left"}}
+    ]}});
+    let mut s = window(ui, 60, 14);
+    let (st, badge, foot) = (node(&mut s, "s").rect.unwrap(), node(&mut s, "badge").rect.unwrap(), node(&mut s, "foot").rect.unwrap());
+    assert_eq!(badge, fictty::engine::Rect::new(st.x + st.width - 11, st.y + 1, 10, 2), "in {st:?}");
+    assert_eq!(foot, fictty::engine::Rect::new(st.x, st.y + st.height - 1, st.width / 2, 1), "in {st:?}");
+    // A float covers what's under it: a press on it doesn't reach the list.
+    s.mouse("press", badge.x + 1, badge.y).mouse("release", badge.x + 1, badge.y);
+    assert_eq!(s.state().local.get("under").map_or(0, |l| l.selected), 0);
+}
+
+#[test]
+fn gaps_space_out_a_row() {
+    let ui = json!({"root": {"type": "row", "gap": 3, "children": [
+        {"type": "text", "id": "a", "text": "A", "size": 1}, {"type": "text", "id": "b", "text": "B", "size": 1}]}});
+    let mut s = window(ui, 20, 3);
+    let (a, b) = (node(&mut s, "a").rect.unwrap(), node(&mut s, "b").rect.unwrap());
+    assert_eq!((a.width, b.x), (1, a.x + 4), "{a:?} {b:?}");
+}
+
+#[test]
+fn min_and_max_bound_a_share() {
+    let ui = json!({"root": {"type": "row", "id": "r", "children": [
+        {"type": "text", "id": "l", "text": "L", "size": "60%", "max": 10, "border": true},
+        {"type": "text", "id": "m", "text": "M", "min": 30, "border": true},
+        {"type": "text", "id": "n", "text": "N", "border": true}]}});
+    let mut s = window(ui, 60, 5);
+    let (r, l, m, n) = (node(&mut s, "r").rect.unwrap(), node(&mut s, "l").rect.unwrap(), node(&mut s, "m").rect.unwrap(), node(&mut s, "n").rect.unwrap());
+    assert_eq!(l.width, 10, "60% held to 10: {l:?}");
+    assert!(m.width >= 30, "a share of what's left, at least 30: {m:?}");
+    assert_eq!(l.width + m.width + n.width, r.width, "the rest is shared: {l:?} {m:?} {n:?} in {r:?}");
+}
+
+#[test]
+fn a_size_can_be_in_pixels() {
+    let ui = json!({"root": {"type": "col", "children": [
+        {"type": "row", "size": "48px", "children": [
+            {"type": "text", "id": "a", "text": "A", "size": "84px"}, {"type": "text", "id": "b", "text": "B"}]},
+        {"type": "text", "id": "c", "text": "C"}]}});
+    let mut s = window(ui, 40, 8);
+    let (a, b, c) = (node(&mut s, "a").rect.unwrap(), node(&mut s, "b").rect.unwrap(), node(&mut s, "c").rect.unwrap());
+    // 84 px is ten columns of 8.4; 48 px two rows of 24.
+    assert_eq!((a.width, a.height, b.x, c.y), (10, 2, a.x + 10, a.y + 2), "{a:?} {b:?} {c:?}");
+}
+
+#[test]
+fn pad_and_align_place_what_a_node_holds() {
+    let ui = |pad: Value| json!({"root": {"type": "col", "children": [
+        {"type": "col", "id": "box", "pad": pad, "border": true, "children": [{"type": "list", "id": "inner", "items": ["x"]}]},
+        {"type": "button", "id": "go", "label": "Go", "align": "right", "size": 1},
+        {"type": "button", "id": "mid", "label": "Mid", "align": "center", "size": 1}]}});
+    let mut plain = window(ui(json!(0)), 40, 12);
+    let mut s = window(ui(json!([3, 1])), 40, 12);
+    let (was, i) = (node(&mut plain, "inner").rect.unwrap(), node(&mut s, "inner").rect.unwrap());
+    // A border in the window is a line, not a cell: pad moves what's inside in from where it was.
+    assert_eq!((i.x, i.y, i.width, i.height), (was.x + 3, was.y + 1, was.width - 6, was.height - 2), "three columns and a row in: {i:?}, from {was:?}");
+    // A button's hit is its face: right-aligned, the face ends at the node's right edge; centred,
+    // it sits in the middle.
+    let (go, (gx, _)) = (node(&mut s, "go").rect.unwrap(), s.at("go", None, None).unwrap());
+    assert!(gx > go.x + go.width / 2, "the face is on the right: {gx} in {go:?}");
+    let (mid, (mx, _)) = (node(&mut s, "mid").rect.unwrap(), s.at("mid", None, None).unwrap());
+    assert!(mx.abs_diff(mid.x + mid.width / 2) <= 1, "the face is in the middle: {mx} in {mid:?}");
+}
+
+#[test]
+fn when_can_read_the_width_a_node_is_laid_out_in() {
+    let ui = json!({
+        "root": {"type": "row", "children": [
+            {"type": "text", "text": "SIDEBAR", "size": 50, "when": "aside"},
+            {"type": "col", "children": [
+                {"type": "list", "id": "wide", "items": ["WIDE TABLE"], "when": "$width>=60"},
+                {"type": "list", "id": "narrow", "items": ["NARROW LIST"], "when": "$width<60"}
+            ]}
+        ]},
+        "store": {"aside": true},
+        "keys": {"x": {"put": "aside", "value": false}}
+    });
+    let mut s = window(ui, 100, 6);
+    assert!(shows(&mut s, "narrow") && !shows(&mut s, "wide"), "beside the sidebar");
+    assert_eq!(s.state().focus.as_deref(), Some("narrow"), "focus goes where it shows");
+    s.keys(&["x"]);
+    assert!(shows(&mut s, "wide") && !shows(&mut s, "narrow"), "alone");
+    assert_eq!(s.state().focus.as_deref(), Some("wide"));
+}
+
+#[test]
+fn each_repeats_a_template_per_item() {
+    let ui = json!({
+        "root": {"type": "each", "id": "panels", "bind": "open", "template": {
+            "type": "editor", "id": "ed-{$item.id}", "title": "{$item.title}", "doc": "page/{$item.id}",
+            "text": "{$item.title} notes", "size": "{$item.h}"}},
+        "store": {"open": [{"id": "a", "title": "Alpha", "h": 4}, {"id": "b", "title": "Beta", "h": 4}]}
+    });
+    let mut s = window(ui, 30, 14);
+    let (a, b) = (node(&mut s, "ed-a"), node(&mut s, "ed-b"));
+    assert_eq!((a.title.as_deref(), a.text.as_str()), (Some("Alpha"), "Alpha notes"));
+    assert_eq!((b.title.as_deref(), b.text.as_str()), (Some("Beta"), "Beta notes"));
+    assert_eq!((a.rect.unwrap().height, b.rect.unwrap().y), (4, a.rect.unwrap().y + 4), "each its size, one under the other");
+    assert_eq!(s.state().focus.as_deref(), Some("ed-a"));
+    s.keys(&["tab", "x"]);
+    assert_eq!(s.state().store["page/b"].read()["text"], "xBeta notes", "the second instance has the focus");
+    // The template's own placeholders are left for it: ui keeps the template as pushed.
+    assert_eq!(s.state().ui.root.kind_name(), "each");
+    // A new item, a new instance.
+    let open = json!([{"id": "a", "title": "Alpha", "h": 3}, {"id": "b", "title": "Beta", "h": 3}, {"id": "c", "title": "Gamma", "h": 3}]);
+    s.msg(Msg::Write { key: "open".into(), write: serde_json::from_value(json!({"write": "put", "value": open})).unwrap(), if_rev: None, by: "agent".into(), for_ms: None });
+    assert_eq!(node(&mut s, "ed-c").title.as_deref(), Some("Gamma"));
+    assert_eq!(s.state().focus.as_deref(), Some("ed-b"), "focus stays on its instance");
+}
+
+#[test]
+fn each_follows_its_data_and_keeps_its_tree_otherwise() {
+    let ui = json!({"root": {"type": "col", "children": [
+        {"type": "each", "id": "e", "bind": "open", "template": {"type": "text", "id": "t-{$item}", "text": "{$item}!", "size": 1}},
+        {"type": "list", "id": "l", "items": ["x", "y"]}]},
+        "store": {"open": ["a"]}});
+    let mut s = window(ui, 20, 6);
+    assert_eq!(node(&mut s, "t-a").text, "a!");
+    s.keys(&["j"]);
+    assert!(shows(&mut s, "t-a"), "a key that changes nothing it reads leaves it");
+    s.msg(Msg::Write { key: "open".into(), write: serde_json::from_value(json!({"write": "put", "value": ["a", "b"]})).unwrap(), if_rev: None, by: "t".into(), for_ms: None });
+    assert_eq!(node(&mut s, "t-b").text, "b!");
+    let (a, b) = (node(&mut s, "t-a").rect.unwrap(), node(&mut s, "t-b").rect.unwrap());
+    assert_eq!(b.y, a.y + 1, "{a:?} {b:?}");
+}
+
+#[test]
+fn the_readback_has_each_nodes_rectangle_from_the_window() {
+    let ui = json!({"root": {"type": "row", "id": "r", "children": [
+        {"type": "input", "id": "name", "size": 20},
+        {"type": "button", "id": "go", "label": "Go"}
+    ]}, "focus": "name"});
+    let mut s = window(ui, 40, 4);
+    s.keys(&["h", "i"]);
+    let nodes = s.readback();
+    let name = nodes.iter().find(|n| n.id.as_deref() == Some("name")).unwrap();
+    assert_eq!((name.text.as_str(), name.focus), ("hi", true));
+    let (r, name, go) = (node(&mut s, "r").rect.unwrap(), name.rect.unwrap(), node(&mut s, "go").rect.unwrap());
+    assert_eq!((name.x, name.y, name.width), (r.x, r.y, 20), "{name:?} in {r:?}");
+    assert_eq!((go.x, go.width), (r.x + 20, r.width - 20), "{go:?} in {r:?}");
+    // The socket's op answers the same.
+    let back = s.request(json!({"op": "readback"}));
+    assert_eq!(back["nodes"][1]["id"], "name");
+}
+
+#[test]
+fn the_window_takes_the_mouse_and_resizes() {
+    let ui = json!({
+        "root": {"type": "col", "children": [
+            {"type": "list", "id": "l", "items": ["one", "two", "three"], "min": 3},
+            {"type": "editor", "id": "e", "text": "hello world"}
+        ]},
+        "focus": "l"
+    });
+    let mut s = window(ui, 30, 10);
+    // A press on a row selects it.
+    let (x, y) = s.at("l", Some(2), None).unwrap();
+    s.mouse("press", x, y).mouse("release", x, y);
+    assert_eq!(s.state().local["l"].selected, 2);
+    // A drag across the editor's text selects what it crossed.
+    let x0 = text_start(&mut s, "e");
+    let y = s.text_at("e").unwrap().y;
+    s.mouse("press", x0, y).mouse("drag", x0 + 5, y).mouse("release", x0 + 5, y);
+    assert_eq!(s.state().focus.as_deref(), Some("e"));
+    assert_eq!(marked(&mut s, "e"), "⟦hello▮⟧ world");
+    // A paste replaces the selection; a resize lays it out again at the new size.
+    s.paste("HOWDY");
+    assert_eq!(node(&mut s, "e").text, "HOWDY world");
+    let before = node(&mut s, "e").rect.unwrap();
+    s.resize(20, 8);
+    assert_eq!(s.size(), (20, 8));
+    let after = node(&mut s, "e").rect.unwrap();
+    assert!(after.width < before.width && after.height < before.height, "{before:?} → {after:?}");
+}
+
+#[test]
+fn keys_type_into_a_field_a_key_just_showed() {
+    let ui = json!({"root": {"type": "col", "children": [
+        {"type": "input", "id": "find", "size": 1, "when": "finding"},
+        {"type": "list", "id": "l", "items": ["a"]}]},
+        "focus": "l", "store": {"finding": false},
+        "keys": {"/": {"do": [{"put": "finding", "value": true}, {"focus": "find"}]}}});
+    let mut s = window(ui, 30, 5);
+    s.keys(&["/", "m", "q", "4"]);
+    assert_eq!(node(&mut s, "find").text, "mq4");
+}

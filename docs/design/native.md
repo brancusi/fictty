@@ -150,9 +150,8 @@ The core stands alone, and nothing breaks.
 
 Every component, every theme, every input the terminal had; then the terminal goes.
 
-- [ ] Layout: `size` in cells and px, `%`, `*`, `min`/`max`, `gap`, `float`, `modal` (with a scrim).
-      Done: cells, `%`, `*`, `gap`, `$width`/`$height` areas, `stack`. Left: `px`, `min`/`max`,
-      `pad`, `align`, `float`, `modal` and its scrim
+- [x] Layout: `size` in cells and px, `%`, `*`, `min`/`max`, `gap`, `pad`, `align`, `float`,
+      `modal` (with a scrim), `$width`/`$height` areas, `stack` (step 1, below)
 - [ ] Text with markup: styled runs (`<b>`, colours, signs), tabs and fills laid out as columns,
       maps, conditionals; wrapping. Done, except a cut line's `…` (GPUI's `text_ellipsis` breaks
       under taffy's measuring, so lines clip) and `keep`
@@ -181,8 +180,8 @@ Every component, every theme, every input the terminal had; then the terminal go
       rings
 - [ ] Tests: the component tests rewritten on readback and state; a GPUI test-platform test per
       component that it lays out without overlap. Done: the harness (`App::in_window`), every
-      input through it, the fuzz driver through it. Left: the 42 grid-reading tests, moved step
-      by step below, and the no-overlap property
+      input through it, the fuzz driver through it, the no-overlap property (`fuzz::laid_out`).
+      Left: the grid-reading tests, moved step by step below (32 to go)
 - [ ] The tour's ten chapters and every example run in the window and look right (screenshots
       reviewed)
 - [ ] Thought Control runs in the window, unchanged but for `App::run` on the main thread
@@ -232,12 +231,29 @@ Commits `dc868b9` to `6c6b07b`.
 
 #### Next, step by step
 
+Step 1 landed on 12 October (branch `window-layout`): sizes are read once in the core
+(`Size::measure`: cells, `"48px"`, `%`, shares) for both renderers; a fixed size is a flex basis
+that shrinks when there's no room, as a terminal's layout gives one up; `min`/`max` bound it in
+cells; `pad` insets a node by cells and rows (inside a panel's own inset); `align` aligns text
+and places a button's face (now as wide as its label, its hit the face); a `float` sits in a box
+of its size at its edge or corner, `margin` in, covering what's under it; a `modal` puts a
+scrim (the background, part see-through, or the theme's `scrim`) over its stack, which takes
+presses and the wheel and sends the engine's `mouse` nowhere. The mouse's moves and releases
+became window-level listeners, since a float occludes the root; hover is the innermost hit
+under the mouse, so a row under a dialog isn't hovered. What a frame notes is clipped to what
+holds it: the tour at 21 columns squeezed a panel out of its parent, and its rectangle and hit
+were where it didn't show. `fuzz::laid_out` (nodes nest in their parents and don't overlap but
+over a stack) runs with the window's fuzz tests, clean at 400 runs in release over the tour, a
+dialog with floats, editors, lists and tables. The test window is a quarter cell over its size
+(a half cell put far edges on a rounding tie). Ten grid tests moved to `tests/window.rs`, plus
+floats, `px`, `pad` and `align`. Not yet done: looking at the tour's chapters in a real window.
+
 Each step builds a slice of parity, moves the grid tests that slice owns onto `App::in_window`
 (readback, state and the finders, not characters), and ends with the tour's chapters that use it
 looked at in a real window. A step is done when its tests pass in the window, its grid twins are
 deleted, and the window fuzz runs stay clean.
 
-1. **Layout (S–M).** `pad`, `align`, `min`/`max`, `px` sizes, `float`, `modal` with a scrim (a
+1. **Layout (S–M), done.** `pad`, `align`, `min`/`max`, `px` sizes, `float`, `modal` with a scrim (a
    press outside goes nowhere). A no-overlap property in the fuzz driver for the window: siblings'
    rectangles never overlap and every child sits inside its parent (stacks and floats excepted).
    Tests: `when_hides_a_node_and_gives_its_room_away`,

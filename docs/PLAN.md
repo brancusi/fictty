@@ -158,9 +158,12 @@ The phases of [design/native.md](design/native.md), where each is broken down.
   - [x] The window under test: `App::in_window` (GPUI's test platform), every input through it,
         the fuzz driver over editors, lists, tables and the tour through it; a test workflow
         on every push (2026-10-12)
-  - [ ] Next, in order (native.md, "Next, step by step"): layout, text and themes, lists and
-        trees, the rest of editors, charts, toasts and layers, embedding and the examples, then
-        the terminal goes. Each step moves its share of the 42 grid tests into the window
+  - [x] Step 1, layout: `px` sizes (`Size::measure`, in the core for both), `min`/`max`, `pad`,
+        `align`, floats, a modal's scrim; the no-overlap property (`fuzz::laid_out`) in the
+        window's fuzzing; ten grid tests moved into the window (2026-10-12)
+  - [ ] Next, in order (native.md, "Next, step by step"): text and themes, lists and trees, the
+        rest of editors, charts, toasts and layers, embedding and the examples, then the terminal
+        goes. Each step moves its share of the 32 grid tests left into the window
 - [ ] Phase 2 · The agent's portal (M): `watch` and `emit`, drop zones, tabs (`fictty open
       --tab`), screenshots, the command policy
 - [ ] Phase 3 · Media (M): images, video, pasted and dropped media, animation

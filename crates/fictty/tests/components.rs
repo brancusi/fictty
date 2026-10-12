@@ -132,37 +132,6 @@ fn dialog() -> Value {
 }
 
 #[test]
-fn when_hides_a_node_and_gives_its_room_away() {
-    let mut wide = screen(dialog(), 80, 6);
-    assert!(wide.screen().contains("wide detail"));
-    let mut narrow = screen(dialog(), 50, 6);
-    let text = narrow.screen();
-    assert!(!text.contains("wide detail"), "{text}");
-}
-
-#[test]
-fn a_modal_floats_over_the_screen_and_keeps_the_focus() {
-    let mut s = screen(dialog(), 80, 12);
-    assert!(!s.screen().contains("Delete?"));
-    s.keys(&["d"]);
-    let text = s.screen();
-    assert!(text.contains("╭ Delete? ") && text.contains("Delete") && text.contains("Keep"), "{text}");
-    assert_eq!(s.state().focus.as_deref(), Some("yes"), "focus moves into the dialog");
-    s.keys(&["tab"]);
-    assert_eq!(s.state().focus.as_deref(), Some("no"));
-    s.keys(&["tab"]);
-    assert_eq!(s.state().focus.as_deref(), Some("yes"), "and stays there");
-    // A click behind the dialog goes nowhere.
-    s.msg(Msg::Click { id: String::new(), row: None, tab: None });
-    assert_eq!(s.state().focus.as_deref(), Some("yes"));
-    s.keys(&["enter"]);
-    let text = s.screen();
-    assert!(!text.contains("Delete?"), "{text}");
-    assert!(text.contains("Deleted"), "the toast shows: {text}");
-    assert_eq!(s.state().focus.as_deref(), Some("files"), "focus goes back");
-}
-
-#[test]
 fn toasts_go_when_their_time_is_up() {
     let mut s = screen(dialog(), 60, 10);
     s.msg(Msg::Toast { text: "Saved".into(), tone: Some("pos".into()), ms: Some(500) });
@@ -181,14 +150,6 @@ fn a_cut_line_ends_in_an_ellipsis_and_keeps_its_right_side() {
     let line = s.screen().lines().next().unwrap().to_string();
     assert!(line.ends_with("Tue · tilde"), "{line:?}");
     assert!(line.contains("…"), "{line:?}");
-}
-
-#[test]
-fn gaps_space_out_a_row() {
-    let ui = json!({"root": {"type": "row", "gap": 3, "children": [
-        {"type": "text", "text": "A", "size": 1}, {"type": "text", "text": "B", "size": 1}]}});
-    let mut s = screen(ui, 20, 2);
-    assert!(s.screen().starts_with("A   B"));
 }
 
 fn text(s: &mut fictty::Headless, key: &str) -> String {
@@ -406,16 +367,6 @@ fn tab_titles_are_templates_with_a_lead_and_a_trail() {
     assert_eq!(first, format!("thc  Inbox 4   Done{}Sat 11", " ".repeat(15)));
 }
 
-#[test]
-fn min_and_max_bound_a_share() {
-    let ui = json!({"root": {"type": "row", "children": [
-        {"type": "text", "text": "L", "size": "60%", "max": 10, "border": true},
-        {"type": "text", "text": "R", "border": true}]}});
-    let mut s = screen(ui, 60, 3);
-    let top = s.screen().lines().next().unwrap().to_string();
-    assert!(top.starts_with("╭────────╮╭"), "{top}");
-}
-
 fn views() -> Value {
     json!({"root": {"type": "tabs", "id": "views", "tab": 1, "tabs": ["Today", "Inbox <b>{n}</>"], "bind": "counts", "children": [
         {"type": "list", "id": "today", "items": ["a"]},
@@ -629,18 +580,6 @@ fn an_editor_can_start_with_the_caret_at_the_end() {
 }
 
 #[test]
-fn keys_type_into_a_field_a_key_just_showed() {
-    let ui = json!({"root": {"type": "col", "children": [
-        {"type": "input", "id": "find", "size": 1, "when": "finding"},
-        {"type": "list", "id": "l", "items": ["a"]}]},
-        "focus": "l", "store": {"finding": false},
-        "keys": {"/": {"do": [{"put": "finding", "value": true}, {"focus": "find"}]}}});
-    let mut s = screen(ui, 30, 4);
-    s.keys(&["/", "m", "q", "4"]);
-    assert!(s.screen().starts_with("mq4"), "{}", s.screen());
-}
-
-#[test]
 fn a_row_can_be_selected_by_key_before_it_arrives() {
     let ui = json!({"root": {"type": "list", "id": "l", "bind": "rows", "item": "{id}"},
                     "store": {"rows": [{"id": "a"}, {"id": "b"}], "pick": "d"},
@@ -655,53 +594,6 @@ fn a_row_can_be_selected_by_key_before_it_arrives() {
     s.msg(Msg::Write { key: "rows".into(), write: serde_json::from_value(json!({"write": "put", "value": rows})).unwrap(), if_rev: None, by: "agent".into(), for_ms: None });
     assert_eq!(s.state().local["l"].selected, 3);
     assert!(s.state().local["l"].want.is_none());
-}
-
-#[test]
-fn each_repeats_a_template_per_item() {
-    let ui = json!({
-        "root": {"type": "each", "id": "panels", "bind": "open", "template": {
-            "type": "editor", "id": "ed-{$item.id}", "title": "{$item.title}", "doc": "page/{$item.id}",
-            "text": "{$item.title} notes", "size": "{$item.h}"}},
-        "store": {"open": [{"id": "a", "title": "Alpha", "h": 4}, {"id": "b", "title": "Beta", "h": 4}]}
-    });
-    let mut s = screen(ui, 30, 12);
-    let frame = s.screen();
-    assert!(frame.contains("Alpha ") && frame.contains("Beta "), "{frame}");
-    assert!(frame.contains("Alpha notes") && frame.contains("Beta notes"), "{frame}");
-    assert_eq!(s.state().focus.as_deref(), Some("ed-a"));
-    s.keys(&["tab", "x"]);
-    assert_eq!(text(&mut s, "page/b"), "xBeta notes", "the second instance has the focus");
-    // The template's own placeholders are left for it: ui keeps the template as pushed.
-    assert_eq!(s.state().ui.root.kind_name(), "each");
-    // A new item, a new instance.
-    let open = json!([{"id": "a", "title": "Alpha", "h": 3}, {"id": "b", "title": "Beta", "h": 3}, {"id": "c", "title": "Gamma", "h": 3}]);
-    s.msg(Msg::Write { key: "open".into(), write: serde_json::from_value(json!({"write": "put", "value": open})).unwrap(), if_rev: None, by: "agent".into(), for_ms: None });
-    assert!(s.screen().contains("Gamma"), "{}", s.screen());
-    assert_eq!(s.state().focus.as_deref(), Some("ed-b"), "focus stays on its instance");
-}
-
-#[test]
-fn when_can_read_the_width_a_node_is_laid_out_in() {
-    let ui = json!({
-        "root": {"type": "row", "children": [
-            {"type": "text", "text": "SIDEBAR", "size": 50, "when": "aside"},
-            {"type": "col", "children": [
-                {"type": "list", "id": "wide", "items": ["WIDE TABLE"], "when": "$width>=60"},
-                {"type": "list", "id": "narrow", "items": ["NARROW LIST"], "when": "$width<60"}
-            ]}
-        ]},
-        "store": {"aside": true},
-        "keys": {"x": {"put": "aside", "value": false}}
-    });
-    let mut s = screen(ui, 100, 4);
-    let frame = s.screen();
-    assert!(frame.contains("NARROW LIST") && !frame.contains("WIDE"), "beside the sidebar: {frame}");
-    assert_eq!(s.state().focus.as_deref(), Some("narrow"), "focus goes where it shows");
-    s.keys(&["x"]);
-    let frame = s.screen();
-    assert!(frame.contains("WIDE TABLE") && !frame.contains("NARROW"), "alone: {frame}");
-    assert_eq!(s.state().focus.as_deref(), Some("wide"));
 }
 
 #[test]
@@ -762,20 +654,6 @@ fn a_wiki_links_brackets_only_place_the_caret() {
 }
 
 #[test]
-fn each_follows_its_data_and_keeps_its_tree_otherwise() {
-    let ui = json!({"root": {"type": "col", "children": [
-        {"type": "each", "id": "e", "bind": "open", "template": {"type": "text", "id": "t-{$item}", "text": "{$item}!", "size": 1}},
-        {"type": "list", "id": "l", "items": ["x", "y"]}]},
-        "store": {"open": ["a"]}});
-    let mut s = screen(ui, 20, 5);
-    assert!(s.screen().contains("a!"));
-    s.keys(&["j"]);
-    assert!(s.screen().contains("a!"), "a key that changes nothing it reads leaves it");
-    s.msg(Msg::Write { key: "open".into(), write: serde_json::from_value(json!({"write": "put", "value": ["a", "b"]})).unwrap(), if_rev: None, by: "t".into(), for_ms: None });
-    assert!(s.screen().contains("b!"), "{}", s.screen());
-}
-
-#[test]
 fn with_commands_off_nothing_runs_and_the_screen_says_why() {
     let dir = std::env::temp_dir().join(format!("fictty-commands-off-{}", std::process::id()));
     let mark = dir.join("ran");
@@ -794,40 +672,6 @@ fn with_commands_off_nothing_runs_and_the_screen_says_why() {
     assert!(status.ends_with("commands are off"), "{status}");
     let listing = serde_json::to_value(&s.state().data["listing"]).unwrap();
     assert!(listing.to_string().contains("commands are off"), "{listing}");
-}
-
-#[test]
-fn headless_takes_the_mouse_and_resizes_like_a_terminal() {
-    let ui = json!({
-        "root": {"type": "col", "children": [
-            {"type": "list", "id": "l", "items": ["one", "two", "three"], "min": 3},
-            {"type": "editor", "id": "e", "text": "hello world"}
-        ]},
-        "focus": "l"
-    });
-    let mut s = screen(ui, 30, 10);
-    let at = |s: &mut fictty::Headless, text: &str| {
-        let screen = s.screen();
-        let (y, line) = screen.lines().enumerate().find(|(_, l)| l.contains(text)).unwrap_or_else(|| panic!("{text} in {screen}"));
-        (line[..line.find(text).unwrap()].chars().count() as u16, y as u16)
-    };
-    // A press on a row selects it.
-    let (x, y) = at(&mut s, "three");
-    s.mouse("press", x, y).mouse("release", x, y);
-    assert_eq!(s.state().local["l"].selected, 2);
-    // A drag across the editor's text selects what it crossed.
-    let (x, y) = at(&mut s, "hello");
-    s.mouse("press", x, y).mouse("drag", x + 5, y).mouse("release", x + 5, y);
-    assert_eq!(s.state().focus.as_deref(), Some("e"));
-    let (_, v) = fictty::state::field_view(s.state(), "e").unwrap();
-    let r = v.selection.primary();
-    assert_eq!((r.anchor.min(r.head), r.anchor.max(r.head)), (0, 5));
-    // A paste replaces the selection; a resize redraws at the new size.
-    s.paste("HOWDY");
-    assert!(s.screen().contains("HOWDY world"));
-    s.resize(20, 6);
-    assert_eq!(s.size(), (20, 6));
-    assert_eq!(s.screen().lines().count(), 6);
 }
 
 #[test]
@@ -877,25 +721,6 @@ fn a_state_read_back_works_its_tree_out_again() {
     assert_eq!(fictty::state::focus_order(&back), live);
 }
 
-
-#[test]
-fn the_readback_has_each_nodes_rectangle_from_the_grid() {
-    let ui = json!({"root": {"type": "row", "children": [
-        {"type": "input", "id": "name", "size": 20},
-        {"type": "button", "id": "go", "label": "Go"}
-    ]}, "focus": "name", "status_bar": false});
-    let mut s = App::new(serde_json::from_value(ui).unwrap()).headless(40, 3).unwrap();
-    s.keys(&["h", "i"]);
-    let nodes = s.readback();
-    let name = nodes.iter().find(|n| n.id.as_deref() == Some("name")).unwrap();
-    assert_eq!((name.text.as_str(), name.focus), ("hi", true));
-    assert_eq!(name.rect, Some(fictty::engine::Rect::new(0, 0, 20, 3)));
-    let go = nodes.iter().find(|n| n.id.as_deref() == Some("go")).unwrap();
-    assert_eq!(go.rect, Some(fictty::engine::Rect::new(20, 0, 20, 3)));
-    // The socket's op answers the same.
-    let r = s.request(json!({"op": "readback"}));
-    assert_eq!(r["nodes"][1]["id"], "name");
-}
 
 #[test]
 fn a_live_screen_runs_its_engine_on_its_own_thread() {

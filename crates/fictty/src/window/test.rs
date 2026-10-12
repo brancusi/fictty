@@ -77,8 +77,9 @@ impl Frame for Windowed {
     }
 
     fn resize(&mut self, width: u16, height: u16) {
-        // A half cell over, so the window's size in whole cells is exactly this.
-        self.cx.simulate_resize(size(px((width as f32 + 0.5) * self.cell.w), px((height as f32 + 0.5) * self.cell.h)));
+        // A quarter cell over, so the window's size in whole cells is exactly this and the far
+        // edges of what fills it round the same way every time (a half cell is a tie).
+        self.cx.simulate_resize(size(px((width as f32 + 0.25) * self.cell.w), px((height as f32 + 0.25) * self.cell.h)));
         self.cx.run_until_parked();
     }
 

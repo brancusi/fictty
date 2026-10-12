@@ -32,6 +32,8 @@ pub struct Look<'a> {
     /// A selected row's or text's background.
     pub ring: Hsla,
     pub hover: Hsla,
+    /// What a dialog dims the screen behind it with: the background, part see-through.
+    pub scrim: Hsla,
     pub pos: Hsla,
     pub neg: Hsla,
 }
@@ -72,10 +74,12 @@ impl<'a> Look<'a> {
         let active = st.theme.as_ref().and_then(|n| st.themes.get(n));
         let token = |k: &str| active.and_then(|t| t.tokens.get(k)).or_else(|| st.ui.theme.get(k)).and_then(|c| parse(c));
         let get = |k: &str, d: u32| token(k).unwrap_or_else(|| rgb(d).into());
+        let bg = get("bg", 0x0f1418);
         Look {
             st,
             active,
-            bg: get("bg", 0x0f1418),
+            bg,
+            scrim: token("scrim").unwrap_or(Hsla { a: 0.6, ..bg }),
             fg: get("fg", 0xe3eaee),
             dim: get("dim", 0x93a3ad),
             border: get("border", 0x2a353d),

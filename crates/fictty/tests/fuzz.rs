@@ -181,11 +181,18 @@ fn a_normalizer_masks_what_differs_between_runs() {
 mod window {
     use super::*;
 
+    /// The editing invariants, and what the window lays out nests without overlapping.
+    fn checks() -> Vec<fuzz::Check> {
+        let mut checks = fuzz::editing();
+        checks.push(fuzz::laid_out());
+        checks
+    }
+
     fn fuzzed(ui: Value, w: u16, h: u16) {
         let make = move || App::new(serde_json::from_value(ui.clone()).unwrap()).in_window(w, h).unwrap();
         // No terminal to show the frame: the window is the frame.
         let cfg = Config { terminal: false, ..cfg() };
-        if let Err(f) = fuzz::run(make, &mut fuzz::editing(), &cfg) {
+        if let Err(f) = fuzz::run(make, &mut checks(), &cfg) {
             panic!("{f}");
         }
     }
@@ -227,9 +234,37 @@ mod window {
                 .expect("a chapter");
             let themes = dir.join("themes.json");
             let make = || fictty::App::file(&path).themes_file(&themes).unwrap().commands(false).in_window(100, 32).unwrap();
-            if let Err(f) = fuzz::run(make, &mut fuzz::editing(), &cfg) {
+            if let Err(f) = fuzz::run(make, &mut checks(), &cfg) {
                 panic!("{}: {f}", path.display());
             }
+        }
+    }
+
+    #[test]
+    fn a_dialog_and_floats_over_a_list_in_the_window() {
+        let ui = json!({
+            "root": {"type": "stack", "id": "s", "children": [
+                {"type": "row", "gap": 1, "children": [
+                    {"type": "list", "id": "files", "items": ["a.txt", "b.txt", "c.txt"], "size": "40%", "min": 12, "max": 30,
+                     "keys": {"d": {"put": "confirm", "value": true}}},
+                    {"type": "editor", "id": "body", "text": "Some text\n- a list\n", "pad": [1, 1], "border": true},
+                    {"type": "text", "id": "detail", "text": "wide detail", "size": "120px", "when": "$width>=50"}
+                ]},
+                {"type": "text", "id": "badge", "text": "3 new", "float": {"width": 10, "height": 1, "at": "top-right", "margin": 1}},
+                {"type": "col", "id": "ask", "title": "Delete?", "modal": true, "when": "confirm", "float": {"width": "60%", "height": 6}, "children": [
+                    {"type": "input", "id": "why", "size": 1},
+                    {"type": "row", "size": 1, "children": [
+                        {"type": "button", "id": "yes", "label": "Delete", "align": "center", "click": {"put": "confirm", "value": false}},
+                        {"type": "button", "id": "no", "label": "Keep", "align": "right", "click": {"put": "confirm", "value": false}}
+                    ]}
+                ]}
+            ]},
+            "store": {"confirm": false}, "focus": "files"
+        });
+        let cfg = Config { terminal: false, keys: [Config::default().keys, vec!["d".into()]].concat(), ..cfg() };
+        let make = move || App::new(serde_json::from_value(ui.clone()).unwrap()).in_window(60, 14).unwrap();
+        if let Err(f) = fuzz::run(make, &mut checks(), &cfg) {
+            panic!("{f}");
         }
     }
 

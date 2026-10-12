@@ -593,6 +593,62 @@ fn plain_motion(key: &str) -> bool {
     !mods.split('-').any(|m| m == "s") && ["left", "right", "up", "down", "home", "end", "pgup", "pgdn"].contains(&base)
 }
 
+/// What a frame laid out nests: each node with a rectangle sits inside its nearest ancestor with
+/// one, and two that aren't one inside the other don't overlap, unless they part at a stack,
+/// whose children lie over each other by design (layers, dialogs, floats).
+pub fn laid_out() -> Check {
+    check("laid out without overlap", |s| nested(&s.screen.readback()))
+}
+
+/// Whether the readback's rectangles nest (see `laid_out`).
+pub fn nested(nodes: &[crate::readback::Shown]) -> Result<(), String> {
+    use crate::engine::Rect;
+    // Each node's parent, from the depths of the nodes before it.
+    let mut parent: Vec<Option<usize>> = Vec::with_capacity(nodes.len());
+    let mut open: Vec<usize> = Vec::new();
+    for (i, n) in nodes.iter().enumerate() {
+        while open.last().is_some_and(|&o| nodes[o].depth >= n.depth) {
+            open.pop();
+        }
+        parent.push(open.last().copied());
+        open.push(i);
+    }
+    let ancestors = |mut i: usize| {
+        let mut up = Vec::new();
+        while let Some(p) = parent[i] {
+            up.push(p);
+            i = p;
+        }
+        up
+    };
+    let name = |i: usize| format!("{} {}", nodes[i].kind, nodes[i].id.as_deref().unwrap_or("?"));
+    let laid = |i: usize| nodes[i].rect.filter(|r| r.width > 0 && r.height > 0);
+    let inside = |a: Rect, b: Rect| a.x >= b.x && a.y >= b.y && a.x + a.width <= b.x + b.width && a.y + a.height <= b.y + b.height;
+    let apart = |a: Rect, b: Rect| a.x + a.width <= b.x || b.x + b.width <= a.x || a.y + a.height <= b.y || b.y + b.height <= a.y;
+    let ups: Vec<Vec<usize>> = (0..nodes.len()).map(ancestors).collect();
+    for i in 0..nodes.len() {
+        let Some(r) = laid(i) else { continue };
+        if let Some((a, outer)) = ups[i].iter().find_map(|&a| laid(a).map(|o| (a, o)))
+            && !inside(r, outer)
+        {
+            return Err(format!("{} at {r:?} sticks out of {} at {outer:?}", name(i), name(a)));
+        }
+        for j in i + 1..nodes.len() {
+            let Some(q) = laid(j) else { continue };
+            if ups[j].contains(&i) || apart(r, q) {
+                continue;
+            }
+            // Where their lines part: the nearest node both are under.
+            let fork = ups[j].iter().find(|a| ups[i].contains(a));
+            if fork.is_some_and(|&f| nodes[f].kind == "stack") {
+                continue;
+            }
+            return Err(format!("{} at {r:?} overlaps {} at {q:?}", name(i), name(j)));
+        }
+    }
+    Ok(())
+}
+
 /// The editing invariants, for any screen with editors:
 /// - a motion without Shift leaves no selection (a key the editor ignores isn't one);
 /// - copy changes neither the text nor the selection;
@@ -700,6 +756,32 @@ pub fn editing() -> Vec<Check> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn nesting_finds_what_sticks_out_and_what_overlaps() {
+        use crate::engine::Rect;
+        use crate::readback::Shown;
+        let n = |depth, kind: &str, id: &str, r: Option<(u16, u16, u16, u16)>| Shown {
+            depth,
+            kind: kind.into(),
+            id: Some(id.into()),
+            title: None,
+            text: String::new(),
+            focus: false,
+            rows: None,
+            selected: None,
+            rect: r.map(|(x, y, w, h)| Rect::new(x, y, w, h)),
+        };
+        let row = |a: (u16, u16, u16, u16), b: (u16, u16, u16, u16)| vec![n(0, "row", "r", Some((0, 0, 20, 5))), n(1, "list", "a", Some(a)), n(1, "col", "c", None), n(2, "list", "b", Some(b))];
+        assert_eq!(nested(&row((0, 0, 10, 5), (10, 0, 10, 5))), Ok(()));
+        let over = nested(&row((0, 0, 11, 5), (10, 0, 10, 5))).unwrap_err();
+        assert!(over.contains("list a") && over.contains("overlaps list b"), "{over}");
+        let out = nested(&row((0, 0, 10, 5), (10, 0, 11, 5))).unwrap_err();
+        assert!(out.contains("list b") && out.contains("sticks out of row r"), "through a node with no rectangle: {out}");
+        // Over a stack, children lie over each other.
+        let stack = vec![n(0, "stack", "s", Some((0, 0, 20, 5))), n(1, "list", "a", Some((0, 0, 20, 5))), n(1, "text", "f", Some((5, 1, 10, 2)))];
+        assert_eq!(nested(&stack), Ok(()));
+    }
 
     #[test]
     fn acts_print_and_parse_back() {

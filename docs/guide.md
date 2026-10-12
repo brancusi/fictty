@@ -65,9 +65,10 @@ fictty theme paper                                        # choose a loaded them
 - **Components** (a closed set): layout `col`, `row` (both with a `gap`) and `stack` (children
   over each other); `text`, `big`, `spinner`; `list`, `tree`, `table` (with column `total`s);
   `editor`, `input`, `button`; `tabs`; `sparkline`, `chart`, `bars` (up, or `horizontal`), `gauge`;
-  and the pixel ones below. Every node can have `id`, `size` (`12`, `"30%"`, `"*"`, `"2*"`) with
-  `min` and `max`, `title`, `border`, `pad`, `variant`, `tone`, `style`, `bind`, `keys`, `click`,
-  `when`, and in a stack `float` and `modal`.
+  and the pixel ones below. Every node can have `id`, `size` (`12` cells, `"48px"`, `"30%"`, `"*"`,
+  `"2*"`; a terminal rounds pixels to its cells) with `min` and `max` (cells), `title`, `border`,
+  `pad`, `align`, `variant`, `tone`, `style`, `bind`, `keys`, `click`, `when`, and in a stack
+  `float` and `modal`.
 - **Lists and trees** share their row options: `item` (a template), `row_variant` and `variants`
   (a template per kind of row) with `skip` (rows that can't be selected), `mark` and `lead`,
   `selected` (a style), `lines` (rows of several lines), `keep` (cells the left side keeps before
@@ -85,11 +86,11 @@ fictty theme paper                                        # choose a loaded them
   patch changes the template. A `State` read back from `get --state` leaves the tree out (it's
   worked out, not kept): call `derive()` on it before `focus_order` or `tree()`.
 - **Overlays**: a `stack` draws its children over each other, the last on top; one with
-  `float` (`width`, `height`, `at` an edge or corner, `margin`) sits where it says, and a `modal`
-  one dims what's behind it and keeps the focus: while it shows, a click or the wheel anywhere
-  outside it goes nowhere. Both cover what's under them. **`when`** shows a node only
-  while a condition holds: a bind that's set (`"dialog"`), not set (`"!dialog"`), compared
-  (`"mode=edit"`, `"$screen.width>=120"`), or several joined by ` & `. `$width` and `$height`
+  `float` (`width` and `height` in cells, pixels or `%`, `at` an edge or corner, `margin`) sits
+  where it says, and a `modal` one dims what's behind it and keeps the focus: while it shows, a
+  click or the wheel anywhere outside it goes nowhere. Both cover what's under them. **`when`**
+  shows a node only while a condition holds: a bind that's set (`"dialog"`), not set
+  (`"!dialog"`), compared (`"mode=edit"`, `"$screen.width>=120"`), or several joined by ` & `. `$width` and `$height`
   are the size of the area the node's parent lays it out in (a container query): a pane beside a
   sidebar switches on its own width, not the screen's. A hidden node takes no
   room and no focus. Layers take `when` too. **Toasts** show for a while: the `toast` action,
