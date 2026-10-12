@@ -150,26 +150,39 @@ The core stands alone, and nothing breaks.
 
 Every component, every theme, every input the terminal had; then the terminal goes.
 
-- [ ] Layout: `size` in cells and px, `%`, `*`, `min`/`max`, `gap`, `float`, `modal` (with a scrim)
+- [ ] Layout: `size` in cells and px, `%`, `*`, `min`/`max`, `gap`, `float`, `modal` (with a scrim).
+      Done: cells, `%`, `*`, `gap`, `$width`/`$height` areas, `stack`. Left: `px`, `min`/`max`,
+      `pad`, `align`, `float`, `modal` and its scrim
 - [ ] Text with markup: styled runs (`<b>`, colours, signs), tabs and fills laid out as columns,
-      maps, conditionals; wrapping
+      maps, conditionals; wrapping. Done, except a cut line's `…` (GPUI's `text_ellipsis` breaks
+      under taffy's measuring, so lines clip) and `keep`
 - [ ] Lists, trees, tables: virtualised, row templates, multi-line rows, `mark`/`lead`,
-      variants, skip rows, filters, heat colours, footers, scrollbars, hover
+      variants, skip rows, filters, heat colours, footers, scrollbars, hover. Done: drawn from the
+      state's scroll (only the rows in view), row templates, multi-line rows, hover, the wheel.
+      Left: a tree's indent and folds, `mark`/`lead`, row variants, skip rows, heat colours,
+      footers and totals, column widths and alignment, scrollbars
 - [ ] Editors and inputs: caretline at mono cell size; caret, selections, Markdown styles, links,
       task boxes, ordered lists, placeholders, read-only; click, drag, double and triple click,
-      wheel; `accept: number`
+      wheel; `accept: number`. Done: all of it drawn, and click, drag, double and triple press and
+      the wheel. Left to prove with tests: a click on a link or a task box, read-only, `accept`
 - [ ] Charts drawn with `canvas`: sparkline, chart, bars, gauge, plot, map, dot, big
 - [ ] Pictures native: cards (rounded, gradient, shadow, glow) as styles; SVG and images as
       elements
-- [ ] Tabs, buttons, spinners, toasts, the status bar, problems
+- [ ] Tabs, buttons, spinners, toasts, the status bar, problems. Done: tabs, buttons, spinners,
+      toasts (on time). Left: the status bar as the UI's (its status, problems and hints, and
+      `status_bar: false`), a `toasts` node's placement
 - [ ] Layers: callouts, arrows, rings, spotlights, pulses, the hover tip
-- [ ] Themes: every token and part mapped to styles; parts gain radius, shadow, padding, font
+- [ ] Themes: every token and part mapped to styles; parts gain radius, shadow, padding, font.
+      Done: tokens, parts and `<spec>` runs (`look.rs`). Left: `variant`, `tone`, `edge`,
+      `backdrop`, and the new part properties
 - [ ] Input: every key with every modifier from the OS (`d-` is ⌘), IME, the system clipboard
-      (copy as text, ⌘V pastes, owned by the runtime), mouse and wheel, hover, focus rings
-- [ ] Tests: the component tests rewritten on readback and state (42 read the character grid
-      today); a GPUI test-platform test per component that it lays out without overlap. The
-      harness is in: `App::in_window` draws a headless screen with the window under GPUI's test
-      platform, and the fuzz driver runs editors, lists, tables and the tour through it
+      (copy as text, ⌘V pastes, owned by the runtime), mouse and wheel, hover, focus rings.
+      Done: keys, the clipboard, the mouse, the wheel, hover. Left: IME (`Msg::Compose`), focus
+      rings
+- [ ] Tests: the component tests rewritten on readback and state; a GPUI test-platform test per
+      component that it lays out without overlap. Done: the harness (`App::in_window`), every
+      input through it, the fuzz driver through it. Left: the 42 grid-reading tests, moved step
+      by step below, and the no-overlap property
 - [ ] The tour's ten chapters and every example run in the window and look right (screenshots
       reviewed)
 - [ ] Thought Control runs in the window, unchanged but for `App::run` on the main thread
@@ -178,68 +191,127 @@ Every component, every theme, every input the terminal had; then the terminal go
 - Done when: the tour runs in the window end to end, Thought Control's screens run in it, and the
   repo has no terminal code.
 
-Where it starts (what phase 0 left, 12 October 2026):
+#### Done so far (12 October 2026)
 
-- **The window is still the spike.** `crates/fictty/src/window.rs` (450 lines) draws col, row,
-  stack, text, spinner, button, rule, list and tree (row template only), table, editor and input
-  (lines and a caret, no selection or styles), tabs and toasts. Every other kind is a `[kind]`
-  placeholder. Colours come from a fixed palette, not the theme. `size` in cells uses fixed
-  `COL` (9 px) and `ROW` (24 px), not the font's measured cell.
-- **Done (12 October): the window reports its layout.** A measuring canvas in each node notes its
-  bounds as GPUI prepaints; once the frame paints they go to the engine as `Drawn`: rectangles
-  (the readback has them), hits (`fictty mouse` lands), editor and list sizes, `$width` areas and
-  the wake time (spinners turn, toasts go on their own). A column is the monospace font's
-  advance (Menlo, 8.43 px at 14 px), a row 24 px; the window sends that as `Msg::Caps` and its
-  size in cells as a resize. Editors draw caretline's own frame of them (caret, selection, wrap,
-  scroll), and a press, drag or wheel in their text is `Point`, `Drag` and `Scroll`, so double
-  and triple clicks work. Still to come for editors: Markdown styles, links, task boxes.
-- **Done (12 October): lists and tables scroll from the state.** They draw the rows
-  `state::first_row` says, as many as the window reported fit, and the wheel sends `Msg::Scroll`
-  (a mouse wheel's notch is a step, a trackpad's travel a step each three rows); the window keeps
-  no scroll of its own. Clicks act on press, as the terminal's do. The body and an editor's text
-  sit a whole cell in, so they're on the cell grid.
-- **Done (12 October): the window under test.** `App::in_window(w, h)` (the `window-test`
-  feature: `gpui/test-support`) is a `Headless` whose frame is the window under GPUI's test
-  platform: no screen, fixed text metrics (a cell is 8.4 × 24 px), layout, prepaint and the
-  handover all real. A `Frame` may route the mouse itself (`Frame::pointer`) and send messages
-  (`Frame::messages`), so a press at a cell is a GPUI mouse-down in that cell's middle, through
-  the window's own handlers. `tests/window.rs` drives it; `tests/fuzz.rs` fuzzes editors, lists,
-  tables and every tour chapter through it (clean at 400 runs each in release).
-- **Done (12 October): every input through the window under test.** `Frame::input` takes keys,
-  the mouse and pastes: a key is the keystroke macOS would deliver (`window::test::keystroke`,
-  `key_name`'s inverse, checked over every key the fuzz driver presses), a paste goes on the
-  clipboard and comes in as ⌘V, and what the screen copies goes on the clipboard
-  (`Frame::copied`). The window itself now pastes the system clipboard on ⌘V and hovers rows on
-  a move, reading the hover from the state. `Headless::at(id, row, tab)` and `text_at(id)` say
-  where the last frame drew something, so tests press it without pixel arithmetic. A test
-  workflow (`.github/workflows/test.yml`) runs clippy and the tests on macOS and Linux on every
-  push, as a signal.
-- **Input bypasses `Input`.** Keys go straight to `Msg::Key` (fine: GPUI routes them), and clicks
-  are GPUI `on_click` handlers sending `Msg`s. The terminal's way, `Input::Pointer` resolved
-  against `Drawn::hits`, is there for whatever GPUI doesn't route itself (drags across nodes,
-  wheel over editors, multi-click timing); decide per input which way it goes, and keep the
-  messages the same either way so state, replay and the fuzz driver don't change.
-- **`Caps` is a terminal idea.** The window sends its own cell size; the graphics flag goes with
-  the terminal.
+Commits `dc868b9` to `6c6b07b`.
+
+- **The window reports what it laid out.** A measuring canvas in each node notes its bounds as
+  GPUI prepaints; once the frame paints, they go to the engine as `Drawn`: rectangles (the
+  readback has them), hits (`fictty mouse` lands), editor and list sizes, `$width` areas and the
+  wake time (spinners turn and toasts go on their own). A column is the monospace font's advance
+  (Menlo, 8.43 px at 14 px; `ch_width` is the glyph's ink, not its advance), a row 24 px; the
+  window sends that as `Msg::Caps` and its size in cells as `Msg::Screen`.
+- **Editors draw caretline's own frame.** Caret, selections, wrap and scroll are caretline's;
+  each row is one shaped run with selections behind it on the cell grid (splitting a row into
+  spans moved glyphs as the selection changed). A press, drag or wheel in the text is `Point`,
+  `Drag` and `Scroll`, the terminal's messages. Markdown roles come from the core
+  (`model::md_roles`) and are inked from the theme's `md.*` parts.
+- **Themes and markup.** `look.rs` reads the active theme each frame: tokens are colours, parts
+  and `<spec>` runs are inks. `text.rs` draws a template's styled runs, signs, tabs and fills.
+- **Lists and tables scroll from the state.** They draw the rows `state::first_row` says, as
+  many as fit; the wheel sends `Msg::Scroll` (a notch is a step). The window keeps no scroll,
+  hover or selection of its own. Clicks act on press, as the terminal's do.
+- **The window under test.** `App::in_window(w, h)` (the `window-test` feature,
+  `gpui/test-support`) is a `Headless` drawn by the window under GPUI's test platform: no screen,
+  fixed text metrics (a cell is 8.4 × 24 px), real layout, prepaint and handover. `Frame::input`
+  takes keys as the keystrokes macOS delivers (`window::test::keystroke`, checked against
+  `key_name` for every key the fuzz driver presses), the mouse as GPUI events in a cell's middle,
+  and pastes through the clipboard and ⌘V; `Frame::copied` puts copies on the clipboard.
+  `Headless::at(id, row, tab)` and `text_at(id)` find what to press.
+- **What it proved.** `tests/window.rs` (12 tests) covers layout, rows, tabs, carets, drags,
+  multi-presses, the wheel, resizes, keys, paste and copy, hover and the finders. The fuzz driver
+  runs editors, lists, tables and all ten tour chapters through the window, clean at 400 runs in
+  release; a test checks its mouse changes state as often in the window as in the grid (14 of
+  77 acts, both).
+- **In the app.** ⌘V pastes the system clipboard (caretline knows its own copies when they come
+  back); rows hover; the body and editors' text sit a whole cell in, on the cell grid.
+- **CI.** `.github/workflows/test.yml`: clippy (warnings denied) and the tests on macOS and
+  Linux on every push, as a signal.
+- **Speed, engine side.** With the window off screen (so drawing nothing), the engine took ~6,060
+  pushes a second flat out, as the spike did (~5,900). Frame times need the window on screen.
+
+#### Next, step by step
+
+Each step builds a slice of parity, moves the grid tests that slice owns onto `App::in_window`
+(readback, state and the finders, not characters), and ends with the tour's chapters that use it
+looked at in a real window. A step is done when its tests pass in the window, its grid twins are
+deleted, and the window fuzz runs stay clean.
+
+1. **Layout (S–M).** `pad`, `align`, `min`/`max`, `px` sizes, `float`, `modal` with a scrim (a
+   press outside goes nowhere). A no-overlap property in the fuzz driver for the window: siblings'
+   rectangles never overlap and every child sits inside its parent (stacks and floats excepted).
+   Tests: `when_hides_a_node_and_gives_its_room_away`,
+   `a_modal_floats_over_the_screen_and_keeps_the_focus`, `gaps_space_out_a_row`,
+   `min_and_max_bound_a_share`, `when_can_read_the_width_a_node_is_laid_out_in`,
+   `each_repeats_a_template_per_item`, `each_follows_its_data_and_keeps_its_tree_otherwise`,
+   `the_readback_has_each_nodes_rectangle_from_the_grid`,
+   `headless_takes_the_mouse_and_resizes_like_a_terminal`,
+   `keys_type_into_a_field_a_key_just_showed`.
+2. **Text and themes (M).** Our own ellipsis (measure, then cut with `…`, keeping the right side
+   after a tab), `keep`; `variant`, `tone`, `edge`, `backdrop` (cards: radius, gradient,
+   shadow); the status bar as the UI's (status, problems, hints, `status_bar: false`), with the
+   speed meter only when asked. Tests: `a_cut_line_ends_in_an_ellipsis_and_keeps_its_right_side`,
+   `a_cut_meta_ends_in_an_ellipsis_too`, `keep_holds_room_for_the_text_before_the_meta`,
+   `templates_fit_fields_escape_brackets_and_take_tabs_from_values`,
+   `a_markup_tag_can_name_a_theme_part`, `tab_titles_are_templates_with_a_lead_and_a_trail`,
+   `tabs_start_where_they_say_and_choosing_one_moves_the_focus_into_it`, and view.rs's
+   `a_variant_and_pad_come_from_the_theme_and_the_node`.
+3. **Lists, trees, tables (M).** A tree's indent, fold glyphs and clicks on them; `mark`/`lead`;
+   row variants; skip rows; filters; heat colours; column widths and alignment; footers and
+   totals; scrollbars. Tests: `a_tree_shows_nested_rows_and_folds_them`,
+   `a_tree_row_is_addressable_in_the_store`, `folds_survive_an_update_from_outside`,
+   `a_filter_narrows_a_list_and_store_actions_still_find_the_row`,
+   `a_filtered_tree_opens_to_show_what_matches`,
+   `a_long_list_shows_a_scroll_bar_and_keeps_its_rows_clear_of_it`, `rows_can_take_two_lines`,
+   `a_tree_takes_a_mark_and_a_leaf_glyph_like_a_list`,
+   `the_wheel_scrolls_a_list_and_leaves_the_selection`, and view.rs's
+   `a_table_totals_its_columns`.
+4. **Editors, the rest (S).** Prove in the window what's drawn: links (style and click), task
+   boxes (click toggles), read-only, `accept: number`; then IME as `Msg::Compose` in `State`,
+   shown by the view. Tests: `a_readonly_editor_scrolls_but_never_changes`,
+   `a_key_at_the_end_of_a_long_paragraph_stays_quick`, and the cell-addressed ones that only
+   worked through the grid's sizes: `an_editor_ticks_markdown_tasks`,
+   `links_in_an_editor_act_on_a_click_and_a_key`, `a_wiki_links_brackets_only_place_the_caret`,
+   editing.rs's `the_mouse_places_extends_and_selects_words_and_lines`.
+5. **Charts and big type (M).** `sparkline`, `chart`, `bars`, `gauge`, `plot` (and its map and
+   dots), `big`, drawn with `canvas` from the same data; hits on bars and points. Tests: view.rs's
+   `big_digits_are_three_rows` and `bars_across_label_bar_and_value`, rewritten on readback,
+   plus a no-panic fuzz over the speed and gallery chapters.
+6. **Toasts, layers and the clock (M).** A `toasts` node's placement and covering; layers placed
+   with `anchored`: callouts, arrows, rings, spotlights as a scrim with soft holes, pulses on the
+   logical clock; the hover tip. Tests: `toasts_go_when_their_time_is_up`,
+   `a_spinner_turns_with_the_clock`, `a_layer_shows_while_its_when_holds`,
+   `a_modal_layer_covers_what_is_under_it`, `a_lasting_write_goes_on_the_screens_clock`,
+   `toasts_go_where_a_toasts_node_is`, `a_toasts_node_covers_what_is_under_it_while_one_shows`.
+7. **Embedding and the examples (M).** host.rs's seven grid tests on `in_window` (the shape
+   Thought Control's tests have); every example and tour chapter looked at in a real window,
+   with screenshots; `examples/stress/play.sh` against a window on screen for frame times beside
+   the spike's; Thought Control's screens in the window, with Aram.
+8. **The terminal goes (S–M).** ratatui, crossterm, vt100, `sim`, `Grid`, `gfx.rs` sending,
+   `setup`, `render --ansi`; `App::headless` becomes the window under test (or frameless
+   readback where GPUI can't build); the fuzz driver drops "the terminal shows the frame".
+
+Notes that still hold:
+
+- **Each frontend gets the same messages.** GPUI routes clicks on rows, tabs and buttons itself;
+  editors map pixels to cells in the window. Either way the messages are the terminal's, so
+  state, replay and the fuzz driver don't change.
 - **Copy and screens are drained by the frontend.** The engine queues `Effect::Copy` text
   (`take_copied`) and `screen` requests (`take_screens`); the window answers screens with the
   readback outline. A screenshot answer (phase 2) slots in the same place.
-- **Grid-reading tests: 75 calls to `screen()`.** 54 in `tests/components.rs`, 16 in
-  `tests/host.rs` (the shape Thought Control's tests have), 5 in the core. `Headless` draws
-  through a `Frame`; without one, `screen()` already returns the readback outline. Move each
-  test to `readback()` or state as its component lands in the window, then drop `Grid` and
-  `headless_with` together with the terminal.
 - **Waiting: use the channel, not `sleep`.** The first threaded terminal loop lost 20 fps
   because `thread::sleep` overslept by up to 4 ms; waiting on the ring channel with a timeout
-  fixed it. The window doesn't pace itself (GPUI draws at most once a display frame), but any
-  loop that waits should do the same.
-- **Measure the window first.** No release numbers for the window from `main` yet: run
-  `examples/stress/play.sh` against `fictty run --window` for a baseline beside the spike's.
+  fixed it.
+- **Windows off screen don't draw.** macOS stops a hidden or covered window's frames: screen
+  captures of it are stale and its fps reads 0. Look at it in front, or test it in `in_window`.
+- **The debug suite is slower.** The tour fuzzed in the window takes most of `tests/fuzz.rs`'s
+  ~66 s in a debug build; trim its runs there if it gets in the way.
 - **One flaky test goes with the terminal.** `random_acts_leave_the_real_screen_where_they_leave_a_headless_one`
-  (the pty sim) sometimes misses a triple click: four settles of ~80 ms each squeeze the 400 ms
-  multi-click window under load. It fails on the old `main` too; it leaves with `sim`.
+  (the pty sim) sometimes misses a triple click under load; it leaves with `sim`.
 - **One screen per socket.** A second `fictty run` on the default socket refuses
   (`FICTTY_SOCKET` for another); tabs (phase 2) are the real answer.
+- **To look into:** `fictty set notes` with `{"selected": k}` answers ok but the notes list's
+  selection doesn't move (it follows its `key`); find out whether that's meant.
 
 ### Phase 2 · The agent's portal (M)
 

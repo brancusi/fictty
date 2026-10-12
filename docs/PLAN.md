@@ -151,9 +151,16 @@ The phases of [design/native.md](design/native.md), where each is broken down.
 - [x] Phase 0 · The seam (M): the core as its own crate, the engine on its own thread, readback,
       the spike's window behind `fictty run --window` (2026-10-11)
 - [ ] Phase 1 · Parity in the window (L): every component, theme and input; the tour and Thought
-      Control run in it; the terminal code goes. The window reports its layout (rectangles,
-      hits, editor sizes, wake) and its size (2026-10-12); next, component by component;
-      native.md lists what's left
+      Control run in it; the terminal code goes
+  - [x] The window reports its layout to the engine (rectangles, hits, editor and list sizes,
+        wake) and its size; editors draw caretline's frame, with Markdown styles; themes and
+        template markup; lists and tables scroll from the state; ⌘V and hover (2026-10-12)
+  - [x] The window under test: `App::in_window` (GPUI's test platform), every input through it,
+        the fuzz driver over editors, lists, tables and the tour through it; a test workflow
+        on every push (2026-10-12)
+  - [ ] Next, in order (native.md, "Next, step by step"): layout, text and themes, lists and
+        trees, the rest of editors, charts, toasts and layers, embedding and the examples, then
+        the terminal goes. Each step moves its share of the 42 grid tests into the window
 - [ ] Phase 2 · The agent's portal (M): `watch` and `emit`, drop zones, tabs (`fictty open
       --tab`), screenshots, the command policy
 - [ ] Phase 3 · Media (M): images, video, pasted and dropped media, animation
