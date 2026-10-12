@@ -100,6 +100,14 @@ impl App {
         self.0
     }
 
+    /// Without a screen: `width`×`height` cells drawn by the native window under GPUI's test
+    /// platform, for tests. Layout, the mouse and what a frame hands the engine go through the
+    /// window's own code; `screen` is the readback as an outline, with each node's rectangle.
+    #[cfg(all(target_os = "macos", feature = "window-test"))]
+    pub fn in_window(self, width: u16, height: u16) -> Result<crate::engine::Headless> {
+        self.0.headless_with(width, height, Box::new(crate::window::test::Windowed::new(width, height)))
+    }
+
     /// Without a terminal: a screen of `width`×`height` cells that renders to text, for tests
     /// and `fictty render`. Sources are fetched and host actions done inline.
     pub fn headless(self, width: u16, height: u16) -> Result<crate::engine::Headless> {

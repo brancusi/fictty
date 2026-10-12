@@ -56,14 +56,16 @@ embedding apps depend on `fictty` alone.
 - `crates/fictty/src/window/`: the native window (`fictty run --window`, macOS), GPUI, growing to
   parity in phase 1 of [docs/design/native.md](docs/design/native.md): `mod.rs` (the view, input,
   what a frame laid out back to the engine), `look.rs` (the theme as colours and inks),
-  `text.rs` (templates with markup as styled runs, tabs and fills)
+  `text.rs` (templates with markup as styled runs, tabs and fills), `test.rs` (the window under
+  GPUI's test platform as a headless screen's frame: `App::in_window`, the `window-test` feature)
 - `crates/fictty/src/sim.rs`: a screen in a pseudo-terminal with a vt100 emulator (the `sim`
   feature): keys as a terminal's bytes, the mouse, pastes, resizes
 - `crates/fictty/src/main.rs`: the CLI, one subcommand per socket operation
 - `crates/fictty/tests/`: the library from outside: `components.rs` (each component, driven and
-  read back), `editing.rs` (the editing-keys contract), `host.rs` (an embedding app), `fuzz.rs`
-  (random input over editors and every chapter of the tour; `FUZZ_RUNS=2000` in a release build
-  to go deeper), `sim.rs` (the binary in a pty)
+  read back), `editing.rs` (the editing-keys contract), `host.rs` (an embedding app), `window.rs`
+  (the native window's layout and mouse, under GPUI's test platform), `fuzz.rs` (random input
+  over editors and every chapter of the tour, in the terminal's grid and in the window;
+  `FUZZ_RUNS=2000` in a release build to go deeper), `sim.rs` (the binary in a pty)
 - `examples/`: UIs and their feeds. `showcase/` is the demo the one-liners run (the tour's chapters
   are written by `tour.py`; `autopilot.sh` is its agent); `stress/` and
   `finance/` are standalone; `thc/` and `pixels/` need Thought Control installed (they move to
@@ -88,7 +90,10 @@ mise exec -- cargo clippy --all-targets
 - Tests live next to the code (`#[cfg(test)]` in `state.rs`, `model.rs`, `view.rs`) and in
   `crates/fictty/tests/`. `update` and `view` are pure, so test them directly: build a `State`, apply messages,
   assert on state or on the rendered text; or drive `App::new(ui).headless(w, h)` with keys and
-  read back `screen()` and `state()`.
+  read back `screen()` and `state()`. `App::new(ui).in_window(w, h)` is the same screen drawn by
+  the native window under GPUI's test platform (macOS): its layout, its mouse and what it hands
+  the engine are the window's own; read it back with `readback()` and `state()`. New tests go
+  there; the grid goes with the terminal.
 - **See your change without a terminal:** `fictty render ui.json --size 120x40 --keys j,j,tab`
   prints the frame; `--ansi` keeps colours. `fictty screen --nodes` reads a running screen back
   node by node, whatever draws it.

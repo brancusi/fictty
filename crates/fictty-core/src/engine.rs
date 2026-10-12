@@ -212,11 +212,20 @@ impl Inbox {
     }
 }
 
-/// A screen's way of drawing itself for `Headless`: the terminal's grid, until the window's
-/// readback replaces it. Without one, a headless screen reads back its nodes as an outline.
+/// A screen's way of drawing itself for `Headless`: the terminal's grid, or the window under
+/// GPUI's test platform. Without one, a headless screen reads back its nodes as an outline.
 pub trait Frame {
     /// Draw the state.
     fn draw(&mut self, st: &State) -> Drawn;
+    /// The mouse at a cell, for a frame that routes it itself, as a window does (each element
+    /// takes its own events): false leaves it to the engine's hit regions.
+    fn pointer(&mut self, _kind: Pointer, _x: u16, _y: u16) -> bool {
+        false
+    }
+    /// The messages the frame sent since it was last asked: a window's clicks, its cell size.
+    fn messages(&mut self) -> Vec<Msg> {
+        Vec::new()
+    }
     /// The screen is now `width` × `height` cells.
     fn resize(&mut self, width: u16, height: u16);
     /// The last frame as text, one line per row.
@@ -1396,11 +1405,25 @@ impl Headless {
     /// the last frame, as on a running screen.
     pub fn mouse(&mut self, kind: &str, x: u16, y: u16) -> &mut Headless {
         self.drain();
-        if let Some(m) = pointer(Pointer::named(kind), x, y, &self.hits, &self.st, &mut self.drag) {
+        let kind = Pointer::named(kind);
+        // A window routes the mouse itself; a grid leaves it to the last frame's hit regions.
+        if self.frame.as_mut().is_some_and(|f| f.pointer(kind, x, y)) {
+            self.absorb();
+        } else if let Some(m) = pointer(kind, x, y, &self.hits, &self.st, &mut self.drag) {
             self.msg(m);
         }
         self.frame();
         self
+    }
+
+    /// What the frame sent (a window's clicks), applied in order.
+    fn absorb(&mut self) -> bool {
+        let sent = self.frame.as_mut().map(|f| f.messages()).unwrap_or_default();
+        let any = !sent.is_empty();
+        for m in sent {
+            self.msg(m);
+        }
+        any
     }
 
     /// Text pasted (bracketed), as the terminal delivers it.
@@ -1544,9 +1567,14 @@ impl Headless {
         let Some(f) = &mut self.frame else { return };
         let Drawn { hits, rects, sizes, areas, .. } = f.draw(&self.st);
         (self.hits, self.rects) = (hits, rects);
-        if resize_editors(&mut self.d, &mut self.st, sizes) | report_areas(&mut self.d, &mut self.st, areas) {
+        // What drawing sent (a window's cell size) and what it learned (an editor's size) change
+        // the state: once more, so the frame is the state's.
+        let changed = resize_editors(&mut self.d, &mut self.st, sizes) | report_areas(&mut self.d, &mut self.st, areas) | self.absorb();
+        if changed && let Some(f) = &mut self.frame {
             let Drawn { hits, rects, .. } = f.draw(&self.st);
             (self.hits, self.rects) = (hits, rects);
+            self.absorb();
+            self.drawn = true;
         }
     }
 }

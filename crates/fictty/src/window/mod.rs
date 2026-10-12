@@ -10,17 +10,18 @@
 //! monospace font, as in a terminal.
 
 mod look;
+#[cfg(feature = "window-test")]
+pub mod test;
 mod text;
 
-use crate::engine::{Drawn, Hit, Input, Live, Rect};
+use crate::engine::{Drawn, Hit, Live, Rect};
 use look::{Ink, Look};
 use crate::model::{Kind, Md, Node, Size, md_roles};
 use crate::state::{self, Msg, State};
 use anyhow::Result;
 use gpui::{
     AnyElement, App, Application, Bounds, ClipboardItem, Context, DefiniteLength, FocusHandle, FontWeight, HighlightStyle, Hsla, KeyDownEvent, MouseButton, MouseDownEvent, MouseMoveEvent, Pixels,
-    Point, ScrollStrategy, ScrollWheelEvent, SharedString, StyledText, UniformListScrollHandle, Window, WindowBounds, WindowOptions, canvas, div, font, prelude::*, px, relative, size,
-    uniform_list,
+    Point, ScrollWheelEvent, SharedString, StyledText, Window, WindowBounds, WindowOptions, canvas, div, font, prelude::*, px, relative, size,
 };
 use serde_json::{Value, json};
 use std::cell::RefCell;
@@ -74,8 +75,9 @@ struct Laid {
     /// Hit regions, innermost last: a node, maybe a row or a tab, maybe an editor's text. Their
     /// own rectangles are filled in from the bounds when the frame is handed over.
     hits: Vec<(Bounds<Pixels>, Hit)>,
-    /// Each editor's text area and each list's rows, as bounds to fit cells into.
-    sizes: Vec<(String, Bounds<Pixels>)>,
+    /// Each editor's text area and each list's rows, as bounds to fit cells into, with the
+    /// rows a list's item takes (1 for an editor).
+    sizes: Vec<(String, Bounds<Pixels>, u16)>,
     /// The area each node whose `when` reads `$width` or `$height` was laid out in.
     areas: Vec<(String, Bounds<Pixels>)>,
 }
@@ -114,10 +116,42 @@ fn inked<E: Styled>(mut el: E, ink: Ink) -> E {
     el
 }
 
+/// Where the window's state comes from and where its messages go.
+#[derive(Clone)]
+enum Engine {
+    /// fictty's engine, on its own thread (`fictty run --window`): it takes in sources and
+    /// requests as fast as they come; the window reads its state when it draws.
+    Live(Arc<Mutex<Live>>),
+    /// A test's `Headless`, whose frame the window is (`App::in_window`).
+    #[cfg(feature = "window-test")]
+    Test(Rc<RefCell<test::Side>>),
+}
+
+impl Engine {
+    fn send(&self, msg: Msg) {
+        match self {
+            Engine::Live(live) => live.lock().expect("the engine").msg(msg),
+            #[cfg(feature = "window-test")]
+            Engine::Test(side) => side.borrow_mut().sent.push(msg),
+        }
+    }
+
+    /// A painted frame laid this out: true when the state changed because of it (an editor
+    /// learned its size), so another frame should follow.
+    fn drew(&self, took: Duration, drawn: Drawn) -> bool {
+        match self {
+            Engine::Live(live) => live.lock().expect("the engine").drew(took, drawn),
+            #[cfg(feature = "window-test")]
+            Engine::Test(side) => {
+                side.borrow_mut().drawn = Some(drawn);
+                false
+            }
+        }
+    }
+}
+
 struct Portal {
-    /// fictty's engine, on its own thread: it takes in sources and requests as fast as they
-    /// come; the window reads its state when it draws.
-    live: Arc<Mutex<Live>>,
+    engine: Engine,
     focus: FocusHandle,
     cell: Cell,
     /// The window's size in cells, as last told to the engine.
@@ -128,25 +162,51 @@ struct Portal {
     texts: Rc<RefCell<HashMap<String, Bounds<Pixels>>>>,
     /// The editor a press in its text started a drag in, until the button comes up.
     drag: Option<String>,
-    /// The wheel's travel over an editor not yet a whole scroll step.
-    wheel: f32,
+    /// The wheel's travel over a node, not yet a whole scroll step.
+    wheel: (String, f32),
     /// When (on the logical clock) the frame being built changes by itself next.
     wake: Option<u64>,
-    /// Each list's scroll, by id: the window's own view state, as a terminal's scrollback is.
-    scrolls: HashMap<String, UniformListScrollHandle>,
-    /// The last selection each list was scrolled to.
-    shown: HashMap<String, usize>,
 }
 
 impl Portal {
+    /// Open on `engine`, measuring the cell: a column is the monospace font's character width.
+    fn new(engine: Engine, window: &mut Window, cx: &mut Context<Self>) -> Portal {
+        let ts = window.text_system();
+        let w = ts.ch_advance(ts.resolve_font(&font(MONO)), px(TYPE)).map(f32::from).unwrap_or(8.4);
+        let cell = Cell { w, h: ROW };
+        // Pictures and charts size themselves by the cell, as in a terminal.
+        engine.send(Msg::Caps { caps: state::Caps { graphics: false, cell_w: cell.w, cell_h: cell.h }, text_sizing: false });
+        let focus = cx.focus_handle();
+        focus.focus(window);
+        Portal { engine, focus, cell, screen: (0, 0), laid: Shared::default(), texts: Rc::default(), drag: None, wheel: (String::new(), 0.0), wake: None }
+    }
+
     fn send(&mut self, msg: Msg, cx: &mut Context<Self>) {
-        self.live.lock().unwrap().msg(msg);
+        self.engine.send(msg);
         cx.notify();
     }
 
     /// The frame changes by itself at `at` (a spinner turning, a toast going).
     fn soon(&mut self, at: u64) {
         self.wake = Some(self.wake.map_or(at, |w| w.min(at)));
+    }
+
+    /// The wheel over `id`: a mouse wheel's notch is a step (three rows, as in a terminal), and
+    /// a trackpad's travel a step each three rows of it.
+    fn wheel(&mut self, id: &str, e: &ScrollWheelEvent, cx: &mut Context<Self>) {
+        if self.wheel.0 != id {
+            self.wheel = (id.to_string(), 0.0);
+        }
+        let step = 3.0 * self.cell.h;
+        self.wheel.1 -= match e.delta {
+            gpui::ScrollDelta::Lines(l) => l.y * step,
+            gpui::ScrollDelta::Pixels(p) => f32::from(p.y),
+        };
+        let by = (self.wheel.1 / step).trunc();
+        if by != 0.0 {
+            self.wheel.1 -= by * step;
+            self.send(Msg::Scroll { id: id.to_string(), by: by as isize }, cx);
+        }
     }
 
     /// The cell `at` falls on in editor `id`'s text, in the last painted frame.
@@ -265,12 +325,12 @@ impl Portal {
                 let hover = lk.hover;
                 inked(div().id(SharedString::from(format!("btn-{key}"))).px_3().rounded_md().cursor_pointer(), ink)
                     .when(!focused, |d| d.hover(move |s| s.bg(hover)))
-                    .on_click(cx.listener(move |this, _, _, cx| this.send(Msg::Click { id: target.clone(), row: None, tab: None }, cx)))
+                    .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, _, cx| this.send(Msg::Click { id: target.clone(), row: None, tab: None }, cx)))
                     .child(label)
                     .into_any_element()
             }
             Kind::Rule { .. } => div().h(px(1.)).w_full().bg(own.fg.unwrap_or(lk.border)).into_any_element(),
-            Kind::List { rows, .. } | Kind::Tree { rows, .. } => self.list(st, n, &id, rows.item.clone(), focused, cx),
+            Kind::List { .. } | Kind::Tree { .. } => self.list(st, lk, n, &id, cx),
             Kind::Table { columns, .. } => {
                 let rows = state::items(st, n).to_vec();
                 let sel = state::selected(st, &id);
@@ -278,10 +338,8 @@ impl Portal {
                 let head_ink = lk.part("table.header", Ink { fg: Some(lk.accent), bold: true, ..Ink::default() });
                 let head = inked(div().flex().flex_row().h(px(cell.h)), head_ink).children(columns.iter().map(|c| div().flex_1().child(c.title.clone())));
                 let chosen = selected_ink(lk, focused);
-                let body: Vec<AnyElement> = rows
-                    .iter()
-                    .enumerate()
-                    .take(200)
+                let body: Vec<AnyElement> = shown_rows(st, &id, rows.len(), 1)
+                    .map(|k| (k, &rows[k]))
                     .map(|(k, r)| {
                         let target = id.clone();
                         let under = id.clone();
@@ -293,14 +351,25 @@ impl Portal {
                             .h(px(cell.h))
                             .child(measure(&self.laid, move |l, b| l.hits.push((b, hit(under, Some(k), None, false)))))
                             .when(k == sel, |d| inked(d, chosen))
-                            .on_click(cx.listener(move |this, _, _, cx| this.send(Msg::Click { id: target.clone(), row: Some(k), tab: None }, cx)))
+                            .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, _, cx| this.send(Msg::Click { id: target.clone(), row: Some(k), tab: None }, cx)))
                             .children(columns.iter().map(|c| div().flex_1().min_w_0().child(text::line(lk, &c.value, r, Ink::default(), false))))
                             .into_any_element()
                     })
                     .collect();
                 // The rows it has room for, below the header.
                 let fits = id.clone();
-                let rows_area = div().relative().flex().flex_col().flex_1().min_h(px(0.)).child(measure(&self.laid, move |l, b| l.sizes.push((fits, b)))).children(body);
+                let wheel = id.clone();
+                let rows_area = div()
+                    .id(SharedString::from(format!("rows-{key}")))
+                    .relative()
+                    .flex()
+                    .flex_col()
+                    .flex_1()
+                    .min_h(px(0.))
+                    .overflow_hidden()
+                    .child(measure(&self.laid, move |l, b| l.sizes.push((fits, b, 1))))
+                    .on_scroll_wheel(cx.listener(move |this, e: &ScrollWheelEvent, _, cx| this.wheel(&wheel, e, cx)))
+                    .children(body);
                 div().flex().flex_col().size_full().child(head).child(rows_area).into_any_element()
             }
             Kind::Editor { .. } | Kind::Input { .. } => self.editor(st, lk, n, &id, focused, cx),
@@ -321,7 +390,7 @@ impl Portal {
                         .rounded_md()
                         .cursor_pointer()
                         .map(|d| if k == at { inked(d, active) } else { inked(d, idle) })
-                        .on_click(cx.listener(move |this, _, _, cx| this.send(Msg::Click { id: target.clone(), row: None, tab: Some(k) }, cx)))
+                        .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, _, cx| this.send(Msg::Click { id: target.clone(), row: None, tab: Some(k) }, cx)))
                         .child(text::plain(t, v))
                 }));
                 let shown = child.map(|c| self.node(st, lk, &c, false, &format!("{key}.{at}"), cx)).unwrap_or_else(|| div().into_any_element());
@@ -340,60 +409,61 @@ impl Portal {
         el.into_any_element()
     }
 
-    fn list(&mut self, st: &State, n: &Node, id: &str, item: Option<String>, focused: bool, cx: &mut Context<Self>) -> AnyElement {
-        let count = state::items(st, n).len();
-        let sel = state::selected(st, id);
-        let handle = self.scrolls.entry(id.to_string()).or_default().clone();
-        if self.shown.get(id) != Some(&sel) {
-            handle.scroll_to_item(sel, ScrollStrategy::Top);
-            self.shown.insert(id.to_string(), sel);
-        }
-        let target = id.to_string();
-        let fits = id.to_string();
+    /// A list's rows, from where the state says it's scrolled: as many as fit, each the rows its
+    /// item template takes. The wheel scrolls the state, as the terminal's does.
+    fn list(&mut self, st: &State, lk: &Look, n: &Node, id: &str, cx: &mut Context<Self>) -> AnyElement {
+        let (Kind::List { rows: look, .. } | Kind::Tree { rows: look, .. }) = &n.kind else { unreachable!("a list or tree") };
+        let focused = st.focus.as_deref() == Some(id);
         let cell = self.cell;
-        let list = uniform_list(
-            SharedString::from(format!("list-{id}")),
-            count,
-            // Only the rows in view are built, read from the state where they are.
-            cx.processor(move |this: &mut Portal, range: std::ops::Range<usize>, _window, cx| {
-                let laid = this.laid.clone();
-                let live = this.live.lock().unwrap();
-                let st = live.state();
-                let Some(n) = st.tree().find(&target) else { return Vec::new() };
-                let rows = state::items(st, n);
-                let lk = Look::new(st);
-                let chosen = selected_ink(&lk, focused);
-                let hover = lk.hover;
-                range
-                    .filter(|k| *k < rows.len())
-                    .map(|k| {
-                        let r = &rows[k];
-                        let text = match &item {
-                            Some(t) => text::line(&lk, t, r, Ink::default(), false),
-                            None => div().child(crate::model::scalar(Some(r))).into_any_element(),
-                        };
-                        let target = target.clone();
-                        let under = target.clone();
-                        div()
-                            .id(k)
-                            .relative()
-                            .child(measure(&laid, move |l, b| l.hits.push((b, hit(under, Some(k), None, false)))))
-                            .h(px(cell.h))
-                            .px_2()
-                            .rounded_sm()
-                            .flex()
-                            .items_center()
-                            .map(|d| if k == sel { inked(d, chosen) } else { d.hover(move |s| s.bg(hover)) })
-                            .on_click(cx.listener(move |this, _, _, cx| this.send(Msg::Click { id: target.clone(), row: Some(k), tab: None }, cx)))
-                            .child(text)
-                    })
-                    .collect()
-            }),
-        )
-        .track_scroll(handle)
-        .size_full();
-        // The rows it has room for: the wheel and paging move by them.
-        div().relative().flex_1().min_h(px(0.)).child(measure(&self.laid, move |l, b| l.sizes.push((fits, b)))).child(list).into_any_element()
+        let rows = state::items(st, n);
+        let sel = state::selected(st, id);
+        let per = look.lines.unwrap_or(1).max(1);
+        if rows.is_empty() {
+            let ink = lk.part("empty", Ink { fg: Some(lk.dim), italic: true, ..Ink::default() });
+            return inked(div().px_2(), ink).child(look.empty.clone().unwrap_or_else(|| "(nothing)".into())).into_any_element();
+        }
+        let chosen = selected_ink(lk, focused);
+        let hover = lk.hover;
+        let shown: Vec<AnyElement> = shown_rows(st, id, rows.len(), per)
+            .map(|k| {
+                let r = &rows[k];
+                let text = match &look.item {
+                    Some(t) => text::lines(lk, t, r, Ink::default()),
+                    None => div().child(crate::model::scalar(Some(r))).into_any_element(),
+                };
+                let (target, under) = (id.to_string(), id.to_string());
+                div()
+                    .id(k)
+                    .relative()
+                    .flex_none()
+                    .child(measure(&self.laid, move |l, b| l.hits.push((b, hit(under, Some(k), None, false)))))
+                    .h(px(cell.h * per as f32))
+                    .px_2()
+                    .rounded_sm()
+                    .flex()
+                    .flex_col()
+                    .justify_center()
+                    .overflow_hidden()
+                    .map(|d| if k == sel { inked(d, chosen) } else { d.hover(move |s| s.bg(hover)) })
+                    .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, _, cx| this.send(Msg::Click { id: target.clone(), row: Some(k), tab: None }, cx)))
+                    .child(text)
+                    .into_any_element()
+            })
+            .collect();
+        let (fits, wheel) = (id.to_string(), id.to_string());
+        div()
+            .id(SharedString::from(format!("rows-{id}")))
+            .relative()
+            .flex()
+            .flex_col()
+            .flex_1()
+            .min_h(px(0.))
+            .overflow_hidden()
+            // The items it has room for: the wheel and paging move by them.
+            .child(measure(&self.laid, move |l, b| l.sizes.push((fits, b, per))))
+            .on_scroll_wheel(cx.listener(move |this, e: &ScrollWheelEvent, _, cx| this.wheel(&wheel, e, cx)))
+            .children(shown)
+            .into_any_element()
     }
 
     /// An editor or input, drawn from caretline's own frame of it: the text at the monospace
@@ -415,7 +485,7 @@ impl Portal {
         }
         let (fits, under) = (id.to_string(), id.to_string());
         text = text.child(measure(&self.laid, move |l, b| {
-            l.sizes.push((fits, b));
+            l.sizes.push((fits, b, 1));
             l.hits.push((b, hit(under, None, None, true)));
         }));
         match doc {
@@ -497,7 +567,8 @@ impl Portal {
             .flex()
             .flex_col()
             .size_full()
-            .px_2()
+            // A column in, so the text sits on the cell grid wherever the editor does.
+            .px(px(cell.w))
             .font_family(MONO)
             .when(single, |d| d.justify_center().bg(lk.bg).rounded_md().border_1().border_color(if focused { lk.accent } else { lk.border }))
             // A press in the text puts the caret there (twice a word, three times the line) and
@@ -510,16 +581,7 @@ impl Portal {
                     this.send(Msg::Point { id: press.clone(), col, row, extend: e.modifiers.shift }, cx);
                 }),
             )
-            .on_scroll_wheel(cx.listener(move |this, e: &ScrollWheelEvent, _, cx| {
-                // Each step scrolls three rows, as a terminal's wheel notch does.
-                this.wheel -= f32::from(e.delta.pixel_delta(px(this.cell.h)).y);
-                let step = 3.0 * this.cell.h;
-                let by = (this.wheel / step).trunc();
-                if by != 0.0 {
-                    this.wheel -= by * step;
-                    this.send(Msg::Scroll { id: wheel.clone(), by: by as isize }, cx);
-                }
-            }))
+            .on_scroll_wheel(cx.listener(move |this, e: &ScrollWheelEvent, _, cx| this.wheel(&wheel, e, cx)))
             .child(text)
             .into_any_element()
     }
@@ -528,23 +590,41 @@ impl Portal {
 impl Render for Portal {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let t = Instant::now();
-        let live = self.live.clone();
-        let mut live = live.lock().unwrap();
         // The window's size in cells: `$screen`, as a terminal's resize sends it.
         let vp = window.viewport_size();
         let screen = ((f32::from(vp.width) / self.cell.w) as u16, (f32::from(vp.height) / self.cell.h) as u16);
         if screen != self.screen {
             self.screen = screen;
-            live.input(Input::Resize { width: screen.0, height: screen.1 });
+            self.engine.send(Msg::Screen { width: screen.0, height: screen.1 });
         }
         *self.laid.borrow_mut() = Laid::default();
         self.wake = None;
-        let asked = live.take_screens();
-        // What the screen copied goes on the system clipboard.
-        if let Some(text) = live.take_copied().pop() {
-            cx.write_to_clipboard(ClipboardItem::new_string(text));
+        match self.engine.clone() {
+            Engine::Live(live) => {
+                let mut live = live.lock().expect("the engine");
+                // What the screen copied goes on the system clipboard.
+                if let Some(text) = live.take_copied().pop() {
+                    cx.write_to_clipboard(ClipboardItem::new_string(text));
+                }
+                // Agents' `screen` requests get a readback of the last frame.
+                let asked = live.take_screens();
+                if !asked.is_empty() {
+                    let text = crate::readback::outline(&live.readback());
+                    for r in asked {
+                        let _ = r.send(json!({"ok": true, "screen": text}));
+                    }
+                }
+                self.frame(live.state(), t, cx)
+            }
+            #[cfg(feature = "window-test")]
+            Engine::Test(side) => self.frame(&side.borrow().st, t, cx),
         }
-        let st = live.state();
+    }
+}
+
+impl Portal {
+    /// The whole window for `st`, started at `t`.
+    fn frame(&mut self, st: &State, t: Instant, cx: &mut Context<Self>) -> gpui::Stateful<gpui::Div> {
         let lk = Look::new(st);
         let body = self.node(st, &lk, st.tree(), false, "root", cx);
         // A lasting write going, or a toast, changes the frame too.
@@ -560,21 +640,15 @@ impl Render for Portal {
             st.status.as_ref().map(|s| format!(" · {s}")).unwrap_or_default()
         );
         let toasts: Vec<AnyElement> = st.toasts.iter().rev().take(3).map(|t| toast(&lk, t)).collect();
-        // Agents' `screen` requests get a readback of what's drawn.
-        if !asked.is_empty() {
-            let text = crate::readback::outline(&live.readback());
-            for r in asked {
-                let _ = r.send(json!({"ok": true, "screen": text}));
-            }
-        }
         // Once the frame has painted, what it laid out goes to the engine; if that changed the
         // state (an editor learned its size), another frame follows.
         let handover = {
-            let (laid, texts, live, cell, wake) = (self.laid.clone(), self.texts.clone(), self.live.clone(), self.cell, self.wake);
+            let (laid, texts, engine, cell, wake) = (self.laid.clone(), self.texts.clone(), self.engine.clone(), self.cell, self.wake);
             let took = t.elapsed();
-            canvas(|_, _, _| {}, move |_, _, window, _| handover(&laid, &texts, &live, cell, wake, took, window)).absolute().size_0()
+            canvas(|_, _, _| {}, move |_, _, window, _| handover(&laid, &texts, &engine, cell, wake, took, window)).absolute().size_0()
         };
         div()
+            .id("portal")
             .track_focus(&self.focus)
             .on_key_down(cx.listener(|this, e: &KeyDownEvent, _, cx| {
                 if let Some(key) = key_name(e) {
@@ -601,7 +675,9 @@ impl Render for Portal {
             .text_color(lk.fg)
             .text_size(px(TYPE))
             .line_height(px(ROW))
-            .child(div().flex().flex_1().min_h(px(0.)).p_3().child(body))
+            // A cell's margin, so the body starts on the cell grid: a cell's middle never falls on
+            // the edge between two rows.
+            .child(div().flex().flex_1().min_h(px(0.)).px(px(self.cell.w)).py(px(self.cell.h)).child(body))
             .child(div().absolute().bottom(px(32.)).right(px(16.)).flex().flex_col().gap_1().children(toasts))
             .child(div().h(px(ROW)).px_3().text_xs().text_color(lk.dim).bg(lk.panel).child(status))
             .child(handover)
@@ -625,6 +701,17 @@ fn md_inks<'a>(lk: &'a Look<'a>) -> impl Fn(Md) -> Ink + 'a {
     }
 }
 
+/// The rows of a list or table to draw: from its first shown row (`state::first_row`), as many
+/// as the last frame said fit, and one more for a row partly in view. Before any frame has said,
+/// up to 200 rows (clipped to what shows).
+fn shown_rows(st: &State, id: &str, len: usize, per: u16) -> std::ops::Range<usize> {
+    let local = st.local.get(id);
+    let fit = local.map_or(0, |l| l.rows as usize);
+    let fit = if fit == 0 { 200 / per.max(1) as usize } else { fit };
+    let from = state::first_row(local, len, fit);
+    from..(from + fit + 1).min(len)
+}
+
 /// A selected row's ink, focused or not.
 fn selected_ink(lk: &Look, focused: bool) -> Ink {
     if focused {
@@ -642,17 +729,17 @@ fn toast(lk: &Look, t: &state::Toast) -> AnyElement {
 }
 
 /// What a painted frame laid out, to the engine, in cells.
-fn handover(laid: &Shared, texts: &RefCell<HashMap<String, Bounds<Pixels>>>, live: &Mutex<Live>, cell: Cell, wake: Option<u64>, took: Duration, window: &mut Window) {
+fn handover(laid: &Shared, texts: &RefCell<HashMap<String, Bounds<Pixels>>>, engine: &Engine, cell: Cell, wake: Option<u64>, took: Duration, window: &mut Window) {
     let l = std::mem::take(&mut *laid.borrow_mut());
     let drawn = Drawn {
         rects: l.rects.into_iter().map(|(id, b)| (id, cell.rect(b))).collect(),
         hits: l.hits.iter().map(|(b, h)| Hit { rect: cell.rect(*b), ..h.clone() }).collect(),
-        sizes: l.sizes.into_iter().map(|(id, b)| { let (w, h) = cell.fit(b); (id, w, h) }).collect(),
+        sizes: l.sizes.into_iter().map(|(id, b, per)| { let (w, h) = cell.fit(b); (id, w, h / per.max(1)) }).collect(),
         areas: l.areas.into_iter().map(|(id, b)| { let (w, h) = cell.fit(b); (id, w, h) }).collect(),
         wake,
     };
     *texts.borrow_mut() = l.hits.into_iter().filter(|(_, h)| h.text).map(|(b, h)| (h.id, b)).collect();
-    if live.lock().expect("the engine").drew(took, drawn) {
+    if engine.drew(took, drawn) {
         window.refresh();
     }
 }
@@ -674,20 +761,13 @@ pub fn run(app: crate::App) -> Result<()> {
         let bounds = Bounds::centered(None, size(px(START.0), px(START.1)), cx);
         let (live, mut rung) = start.take().expect("one window");
         let opened = cx.open_window(WindowOptions { window_bounds: Some(WindowBounds::Windowed(bounds)), ..Default::default() }, |window, cx| {
-            // A column is the monospace font's character width.
-            let ts = window.text_system();
-            let w = ts.ch_advance(ts.resolve_font(&font(MONO)), px(TYPE)).map(f32::from).unwrap_or(8.4);
-            let cell = Cell { w, h: ROW };
-            // Pictures and charts size themselves by the cell, as in a terminal.
-            live.lock().expect("the engine").msg(Msg::Caps { caps: state::Caps { graphics: false, cell_w: cell.w, cell_h: cell.h }, text_sizing: false });
             cx.new(|cx| {
-                let focus = cx.focus_handle();
-                focus.focus(window);
+                let ringing = live.clone();
                 cx.spawn(async move |this, cx| {
                     use futures::StreamExt;
                     while rung.next().await.is_some() {
-                        let go_on = this.update(cx, |p: &mut Portal, cx| {
-                            let mut l = p.live.lock().expect("the engine");
+                        let go_on = this.update(cx, |_: &mut Portal, cx| {
+                            let mut l = ringing.lock().expect("the engine");
                             if l.quit() {
                                 cx.quit();
                                 return false;
@@ -706,19 +786,7 @@ pub fn run(app: crate::App) -> Result<()> {
                     }
                 })
                 .detach();
-                Portal {
-                    live,
-                    focus,
-                    cell,
-                    screen: (0, 0),
-                    laid: Shared::default(),
-                    texts: Rc::default(),
-                    drag: None,
-                    wheel: 0.0,
-                    wake: None,
-                    scrolls: HashMap::new(),
-                    shown: HashMap::new(),
-                }
+                Portal::new(Engine::Live(live), window, cx)
             })
         });
         if let Err(e) = opened {

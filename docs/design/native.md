@@ -166,8 +166,10 @@ Every component, every theme, every input the terminal had; then the terminal go
 - [ ] Themes: every token and part mapped to styles; parts gain radius, shadow, padding, font
 - [ ] Input: every key with every modifier from the OS (`d-` is ⌘), IME, the system clipboard
       (copy as text, ⌘V pastes, owned by the runtime), mouse and wheel, hover, focus rings
-- [ ] Tests: the component tests rewritten on readback and state (70 read the character grid
-      today); a GPUI test-platform test per component that it lays out without overlap
+- [ ] Tests: the component tests rewritten on readback and state (42 read the character grid
+      today); a GPUI test-platform test per component that it lays out without overlap. The
+      harness is in: `App::in_window` draws a headless screen with the window under GPUI's test
+      platform, and the fuzz driver runs editors, lists, tables and the tour through it
 - [ ] The tour's ten chapters and every example run in the window and look right (screenshots
       reviewed)
 - [ ] Thought Control runs in the window, unchanged but for `App::run` on the main thread
@@ -191,6 +193,19 @@ Where it starts (what phase 0 left, 12 October 2026):
   size in cells as a resize. Editors draw caretline's own frame of them (caret, selection, wrap,
   scroll), and a press, drag or wheel in their text is `Point`, `Drag` and `Scroll`, so double
   and triple clicks work. Still to come for editors: Markdown styles, links, task boxes.
+- **Done (12 October): lists and tables scroll from the state.** They draw the rows
+  `state::first_row` says, as many as the window reported fit, and the wheel sends `Msg::Scroll`
+  (a mouse wheel's notch is a step, a trackpad's travel a step each three rows); the window keeps
+  no scroll of its own. Clicks act on press, as the terminal's do. The body and an editor's text
+  sit a whole cell in, so they're on the cell grid.
+- **Done (12 October): the window under test.** `App::in_window(w, h)` (the `window-test`
+  feature: `gpui/test-support`) is a `Headless` whose frame is the window under GPUI's test
+  platform: no screen, fixed text metrics (a cell is 8.4 × 24 px), layout, prepaint and the
+  handover all real. A `Frame` may route the mouse itself (`Frame::pointer`) and send messages
+  (`Frame::messages`), so a press at a cell is a GPUI mouse-down in that cell's middle, through
+  the window's own handlers. `tests/window.rs` drives it; `tests/fuzz.rs` fuzzes editors, lists,
+  tables and every tour chapter through it (clean at 400 runs each in release). Keys still go in
+  as names, not as GPUI keystrokes, so `key_name` is untested.
 - **Input bypasses `Input`.** Keys go straight to `Msg::Key` (fine: GPUI routes them), and clicks
   are GPUI `on_click` handlers sending `Msg`s. The terminal's way, `Input::Pointer` resolved
   against `Drawn::hits`, is there for whatever GPUI doesn't route itself (drags across nodes,
