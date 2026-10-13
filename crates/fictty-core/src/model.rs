@@ -36,10 +36,43 @@ pub struct Ui {
     /// or going to the first node that takes it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub focus: Option<String>,
-    /// `false` hides the runtime's own status line (hints and the fps meter), so the UI owns every
-    /// row. The meter is still bindable as `$stats`.
+    /// The runtime's own status line: the status, else the first problem, else hints. `false`
+    /// hides it, so the UI owns every row; `"speed"` adds the speed meter (frames, build time,
+    /// messages a second), which is bindable as `$stats` either way.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub status_bar: Option<bool>,
+    pub status_bar: Option<StatusBar>,
+}
+
+/// `status_bar`: shown or not, or shown with the speed meter.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum StatusBar {
+    On(bool),
+    Speed,
+}
+
+impl Serialize for StatusBar {
+    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        match self {
+            StatusBar::On(b) => s.serialize_bool(*b),
+            StatusBar::Speed => s.serialize_str("speed"),
+        }
+    }
+}
+
+impl StatusBar {
+    pub fn shown(self) -> bool {
+        self != StatusBar::On(false)
+    }
+}
+
+impl<'de> Deserialize<'de> for StatusBar {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        match Value::deserialize(d)? {
+            Value::Bool(b) => Ok(StatusBar::On(b)),
+            Value::String(s) if s == "speed" => Ok(StatusBar::Speed),
+            v => Err(wrong("status_bar is true, false or \"speed\"", &v)),
+        }
+    }
 }
 
 /// A theme: colour `tokens`, styles for the `parts` of components the runtime draws, named
@@ -1757,6 +1790,17 @@ mod tests {
         assert_eq!(text("a << b <b>bold</>"), "a < b bold");
         assert_eq!(text("{k:6}|{v:>4}|{long:5}|"), "ab    |   7|abcd…|");
         assert_eq!(text("{row|markup}"), "left⇥right", "a tab in a value marked up is a tab");
+    }
+
+    #[test]
+    fn the_status_bar_is_on_off_or_with_the_speed_meter() {
+        for (v, want) in [(json!(true), StatusBar::On(true)), (json!(false), StatusBar::On(false)), (json!("speed"), StatusBar::Speed)] {
+            let b: StatusBar = serde_json::from_value(v.clone()).unwrap();
+            assert_eq!((b, serde_json::to_value(b).unwrap()), (want, v));
+        }
+        assert!(!StatusBar::On(false).shown() && StatusBar::Speed.shown());
+        let e = serde_json::from_value::<StatusBar>(json!("fast")).unwrap_err().to_string();
+        assert!(e.contains("true, false or \"speed\""), "{e}");
     }
 
     #[test]

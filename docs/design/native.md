@@ -338,6 +338,18 @@ Moved: the cut, keep, tab-title and tab-focus grid tests to the window, the temp
 markup-part tests to the core (`text::fit` and `text::arrange` are unit-tested on a monospace
 measure); their grid twins and view.rs's variant-and-pad test are deleted.
 
+Step 2e landed on 13 October. A `backdrop` (a node's or its variant's) resolves into the card
+it stands for: its fill, or a gradient down to `fill2`, its border colour, its corners (a
+fraction of the cell's height, from the cell size the window reports) and its shadow (a glow in
+its `glow` colour, else a dark shadow down). A `tone` draws through the resolved ink. The status
+line is the UI's: the status, else the first problem (the `status.error` part), else what keys
+do, in the `status` part; `"status_bar": false` hides it, and `"status_bar": "speed"` adds the
+speed meter, which the window showed always before. A row or column still clips what it holds
+(the window fuzz found children of a squeezed row spilling over each other without it), so a
+card's shadow stops where its row does: a row of cards takes `pad` for room. The demo gained its
+beat: the agent patches a card with a misspelled variant, reads the problem back from `get
+--state` (it shows on the status bar too), and fixes it.
+
 Each step builds a slice, moves the grid tests that slice owns onto `App::in_window`
 (readback, state and the finders, not characters), and ends with the tour's chapters that use it
 looked at in a real window. A step is done when its tests pass in the window, its grid twins are
@@ -353,7 +365,7 @@ deleted, and the window fuzz runs stay clean.
    `the_readback_has_each_nodes_rectangle_from_the_grid`,
    `headless_takes_the_mouse_and_resizes_like_a_terminal`,
    `keys_type_into_a_field_a_key_just_showed`.
-2. **Text and themes as whole styles (M–L). Next: 2e.** Native.md's text-and-themes work
+2. **Text and themes as whole styles (M–L). Next: 2f.** Native.md's text-and-themes work
    plus expressive.md's "Looks", "Type" and the theme kit, in this order:
    - **2a. Style resolution in the core.** A pure function in `fictty-core` (a new `style.rs`):
      for each shown node, its theme part plus the state suffixes that hold (`.hover`, `.focused`,

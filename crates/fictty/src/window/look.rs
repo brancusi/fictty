@@ -31,7 +31,6 @@ pub struct Look<'a> {
     pub dim: Hsla,
     pub border: Hsla,
     pub accent: Hsla,
-    pub panel: Hsla,
     /// A selected row's or text's background.
     pub ring: Hsla,
     /// What a dialog dims the screen behind it with: the background, part see-through.
@@ -60,7 +59,6 @@ impl<'a> Look<'a> {
             dim: get("dim"),
             border: get("border"),
             accent: get("accent"),
-            panel: get("panel"),
             ring: get("ring"),
             pos: get("pos"),
             neg: get("neg"),

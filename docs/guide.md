@@ -243,6 +243,14 @@ doesn't fit ends in `…`: a row keeps the part after its tab (a time, a count) 
 can, and `keep` (cells) holds room for the left before the right is cut too. The readback marks
 a node whose text was cut, `(cut)` in the outline and `"cut": true` in the JSON.
 
+**Cards and the status line.** A `backdrop` (`fill`, `fill2` for a gradient down, `border`,
+`radius` and `shadow` as fractions of a cell's height, `glow` for a lit edge) draws as a card in
+the window. A row or column clips what it holds, so give a row of cards `pad` to leave their
+shadows room. The status line at the bottom shows the status, else the first problem, else
+hints; `"status_bar": false` gives the UI every row, and `"status_bar": "speed"` adds the
+speed meter (`$stats` has the numbers either way). Its look is the `status` and `status.error`
+parts.
+
 Every component's look comes from parts, including the window's own: when a theme doesn't say,
 default parts do (`button` has a 12px pad and a 6px radius, a bordered node is a `panel` with
 the `panel` colour and 8px of pad, `row.hover`, `row.selected`, `tabs.active`, `input`,

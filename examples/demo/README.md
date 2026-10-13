@@ -29,7 +29,8 @@ macOS stops drawing a window that's covered, so keep it in front.
 | 6 | adds Stock, filters it by typing | `patch`, `put part` | tables, filters, fields an agent can type into |
 | 7 | adds the Floor, live numbers and a log | `merge floor` | a live feed is a stream of merges |
 | 8 | cycles themes, reads back a style | `theme next`, `screen --nodes --style` | the UI names roles; themes decide the look; agents can see it |
-| 9 | adds Notes, then hands over | `patch`, `put notes` | the app is the person's; the agent keeps feeding it |
+| 9 | patches a card with a misspelled variant, reads the problem, fixes it | `patch`, `get --state` | wrong names are problems, on the status bar and in the state, never silence |
+| 10 | adds Notes, then hands over | `patch`, `put notes` | the app is the person's; the agent keeps feeding it |
 
 ## It grows with the window
 

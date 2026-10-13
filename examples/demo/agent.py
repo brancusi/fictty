@@ -87,12 +87,12 @@ STOCK = {"type": "col", "gap": 1, "children": [
 
 FLOOR = {"type": "col", "gap": 1, "children": [
     {"type": "row", "size": 4, "gap": 2, "children": [
-        {"type": "text", "title": t, "bind": "floor", "pad": [1, 0], "text": s} for t, s in [
+        {"type": "text", "id": f"stat{k}", "title": t, "bind": "floor", "variant": "card", "pad": [1, 0], "text": s} for k, (t, s) in enumerate([
             ("TODAY", "<b>£{takings}</>\n{±dtakings}% <dim>vs last Tuesday</>"),
             ("ON THE STANDS", "<b>{stands}</> <dim>of 4</>\n<dim>{waiting} waiting</>"),
             ("AVERAGE JOB", "<b>{avg}</> <dim>min</>\n{±davg} min <dim>vs last week</>"),
             ("WALK-INS", "<b>{walkins}</>\n<dim>since 9:00</>"),
-        ]
+        ])
     ]},
     {"type": "list", "id": "floorlog", "title": "THE FLOOR, LIVE", "bind": "floorlog", "item": "<dim>{t}</>  {msg}"},
 ]}
@@ -114,7 +114,6 @@ def app(upto):
         "store": {"agent_log": [], "shop": {"open": True}},
         "keys": {"t": {"theme": "next"}},
         "focus": "inbox" if upto == 1 else None,
-        "status_bar": False,
     }
 
 
@@ -252,10 +251,19 @@ def run():
         live(floor, events)
     style = fictty("screen", "--nodes", "--style").splitlines()
     card = next((style[i + 1] for i, l in enumerate(style[:-1]) if '"TODAY"' in l), "")
-    border = card.split("border ", 1)[1].split(" ", 1)[0] if "border " in card else "?"
+    # `border <width> <colour>`.
+    border = card.split("border ", 1)[1].split(" ")[1] if "border " in card else "?"
     step(f"Read back the styles: the TODAY card's border is {border} now.", "fictty screen --nodes --style", wait=1.6)
 
-    # 9. Notes, then hand over.
+    # 9. A typo: wrong names are problems, on the status bar and in the state, never silence.
+    card = FLOOR["children"][0]["children"][0]
+    step("Patched a card with a typo in its variant…", "fictty patch stat0 card.json",
+         "patch", "stat0", "-", data=json.dumps({**card, "variant": "crad"}), wait=1.4)
+    problems = json.loads(fictty("get", "--state") or "{}").get("problems", [])
+    step(f"…and it says so: “{problems[0] if problems else 'no problems'}”. Fixed.", "fictty get --state",
+         "patch", "stat0", "-", data=json.dumps(card), wait=1.8)
+
+    # 10. Notes, then hand over.
     step("Added Notes, a Markdown editor kept in the store.", "fictty patch main notes.json",
          "patch", "main", "-", data=json.dumps(main(5)), wait=0.4)
     fictty("set", "main", "-", data={"tab": 4})

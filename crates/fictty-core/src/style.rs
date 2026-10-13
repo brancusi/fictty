@@ -64,6 +64,8 @@ const DEFAULT_PARTS: &str = r#"{
     "md.task": "accent+b",
     "md.done": "dim+s",
     "md.link": "accent+u",
+    "status": {"fg": "dim", "bg": "panel", "pad": ["12px", 0]},
+    "status.error": "neg",
     "toast": {"fg": "fg", "bg": "panel", "pad": ["12px", "4px"], "radius": 6, "border": {"color": "accent"}}
 }"#;
 
@@ -574,6 +576,20 @@ pub fn resolve(st: &State, n: &Node) -> Resolved {
     if let Some(v) = var.and_then(|v| v.style.as_ref()) {
         s = v.over(&s);
     }
+    // A backdrop is a card: its fill (or a gradient down), its border, its corners in cells.
+    let cell_h = if st.caps.cell_h > 0. { st.caps.cell_h } else { 24. };
+    if let Some(b) = backdrop {
+        let card = Style {
+            bg: Some(match &b.fill2 {
+                Some(to) => Fill::Gradient { from: b.fill.clone(), to: to.clone(), angle: 180. },
+                None => Fill::Colour(b.fill.clone()),
+            }),
+            radius: Some(Len::Cells(b.radius * cell_h)),
+            border: b.border.as_ref().map(|c| crate::model::Line { color: Some(c.clone()), ..Default::default() }),
+            ..Style::default()
+        };
+        s = card.over(&s);
+    }
     if let Some(t) = n.tone.as_deref().filter(|t| th.knows(t)) {
         s.fg = Some(t.to_string());
     }
@@ -582,7 +598,7 @@ pub fn resolve(st: &State, n: &Node) -> Resolved {
     }
     let edge = own_edge.or(th.token("edge")).filter(|e| *e != "rounded" && (bordered || n.focusable()));
     let fill = |c: &str| th.colour(c).unwrap_or_else(|| c.to_string());
-    Resolved {
+    let mut r = Resolved {
         part: part.map(str::to_string),
         title: n.title.as_ref().map(|_| {
             let t = th.ink_of(&th.layered("title", &states));
@@ -599,7 +615,13 @@ pub fn resolve(st: &State, n: &Node) -> Resolved {
             ..b.clone()
         }),
         ..filled(&th, &s, &states, edge, bordered)
+    };
+    // Its shadow, a fraction of a cell, in its glow's colour or a dark one.
+    if let Some(b) = backdrop.filter(|b| b.shadow > 0.) {
+        let glow = b.glow.as_deref().and_then(|g| th.colour(g));
+        r.shadow.push(Shadow { y: if glow.is_some() { 0. } else { b.shadow * cell_h / 2. }, blur: b.shadow * cell_h, alpha: Some(if glow.is_some() { 0.6 } else { 0.35 }), color: glow.unwrap_or_else(|| "#000000".into()), ..Shadow::default() });
     }
+    r
 }
 
 /// A part a component draws inside a node (`row`, `tabs.active`, `table.header`, `toast`), in
@@ -872,6 +894,23 @@ mod tests {
         assert_eq!(th.ink("link", Ink::default()).spec(), "#ff0000+u", "<link>…</> takes the part's ink");
         assert_eq!(th.role_in("display+b").map(|r| r.role.size), Some(Some(40.)), "<display+b>…</> names a role");
         assert!(th.unknown("display+link+b").is_empty());
+    }
+
+    #[test]
+    fn a_backdrop_is_a_card_its_fill_border_corners_and_shadow() {
+        let st = screen(
+            json!({"tokens": {"glow": "#39d6e6"}, "variants": {"lit": {"backdrop": {"fill": "panel", "fill2": "bg", "border": "glow", "radius": 0.5, "shadow": 0.6, "glow": "glow"}}}}),
+            json!({"type": "col", "children": [
+                {"type": "text", "id": "a", "variant": "lit", "text": "a"},
+                {"type": "text", "id": "b", "backdrop": {"fill": "#222222", "shadow": 0.5}, "text": "b"}
+            ]}),
+        );
+        let a = of(&st, "a");
+        assert_eq!(a.gradient, Some(Gradient { from: "#161d22".into(), to: "#0f1418".into(), angle: 180. }), "fill down to fill2");
+        assert_eq!((a.radius, a.border.as_ref().map(|b| b.color.as_str())), (Some(12.), Some("#39d6e6")), "half a 24px cell, the glow's border");
+        assert_eq!(a.shadow.iter().map(|s| (s.color.as_str(), s.y, s.alpha)).collect::<Vec<_>>(), vec![("#39d6e6", 0., Some(0.6))], "a glow sits under it");
+        let b = of(&st, "b");
+        assert_eq!((b.ink.bg.as_deref(), b.shadow.first().map(|s| (s.y, s.blur))), (Some("#222222"), Some((6., 12.))), "a plain card casts a shadow down");
     }
 
     #[test]

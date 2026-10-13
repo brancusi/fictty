@@ -34,7 +34,7 @@ done until the demo shows it in a real window.
 |---|---|
 | 2b–2c, parts as whole styles, the window draws them | the theme beat stops being colour swaps: radius, borders, depth and pad change too, so each theme looks like a different app |
 | 2d, type | the header in a `display` role; the Floor's numbers large, tabular; message previews that cut with `…` |
-| 2e, cards, the status bar | the Floor's stats as cards (`backdrop`, gradient, shadow); the agent's problems on the status bar when it pushes a typo, and it fixes them (a new beat: "wrong names are problems") |
+| 2e, cards, the status bar | done: the Floor's stats wear the theme's `card` variant, and a new beat has the agent patch a card with a typo, read the problem back and fix it, while the status bar shows it |
 | 2f, the styling study | three themes chosen to make Kestrel look like three different products |
 | 3, the layout vocabulary | the Floor's cards `fit` and `wrap`; the Notes and Stock tabs scroll; a settings dialog laid out without tricks |
 | 4, rows as nodes | the Jobs board as real cards; the inbox rows with avatars and badges; a chat with the customer, in bubbles |

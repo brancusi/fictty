@@ -310,6 +310,9 @@ impl Portal {
         let key = if id.is_empty() { path.to_string() } else { id.clone() };
         let focused = !id.is_empty() && st.focus.as_deref() == Some(id.as_str());
         let cell = self.cell;
+        // Everything clips what it holds, rows and columns too: a squeezed row's children would
+        // spill over each other otherwise. A card's shadow is clipped where its row ends, so a
+        // row of cards takes `pad` to give their shadows room.
         let mut el = sized(div().id(SharedString::from(format!("n-{key}"))).relative().flex().flex_col().overflow_hidden(), n, along_row, cell);
         // Where it was laid out, for the readback and the mouse: noted before its children, so
         // the innermost hit comes last.
@@ -746,14 +749,21 @@ impl Portal {
         for at in st.expiring.iter().map(|e| e.at).chain(st.toasts.iter().map(|t| t.until)) {
             self.soon(at);
         }
-        let status = format!(
-            "{} fps · build {:.2} ms (max {:.1}) · {} msg/s{}",
-            st.stats.fps as u64,
-            st.stats.draw_ms,
-            st.stats.max_ms,
-            st.stats.msgs as u64,
-            st.status.as_ref().map(|s| format!(" · {s}")).unwrap_or_default()
-        );
+        // The status line: the status, else the first problem, else what keys do; the speed
+        // meter when the UI asks for it.
+        let c = (self.cell.w, self.cell.h);
+        let bar = st.ui.status_bar.is_none_or(|b| b.shown()).then(|| {
+            let said = st.status.as_ref().or(st.problems.first());
+            let text = match said {
+                Some(s) => lk.boxed(div().flex_1().min_w_0().overflow_hidden().whitespace_nowrap(), &style::inner(st, "status.error", &[]), c, (0., 0.)).child(s.clone()),
+                None => div().flex_1().min_w_0().overflow_hidden().whitespace_nowrap().child("tab moves the focus · ↑ ↓ move · ← → tabs · q quits"),
+            };
+            let speed = (st.ui.status_bar == Some(crate::model::StatusBar::Speed)).then(|| {
+                let s = &st.stats;
+                div().flex_none().child(format!("{} fps · build {:.2} ms (max {:.1}) · {} msg/s", s.fps as u64, s.draw_ms, s.max_ms, s.msgs as u64))
+            });
+            lk.boxed(div().flex().flex_row().gap_4().items_center().h(px(ROW)).text_xs(), &style::inner(st, "status", &[]), c, (0., 0.)).child(text).children(speed)
+        });
         let toasts: Vec<AnyElement> = st.toasts.iter().rev().take(3).map(|t| toast(st, &lk, t, (self.cell.w, self.cell.h))).collect();
         // Once the frame has painted, what it laid out goes to the engine; if that changed the
         // state (an editor learned its size), another frame follows.
@@ -805,7 +815,7 @@ impl Portal {
             // the edge between two rows.
             .child(div().flex().flex_1().min_h(px(0.)).px(px(self.cell.w)).py(px(self.cell.h)).child(body))
             .child(div().absolute().bottom(px(32.)).right(px(16.)).flex().flex_col().gap_1().children(toasts))
-            .child(div().h(px(ROW)).px_3().text_xs().text_color(lk.dim).bg(lk.panel).child(status))
+            .children(bar)
             .child(handover);
         self.faces = faces;
         frame

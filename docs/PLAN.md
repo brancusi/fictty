@@ -189,8 +189,10 @@ The phases of [design/native.md](design/native.md), where each is broken down.
   - [x] Step 2d, type: roles on nodes (`style.type`) and in markup, theme fonts (files
         loaded), tabular numbers; our own ellipsis and `keep`, `wrap` and `lines` on text,
         `(cut)` in the readback; tab bars' lead and trail in the window (2026-10-13)
-  - [ ] **Next: step 2e**, cards and the status bar (native.md, "Next, step by step"). Then:
-        the styling study (2f), the
+  - [x] Step 2e, cards and the status bar: backdrops resolve into cards (fill or gradient,
+        border, corners, shadow or glow); the status line is the UI's (status, problems, hints;
+        `"status_bar": "speed"` for the meter); the demo's typo beat (2026-10-13)
+  - [ ] **Next: step 2f**, the styling study (native.md, "Next, step by step"). Then: the
         layout vocabulary, lists and rows as nodes, the rest of editors, charts and icons, toasts
         and layers, embedding and the examples, then the terminal goes. Each step moves its share
         of the 32 grid tests left into the window

@@ -331,7 +331,7 @@ pub fn draw(st: &State, f: &mut Frame) -> Out {
     }
     let all = f.area();
     f.buffer_mut().set_style(all, base);
-    let bar = st.ui.status_bar.unwrap_or(true);
+    let bar = st.ui.status_bar.is_none_or(|b| b.shown());
     let [body, status] = Layout::vertical([Constraint::Fill(1), Constraint::Length(bar as u16)]).areas(f.area());
     node(&mut cx, st.tree(), f, body);
     let shade = layers(&cx, f.buffer_mut(), body);
