@@ -771,6 +771,8 @@ mod tests {
             rows: None,
             selected: None,
             rect: r.map(|(x, y, w, h)| Rect::new(x, y, w, h)),
+            style: Default::default(),
+            cut: false,
         };
         let row = |a: (u16, u16, u16, u16), b: (u16, u16, u16, u16)| vec![n(0, "row", "r", Some((0, 0, 20, 5))), n(1, "list", "a", Some(a)), n(1, "col", "c", None), n(2, "list", "b", Some(b))];
         assert_eq!(nested(&row((0, 0, 10, 5), (10, 0, 10, 5))), Ok(()));

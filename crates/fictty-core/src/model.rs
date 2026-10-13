@@ -36,23 +36,190 @@ pub struct Ui {
     /// or going to the first node that takes it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub focus: Option<String>,
-    /// `false` hides the runtime's own status line (hints and the fps meter), so the UI owns every
-    /// row. The meter is still bindable as `$stats`.
+    /// The runtime's own status line: the status, else the first problem, else hints. `false`
+    /// hides it, so the UI owns every row; `"speed"` adds the speed meter (frames, build time,
+    /// messages a second), which is bindable as `$stats` either way.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub status_bar: Option<bool>,
+    pub status_bar: Option<StatusBar>,
 }
 
-/// A theme: colour `tokens`, styles for the `parts` of components the runtime draws (style specs,
-/// as in template markup: `accent+b`, `on-ring`), and named `variants` a node can ask for. Themes
-/// are the person's or the project's, loaded with `--themes`; a push doesn't change them.
+/// `status_bar`: shown or not, or shown with the speed meter.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum StatusBar {
+    On(bool),
+    Speed,
+}
+
+impl Serialize for StatusBar {
+    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        match self {
+            StatusBar::On(b) => s.serialize_bool(*b),
+            StatusBar::Speed => s.serialize_str("speed"),
+        }
+    }
+}
+
+impl StatusBar {
+    pub fn shown(self) -> bool {
+        self != StatusBar::On(false)
+    }
+}
+
+impl<'de> Deserialize<'de> for StatusBar {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        match Value::deserialize(d)? {
+            Value::Bool(b) => Ok(StatusBar::On(b)),
+            Value::String(s) if s == "speed" => Ok(StatusBar::Speed),
+            v => Err(wrong("status_bar is true, false or \"speed\"", &v)),
+        }
+    }
+}
+
+/// A theme: colour `tokens`, styles for the `parts` of components the runtime draws, named
+/// `variants` a node can ask for, and the scales parts and styles name: `space` (`s2`),
+/// `radius` (`r2`), `depth` (`e1`, shadows), `type` (roles: `body`, `display`) and `fonts`.
+/// A part is a short ink (`accent+b`, as in template markup) or a whole style (see `Style`).
+/// Themes are the person's or the project's, loaded with `--themes`; a push doesn't change them.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct ThemeSpec {
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub tokens: BTreeMap<String, String>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    pub parts: BTreeMap<String, String>,
+    pub parts: BTreeMap<String, Part>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub variants: BTreeMap<String, Variant>,
+    /// Spacing by name: `"s2": "8px"` (or cells, `1`).
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub space: BTreeMap<String, Len>,
+    /// Corner radii by name, in pixels: `"r2": 6`.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub radius: BTreeMap<String, f32>,
+    /// Elevations by name, each a list of shadows (a glow is a shadow with no offset).
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub depth: BTreeMap<String, Vec<Shadow>>,
+    /// Type roles by name: `"display": {"font": "display", "size": 56, "weight": 800}`.
+    #[serde(default, rename = "type", skip_serializing_if = "BTreeMap::is_empty")]
+    pub types: BTreeMap<String, TypeRole>,
+    /// Fonts by name: a family (`"Inter"`) or a font file (`"fonts/Anton.ttf"`). A type role's
+    /// `font` names one, or a family directly.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub fonts: BTreeMap<String, String>,
+    /// Reserved for transitions (phase 3): read, kept, not used yet.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub motion: BTreeMap<String, Value>,
+}
+
+/// A theme part: a short ink (`"accent+b"`) or a whole style.
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[serde(untagged)]
+pub enum Part {
+    Ink(String),
+    Whole(Box<Style>),
+}
+
+impl Part {
+    /// The part's ink as a spec: itself, or a whole style's colours and modifiers
+    /// (`fg+on-panel+b`), for what reads parts as ink.
+    pub fn spec(&self) -> String {
+        match self {
+            Part::Ink(s) => s.clone(),
+            Part::Whole(s) => s.spec(),
+        }
+    }
+}
+
+/// A length: cells (`1`), pixels (`"8px"`), or the name of a `space` entry (`"s2"`).
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[serde(untagged)]
+pub enum Len {
+    Cells(f32),
+    Spec(String),
+}
+
+/// One shadow: offset, blur and spread in pixels, and its colour (a token or a colour, with
+/// an optional alpha `0`–`1`).
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct Shadow {
+    #[serde(default)]
+    pub x: f32,
+    #[serde(default)]
+    pub y: f32,
+    #[serde(default)]
+    pub blur: f32,
+    #[serde(default)]
+    pub spread: f32,
+    pub color: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub alpha: Option<f32>,
+}
+
+/// A type role: a font (a `fonts` name or a family), size and line height in pixels, a weight
+/// (100–900), letter spacing in pixels, and whether numbers are tabular.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct TypeRole {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub font: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub size: Option<f32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub weight: Option<u16>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub line: Option<f32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tracking: Option<f32>,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub tabular: bool,
+}
+
+/// A background: a colour, or a gradient between two at an angle (degrees, 180 is top to
+/// bottom).
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[serde(untagged)]
+pub enum Fill {
+    Colour(String),
+    Gradient {
+        from: String,
+        to: String,
+        #[serde(default = "down")]
+        angle: f32,
+    },
+}
+
+fn down() -> f32 {
+    180.
+}
+
+impl Fill {
+    /// The colour, or where a gradient starts.
+    pub fn colour(&self) -> &str {
+        match self {
+            Fill::Colour(c) => c,
+            Fill::Gradient { from, .. } => from,
+        }
+    }
+}
+
+/// A line around a box: its width in pixels, colour, and `solid` (the default), `dashed` or
+/// `double`.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct Line {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub width: Option<f32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub color: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub style: Option<String>,
+}
+
+/// A focus ring: a line `offset` pixels outside the box.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct Ring {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub width: Option<f32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub offset: Option<f32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub color: Option<String>,
 }
 
 /// A named look: a style under the node's own, and a border and backdrop when the node has none.
@@ -237,7 +404,7 @@ impl Default for Node {
             modal: false,
             min: None,
             max: None,
-            kind: Kind::Text { text: String::new() },
+            kind: Kind::Text { text: String::new(), wrap: None, lines: None },
         }
     }
 }
@@ -283,8 +450,16 @@ pub enum Kind {
         #[serde(default, skip_serializing_if = "String::is_empty")]
         text: String,
     },
-    /// Text. `{field}` placeholders fill from the bound value (`{a.b}` reaches in).
-    Text { text: String },
+    /// Text. `{field}` placeholders fill from the bound value (`{a.b}` reaches in). A line with
+    /// no tab or fill wraps; `wrap: false` keeps each line on one, cut with `…` where it doesn't
+    /// fit, and `lines` shows at most that many, the last ending in `…`.
+    Text {
+        text: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        wrap: Option<bool>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        lines: Option<u16>,
+    },
     /// A selectable list of `items`, or of the bound array, drawn as `Rows` say.
     List {
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -424,6 +599,9 @@ pub enum Kind {
         /// don't run until the text is one.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         accept: Option<String>,
+        /// The node's keys (Enter) don't run while the text is blank: a name a form needs.
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        required: bool,
     },
     /// One child at a time, picked by a row of tab titles (click one, or ←/→ when focused). The
     /// titles are templates over the node's bound value (`"Inbox {inbox}"`), and the row can
@@ -628,18 +806,174 @@ impl Size {
     }
 }
 
+/// A whole style: a node's own `style`, a variant's, and a theme part written as an object.
+/// Colours are tokens or colours; `pad`, `radius`, `shadow` and `type` may name the theme's
+/// scales. A style never arranges: no size, gap or position.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct Style {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub fg: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub bg: Option<String>,
+    pub bg: Option<Fill>,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub bold: bool,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub dim: bool,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub italic: bool,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub underline: bool,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub strike: bool,
+    /// Foreground and background swapped.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub reverse: bool,
+    /// A type role from the theme's `type`.
+    #[serde(default, rename = "type", skip_serializing_if = "Option::is_none")]
+    pub role: Option<String>,
+    /// Space inside: one length for every side, or `[x, y]`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pad: Option<Lens>,
+    /// Corner radius: pixels, or a `radius` name.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub radius: Option<Len>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub border: Option<Line>,
+    /// A `depth` name (`e2`), or `none`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub shadow: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ring: Option<Ring>,
+    /// A shape the component takes: tabs `underline`, `pill`, `segment`, `plain`; a scrollbar
+    /// `thin`, `overlay`, `none`; an edge `rounded`, `square`, `double`, `thick`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub shape: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub opacity: Option<f32>,
+    /// `default`, `pointer`, `text` or `grab`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cursor: Option<String>,
+    /// Fields no style has, kept so they can be reported as problems instead of ignored.
+    #[serde(flatten, default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub other: BTreeMap<String, Value>,
+}
+
+/// One length, or `[x, y]`.
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[serde(untagged)]
+pub enum Lens {
+    One(Len),
+    XY([Len; 2]),
+}
+
+// The untagged enums above, read by hand, so a wrong value says what was expected instead of
+// "did not match any variant".
+
+fn wrong<E: serde::de::Error>(what: &str, v: &Value) -> E {
+    E::custom(format!("{what}, not {v}"))
+}
+
+impl<'de> Deserialize<'de> for Part {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        match Value::deserialize(d)? {
+            Value::String(s) => Ok(Part::Ink(s)),
+            v @ Value::Object(_) => serde_json::from_value(v).map(|s| Part::Whole(Box::new(s))).map_err(serde::de::Error::custom),
+            v => Err(wrong("a part is a spec (\"accent+b\") or a style object", &v)),
+        }
+    }
+}
+
+fn len_of<E: serde::de::Error>(v: Value) -> Result<Len, E> {
+    match v {
+        Value::Number(n) => Ok(Len::Cells(n.as_f64().unwrap_or_default() as f32)),
+        Value::String(s) => Ok(Len::Spec(s)),
+        v => Err(wrong("a length is cells (1), pixels (\"8px\") or a name (\"s2\")", &v)),
+    }
+}
+
+impl<'de> Deserialize<'de> for Len {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        len_of(Value::deserialize(d)?)
+    }
+}
+
+impl<'de> Deserialize<'de> for Lens {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        match Value::deserialize(d)? {
+            Value::Array(a) if a.len() == 2 => {
+                let mut a = a.into_iter();
+                Ok(Lens::XY([len_of(a.next().unwrap_or_default())?, len_of(a.next().unwrap_or_default())?]))
+            }
+            v @ Value::Array(_) => Err(wrong("pad is one length or [x, y]", &v)),
+            v => len_of(v).map(Lens::One),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for Fill {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        let v = Value::deserialize(d)?;
+        let text = |k: &str| v.get(k).and_then(Value::as_str).map(str::to_string);
+        match &v {
+            Value::String(s) => Ok(Fill::Colour(s.clone())),
+            Value::Object(_) => match (text("from"), text("to")) {
+                (Some(from), Some(to)) => Ok(Fill::Gradient { from, to, angle: v.get("angle").and_then(Value::as_f64).map_or(down(), |a| a as f32) }),
+                _ => Err(wrong("a gradient is {\"from\", \"to\", \"angle\"}", &v)),
+            },
+            _ => Err(wrong("a background is a colour or a gradient {\"from\", \"to\", \"angle\"}", &v)),
+        }
+    }
+}
+
+impl Style {
+    /// The style's ink as a spec (`fg+on-panel+b`): its colours (a gradient's first) and
+    /// modifiers.
+    pub fn spec(&self) -> String {
+        let mut words: Vec<String> = self.fg.iter().cloned().collect();
+        words.extend(self.bg.as_ref().map(|b| format!("on-{}", b.colour())));
+        for (on, m) in [(self.bold, "b"), (self.dim, "d"), (self.italic, "i"), (self.underline, "u"), (self.reverse, "r"), (self.strike, "s")] {
+            if on {
+                words.push(m.into());
+            }
+        }
+        words.join("+")
+    }
+
+    /// This style over `base`: what it says replaces, the rest stays.
+    pub fn over(&self, base: &Style) -> Style {
+        let mut other = base.other.clone();
+        other.extend(self.other.clone());
+        Style {
+            fg: self.fg.clone().or_else(|| base.fg.clone()),
+            bg: self.bg.clone().or_else(|| base.bg.clone()),
+            bold: self.bold || base.bold,
+            dim: self.dim || base.dim,
+            italic: self.italic || base.italic,
+            underline: self.underline || base.underline,
+            strike: self.strike || base.strike,
+            reverse: self.reverse || base.reverse,
+            role: self.role.clone().or_else(|| base.role.clone()),
+            pad: self.pad.clone().or_else(|| base.pad.clone()),
+            radius: self.radius.clone().or_else(|| base.radius.clone()),
+            border: match (&self.border, &base.border) {
+                (Some(a), Some(b)) => Some(Line {
+                    width: a.width.or(b.width),
+                    color: a.color.clone().or_else(|| b.color.clone()),
+                    style: a.style.clone().or_else(|| b.style.clone()),
+                }),
+                (a, b) => a.clone().or_else(|| b.clone()),
+            },
+            shadow: self.shadow.clone().or_else(|| base.shadow.clone()),
+            ring: match (&self.ring, &base.ring) {
+                (Some(a), Some(b)) => Some(Ring { width: a.width.or(b.width), offset: a.offset.or(b.offset), color: a.color.clone().or_else(|| b.color.clone()) }),
+                (a, b) => a.clone().or_else(|| b.clone()),
+            },
+            shape: self.shape.clone().or_else(|| base.shape.clone()),
+            opacity: self.opacity.or(base.opacity),
+            cursor: self.cursor.clone().or_else(|| base.cursor.clone()),
+            other,
+        }
+    }
 }
 
 /// Where a source's value comes from. A command prints JSON on stdout; `path` picks a part of it
@@ -695,6 +1029,8 @@ pub struct Field<'a> {
     pub markdown: bool,
     /// Numbers only (`accept: "number"`).
     pub number: bool,
+    /// Its keys wait for some text (`required`).
+    pub required: bool,
     /// Read only.
     pub readonly: bool,
     /// Tab and Shift-Tab indent and outdent instead of moving the focus.
@@ -927,7 +1263,8 @@ pub enum Action {
         matching: Option<Value>,
     },
     /// Flip a true-or-false field of the focused list's or tree's selected row, in the store entry
-    /// it shows (a missing field becomes true): a checkbox.
+    /// it shows (a missing field becomes true): a checkbox. `store.zen` flips a store entry, or a
+    /// path into one, instead.
     Toggle { toggle: String },
     /// A message that shows for a while (`ms`, default 3000) in the corner, in a `tone`. A
     /// template, like `copy`.
@@ -1051,6 +1388,7 @@ impl Node {
                 line: false,
                 markdown: syntax.as_deref() == Some("markdown"),
                 number: false,
+                required: false,
                 readonly: *readonly,
                 indents: matches!(tab.as_deref(), Some("indent" | "indent-lines")),
                 indent_lines: tab.as_deref() == Some("indent-lines"),
@@ -1059,13 +1397,14 @@ impl Node {
                 links,
                 ordered,
             }),
-            Kind::Input { text, placeholder, accept } => Some(Field {
+            Kind::Input { text, placeholder, accept, required } => Some(Field {
                 seed: text,
                 doc: None,
                 placeholder: placeholder.as_deref(),
                 line: true,
                 markdown: false,
                 number: accept.as_deref() == Some("number"),
+                required: *required,
                 readonly: false,
                 indents: false,
                 indent_lines: false,
@@ -1451,6 +1790,26 @@ pub fn is_colour(name: &str) -> bool {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn templates_fit_fields_escape_brackets_and_take_tabs_from_values() {
+        let v = json!({"k": "ab", "v": "7", "long": "abcdefgh", "row": "left\tright"});
+        let text = |t: &str| segments(t, &v).into_iter().map(|s| if s.tab { "⇥".to_string() } else { s.text }).collect::<String>();
+        assert_eq!(text("a << b <b>bold</>"), "a < b bold");
+        assert_eq!(text("{k:6}|{v:>4}|{long:5}|"), "ab    |   7|abcd…|");
+        assert_eq!(text("{row|markup}"), "left⇥right", "a tab in a value marked up is a tab");
+    }
+
+    #[test]
+    fn the_status_bar_is_on_off_or_with_the_speed_meter() {
+        for (v, want) in [(json!(true), StatusBar::On(true)), (json!(false), StatusBar::On(false)), (json!("speed"), StatusBar::Speed)] {
+            let b: StatusBar = serde_json::from_value(v.clone()).unwrap();
+            assert_eq!((b, serde_json::to_value(b).unwrap()), (want, v));
+        }
+        assert!(!StatusBar::On(false).shown() && StatusBar::Speed.shown());
+        let e = serde_json::from_value::<StatusBar>(json!("fast")).unwrap_err().to_string();
+        assert!(e.contains("true, false or \"speed\""), "{e}");
+    }
 
     #[test]
     fn fill_reads_fields_and_paths() {

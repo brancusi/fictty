@@ -252,8 +252,121 @@ floats, `px`, `pad` and `align`. Not yet done: looking at the tour's chapters in
 terminal is dropped (no more terminal work; new fields are window-only), themes become whole
 styles with the theme kit pulled forward from phase 4, a layout vocabulary on GPUI's Taffy is a
 step of its own, and rows become nodes. [examples/window/](../../examples/window/README.md) (the
-wringer: nine screens, six themes, `open.sh`) is what each step is measured against. **The next
-step is 2, and it starts with 2a.**
+wringer: nine screens, six themes, `open.sh`) is what each step is measured against, with the
+public demo ([demo.md](demo.md), `examples/demo/`): each step lands with the demo showing it. **The next
+step is 3**, planned in [layout-step.md](layout-step.md).
+
+Step 2a landed on 13 October: `crates/fictty-core/src/style.rs` resolves each shown node's
+style: its part (its `type`; containers have none, which also keeps a layout `row` apart from a
+list's `row` part), with the parts of the states that hold layered over it (every combination,
+fewer before more, so `row.selected.blur` is `row`, `row.selected`, `row.blur`, itself), then its
+variant, its `tone` and its own `style`, with tokens filled in as `#rrggbb`. Its border, title,
+edge (only where it draws a border or a face) and backdrop resolve with it. The defaults the
+window and the grid used as fallbacks (`button`, `title`, `border` and their `.focused`) are
+default parts under every theme. `hover`, `focused` and `blur` hold for a node today; `active`,
+`selected` and `disabled` are named but wait for the state that says so (a press, a node's
+`disabled`). The window's `look.rs` reads colours and specs through the core's `Theme`, so there
+is one resolver; it draws from `Resolved` in 2c. The readback carries it (`screen --nodes
+--style`, `render --nodes --style`, `style` in the JSON). Theme problems: parts no component has
+(a name outside the components' families is the theme's own, for markup), spec words that mean
+nothing, colours that aren't tokens, `skip`s that aren't row variants; scale entries and roles
+join in 2b and 2d. Every example screen in every theme comes back clean. Open for 2b: the
+window tells the engine only a row's hover, so `.hover` holds for a button only once 2c sends it;
+and `tabs.active` (the shown tab) reads as `tabs` in the `active` state, which 2b should settle
+(a `tab` part with `.selected`).
+
+Step 2b landed on 13 October: a part is a short ink or a whole style (`model::Part`), and a
+node's and a variant's `style` is the same whole style (`model::Style`: `fg`, `bg` as a colour or
+a gradient, the ink modifiers, `type`, `pad`, `radius`, `border`, `shadow`, `ring`, `shape`,
+`opacity`, `cursor`). Each layer lays over the last (`Style::over`). The theme has scales
+(`space`, `radius`, `depth`, `type`), `fonts`, and `motion` (read and kept for phase 3). The
+resolved style fills every name in: pad as cells or pixels, radius in pixels, shadows and ring
+with colours, the type role with its font. A part's border draws even where the node has none
+of its own (a button's). Problems name unknown scale entries, roles, shapes, cursors, border
+styles, opacities out of range and fields no style has (kept, not dropped, so a typo is never
+silent); a malformed part, length or background fails to load with what was expected. Variants
+are whole styles through their `style` (their `edge`, `border`, `backdrop` and `title` stay as
+they were). A style's single `pad` length pads every side, where a node's `pad: 1` pads only the
+sides: the layout step settles node pads with four-sided `pad`. Fonts are names in the core;
+the window loads font files in 2d. Not done yet: the window draws only colours from all this
+(2c).
+
+Step 2c landed on 13 October: the window draws every node from its resolved style through one
+mapping, `Look::boxed` (look.rs): background or gradient, ink, pad, corners, border (dashed
+too), shadows, a ring (hard shadows, with the page's colour between for its offset), opacity and
+cursor. A button's style goes on its face. The inner parts resolve the same way
+(`style::inner`): a list's or table's row with `selected`, `hover`, `focused` and `blur` as they
+hold for that row (`style::row_states`), the tabs, the table header, empty lists, placeholders,
+the caret and selection, Markdown's roles, toasts. What the window used to hard-code (a button's
+pad and radius, a panel's inset and background, tab pills, row hover and selection, the input's
+box, the Markdown inks) is now default parts in the core, so the readback shows what's drawn,
+and a theme's part of the same name owns its ink and keeps the default's box unless it says
+otherwise. The theme's `edge` folded in: anything but `rounded` squares corners (the radius
+goes), `thick` and `double` draw two pixels. The window now tells the engine what any node the
+mouse is over is, not only rows, so `.hover` parts hold for buttons and the rest, and GPUI's own
+hover styling is gone. Tabs take the shape their part gives them: `pill` (the default),
+`underline` (the `tabs.underline` part's colour under the shown tab), `segment` (joined in one
+box) or `plain`. Tests in the window: a button's hover part, a part's pad widening a button's
+face and its press, every tab shape taking clicks. The six wringer themes look as they did, with
+square edges where they ask. Not yet: type roles and fonts (2d).
+
+Its cost, measured in a release build with the window in front (`examples/stress/play.sh`,
+5 s a stage, against main before 2a): frames build in about twice the time (ticker 0.06 → 0.11
+ms, patch storm 0.07 → 0.13 ms, a 60/s push storm 0.12 → 0.20 ms), the frame rate is unchanged
+(120 fps; 60 under the 60/s storm), and pushes flat out are 5,600–6,000 a second before and
+5,000–5,800 after over repeated runs. Resolution isn't cached yet; when it matters, cache it
+per theme revision and node, as expressive.md says.
+
+Step 2d landed on 13 October. A node asks for a type role through its style (`"style":
+{"type": "display"}`): a node's own `type` is its kind, so expressive.md's `"type": "display"`
+on a node couldn't be. Markup names a role like a part (`<display>…</>`), and a line takes the
+first role it names, since GPUI shapes a line at one size. A role sets the font (a family, or
+a `fonts` file loaded with GPUI's `add_fonts` the first time a theme names it, its family found
+by what the text system knows after that it didn't before; font paths are made absolute beside
+the themes file), the size, the weight, the line height and tabular numbers (`tnum`). Tracking
+resolves and reads back but isn't drawn: GPUI 0.2.2 has no letter spacing. A line that stays
+on one (a row, a table cell, a title, `wrap: false` text) is our own element, `text::line`: a
+canvas that shapes its runs once it knows its width, arranges the left side, a fill and the
+right side (`text::arrange`), and cuts what doesn't fit with `…` (`text::fit`): the right side
+whole while the left keeps `keep`, then the right cut too. `lines: n` wraps and shows at most
+`n` lines, the last cut with `…`: also ours, by shaping prefixes, because GPUI's clamp has the
+trouble its ellipsis had (taffy keeps the smallest size it measured, and it showed one word). A
+frame notes the nodes it cut (`Drawn::cut`), and the readback says `(cut)`, so an agent knows
+it isn't reading what's all on screen; a tab in read-back text stays a tab. A tab bar draws its
+`lead` and `trail` in the window now, and reads them back (`thc · Inbox 4 | Done · Sat 11`).
+Moved: the cut, keep, tab-title and tab-focus grid tests to the window, the template and
+markup-part tests to the core (`text::fit` and `text::arrange` are unit-tested on a monospace
+measure); their grid twins and view.rs's variant-and-pad test are deleted.
+
+Step 2e landed on 13 October. A `backdrop` (a node's or its variant's) resolves into the card
+it stands for: its fill, or a gradient down to `fill2`, its border colour, its corners (a
+fraction of the cell's height, from the cell size the window reports) and its shadow (a glow in
+its `glow` colour, else a dark shadow down). A `tone` draws through the resolved ink. The status
+line is the UI's: the status, else the first problem (the `status.error` part), else what keys
+do, in the `status` part; `"status_bar": false` hides it, and `"status_bar": "speed"` adds the
+speed meter, which the window showed always before. A row or column still clips what it holds
+(the window fuzz found children of a squeezed row spilling over each other without it), so a
+card's shadow stops where its row does: a row of cards takes `pad` for room. The demo gained its
+beat: the agent patches a card with a misspelled variant, reads the problem back from `get
+--state` (it shows on the status bar too), and fixes it.
+
+Step 2f landed on 13 October: [styling-study.md](styling-study.md). The six themes are whole
+styles written by `examples/window/themes.py`, sharing type roles, scales, variants and tokens
+so any screen wears any theme (a test checks every example screen under every theme for
+problems). A `screen` part carries a theme's body type to all text, one-line text takes its
+node's `align`, and a bordered button's face fills its row. The screens and the demo name roles
+(`heading`, `label`, `stat`, `display`; the landing's hero is a `display` line, not block
+digits). Type moved a screen's character most, then edges and depth, then how the selection and
+focus look; paper, brutal and glass make the landing and mail three different apps.
+
+Step 2 merged on 13 October with the study's screenshots, the demo's fixes and Daybook
+(`examples/journal/`, a journal written as data, used to find what daily use needs: ⌃/⌥/⌘ keys
+an editor doesn't use reach the UI's keys, action templates read sources, `toggle` of a store
+entry, `required` inputs, a box click that keeps the caret). **Step 3 is next:**
+[layout-step.md](layout-step.md) says where it starts, what to settle first (one meaning for a
+single `pad`, one length type, where a scroll offset lives), the order (3a units and the box,
+3b fit and alignment, 3c wrap and grid, 3d scroll, 3e data placement, 3f rebuilding without
+tricks) and when it's done.
 
 Each step builds a slice, moves the grid tests that slice owns onto `App::in_window`
 (readback, state and the finders, not characters), and ends with the tour's chapters that use it
@@ -270,7 +383,7 @@ deleted, and the window fuzz runs stay clean.
    `the_readback_has_each_nodes_rectangle_from_the_grid`,
    `headless_takes_the_mouse_and_resizes_like_a_terminal`,
    `keys_type_into_a_field_a_key_just_showed`.
-2. **Text and themes as whole styles (M–L). Next; start with 2a.** Native.md's text-and-themes work
+2. **Text and themes as whole styles (M–L). Done.** Native.md's text-and-themes work
    plus expressive.md's "Looks", "Type" and the theme kit, in this order:
    - **2a. Style resolution in the core.** A pure function in `fictty-core` (a new `style.rs`):
      for each shown node, its theme part plus the state suffixes that hold (`.hover`, `.focused`,
@@ -307,13 +420,13 @@ deleted, and the window fuzz runs stay clean.
    `a_variant_and_pad_come_from_the_theme_and_the_node`.
    Done when the six themes are whole styles and three of them make `mail`, `settings` and
    `landing` look like three different apps, in screenshots.
-3. **The layout vocabulary (M).** New (expressive.md, "Layout"): `size: "fit"`, `margin`,
-   four-sided `pad` and `min`/`max` in any unit, `self`, `aspect`; on containers `justify`,
-   `items`, `wrap`, `gap` as `[x, y]`; `grid` with `cols` and `span`; float `x`/`y` from data;
-   `$index` and `$count` in `each`; `scroll: true` with its offset in `State` (the wheel, page
-   keys, focus scrolled into view, the offset in the readback). Each maps onto GPUI's Taffy
-   style; a test per field in `tests/window.rs`. Done when `settings`, `landing` and `calendar`
-   are rebuilt in `screens.py` without their tricks.
+3. **The layout vocabulary (M). Next; the plan is [layout-step.md](layout-step.md).** New
+   (expressive.md, "Layout"): `size: "fit"`, `margin`, four-sided `pad` and `min`/`max` in any unit,
+   `self`, `aspect`; on containers `justify`, `items`, `wrap`, `gap` as `[x, y]`; `grid` with `cols`
+   and `span`; float `x`/`y` from data; `$index` and `$count` in `each`; `scroll: true` with its
+   offset in `State` (the wheel, page keys, focus scrolled into view, the offset in the readback).
+   Each maps onto GPUI's Taffy style; a test per field in `tests/window.rs`. Done when `settings`,
+   `landing` and `calendar` are rebuilt in `screens.py` without their tricks.
 4. **Lists, trees, tables, and rows as nodes (L).** Row templates as nodes (expressive.md,
    "Content"): a list, table or tree's `row` is a node template filled from `$item`, virtualised,
    its height the template's `size` or `fit`; clicks on a row's own buttons reach them. Done when

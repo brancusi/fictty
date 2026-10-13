@@ -221,7 +221,8 @@ timeline then need no gap-computing script.
   }
   ```
 
-  A node asks for a role (`"type": "display"`), and markup asks with `<display>…</>`. Like
+  A node asks for a role through its style (`"style": {"type": "display"}`; a node's own
+  `type` is its kind), and markup asks with `<display>…</>`. Like
   `variant`, the UI names a role and the theme decides what it looks like. The existing `scale`
   becomes a shorthand for a role.
 - **Fonts in the theme:** `"fonts": {"ui": "Inter", "mono": "JetBrains Mono", "display": "fonts/Anton.ttf"}`.

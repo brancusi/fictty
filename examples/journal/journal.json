@@ -1,0 +1,476 @@
+{
+ "root": {
+  "type": "stack",
+  "children": [
+   {
+    "type": "row",
+    "gap": 2,
+    "pad": [
+     1,
+     0
+    ],
+    "children": [
+     {
+      "type": "col",
+      "id": "side",
+      "size": 28,
+      "when": "!zen",
+      "gap": 1,
+      "children": [
+       {
+        "type": "text",
+        "text": "<heading>Daybook</>",
+        "size": 2
+       },
+       {
+        "type": "list",
+        "id": "days",
+        "title": "JOURNAL  ⌘1",
+        "bind": "days",
+        "item": "{short}",
+        "size": "*",
+        "keys": {
+         "enter": {
+          "do": [
+           {
+            "put": "here",
+            "value": {
+             "kind": "day",
+             "id": "{id}",
+             "title": "{long}"
+            }
+           },
+           {
+            "select": "{id}",
+            "in": "days"
+           },
+           {
+            "focus": "page"
+           }
+          ]
+         }
+        },
+        "click": {
+         "do": [
+          {
+           "put": "here",
+           "value": {
+            "kind": "day",
+            "id": "{id}",
+            "title": "{long}"
+           }
+          },
+          {
+           "select": "{id}",
+           "in": "days"
+          },
+          {
+           "focus": "page"
+          }
+         ]
+        }
+       },
+       {
+        "type": "list",
+        "id": "pages",
+        "title": "PAGES  ⌘2",
+        "bind": "pages",
+        "item": "{id}",
+        "size": "*",
+        "keys": {
+         "enter": {
+          "do": [
+           {
+            "put": "here",
+            "value": {
+             "kind": "page",
+             "id": "{id}",
+             "title": "{id}"
+            }
+           },
+           {
+            "select": "{id}",
+            "in": "pages"
+           },
+           {
+            "focus": "page"
+           }
+          ]
+         }
+        },
+        "click": {
+         "do": [
+          {
+           "put": "here",
+           "value": {
+            "kind": "page",
+            "id": "{id}",
+            "title": "{id}"
+           }
+          },
+          {
+           "select": "{id}",
+           "in": "pages"
+          },
+          {
+           "focus": "page"
+          }
+         ]
+        }
+       }
+      ]
+     },
+     {
+      "type": "row",
+      "children": [
+       {
+        "type": "text",
+        "text": ""
+       },
+       {
+        "type": "col",
+        "size": 72,
+        "gap": 1,
+        "children": [
+         {
+          "type": "text",
+          "text": "<dim>{kind|day=§;*=¶}</>  <heading>{title}</>",
+          "bind": "here",
+          "size": 2,
+          "when": "!zen"
+         },
+         {
+          "type": "text",
+          "text": "",
+          "size": 6,
+          "when": "zen"
+         },
+         {
+          "type": "editor",
+          "id": "page",
+          "bind": "here",
+          "doc": "{kind}/{id}",
+          "syntax": "markdown",
+          "tasks": "cycle",
+          "tab": "indent",
+          "caret": "end",
+          "links": [
+           {
+            "kind": "wiki",
+            "click": {
+             "do": [
+              {
+               "remove": "pages",
+               "where": {
+                "id": "{$match}"
+               }
+              },
+              {
+               "append": "pages",
+               "value": {
+                "id": "{$match}"
+               }
+              },
+              {
+               "do": [
+                {
+                 "put": "here",
+                 "value": {
+                  "kind": "page",
+                  "id": "{$match}",
+                  "title": "{$match}"
+                 }
+                },
+                {
+                 "select": "{$match}",
+                 "in": "pages"
+                },
+                {
+                 "focus": "page"
+                }
+               ]
+              }
+             ]
+            }
+           }
+          ]
+         },
+         {
+          "type": "text",
+          "text": "<dim>⌘T today · ⌘N new page · ⌥[ ⌥] days · ⌃T task · ⌥Z zen · esc leaves</>",
+          "size": 1,
+          "when": "!zen"
+         }
+        ]
+       },
+       {
+        "type": "text",
+        "text": ""
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "type": "input",
+    "id": "newname",
+    "bind": "newname",
+    "title": "NEW PAGE",
+    "border": true,
+    "modal": true,
+    "when": "naming",
+    "float": {
+     "width": 44,
+     "height": 3,
+     "at": "center"
+    },
+    "placeholder": "A name, then Enter",
+    "required": true,
+    "keys": {
+     "enter": {
+      "do": [
+       {
+        "put": "naming",
+        "value": false
+       },
+       {
+        "remove": "pages",
+        "where": {
+         "id": "{store.newname}"
+        }
+       },
+       {
+        "append": "pages",
+        "value": {
+         "id": "{store.newname}"
+        }
+       },
+       {
+        "do": [
+         {
+          "put": "here",
+          "value": {
+           "kind": "page",
+           "id": "{store.newname}",
+           "title": "{store.newname}"
+          }
+         },
+         {
+          "select": "{store.newname}",
+          "in": "pages"
+         },
+         {
+          "focus": "page"
+         }
+        ]
+       }
+      ]
+     },
+     "esc": {
+      "do": [
+       {
+        "put": "naming",
+        "value": false
+       },
+       {
+        "focus": "$prev"
+       }
+      ]
+     }
+    }
+   }
+  ]
+ },
+ "data": {
+  "today": {
+   "cmd": [
+    "date",
+    "+{\"id\": \"%Y-%m-%d\", \"short\": \"%a %-d %b\", \"long\": \"%A, %B %-d %Y\"}"
+   ],
+   "every": 60
+  }
+ },
+ "keys": {
+  "d-t": {
+   "do": [
+    {
+     "remove": "days",
+     "where": {
+      "id": "{today.id}"
+     }
+    },
+    {
+     "append": "days",
+     "value": "{today}"
+    },
+    {
+     "do": [
+      {
+       "put": "here",
+       "value": {
+        "kind": "day",
+        "id": "{today.id}",
+        "title": "{today.long}"
+       }
+      },
+      {
+       "select": "{today.id}",
+       "in": "days"
+      },
+      {
+       "focus": "page"
+      }
+     ]
+    }
+   ]
+  },
+  "d-n": {
+   "do": [
+    {
+     "put": "newname",
+     "value": ""
+    },
+    {
+     "put": "naming",
+     "value": true
+    },
+    {
+     "focus": "newname"
+    }
+   ]
+  },
+  "d-1": {
+   "do": [
+    {
+     "put": "zen",
+     "value": false
+    },
+    {
+     "focus": "days"
+    }
+   ]
+  },
+  "d-2": {
+   "do": [
+    {
+     "put": "zen",
+     "value": false
+    },
+    {
+     "focus": "pages"
+    }
+   ]
+  },
+  "a-[": {
+   "do": [
+    {
+     "put": "zen",
+     "value": false
+    },
+    {
+     "focus": "days"
+    },
+    "up",
+    {
+     "do": [
+      {
+       "put": "here",
+       "value": {
+        "kind": "day",
+        "id": "{id}",
+        "title": "{long}"
+       }
+      },
+      {
+       "select": "{id}",
+       "in": "days"
+      },
+      {
+       "focus": "page"
+      }
+     ]
+    }
+   ]
+  },
+  "a-]": {
+   "do": [
+    {
+     "put": "zen",
+     "value": false
+    },
+    {
+     "focus": "days"
+    },
+    "down",
+    {
+     "do": [
+      {
+       "put": "here",
+       "value": {
+        "kind": "day",
+        "id": "{id}",
+        "title": "{long}"
+       }
+      },
+      {
+       "select": "{id}",
+       "in": "days"
+      },
+      {
+       "focus": "page"
+      }
+     ]
+    }
+   ]
+  },
+  "a-z": {
+   "toggle": "store.zen"
+  },
+  "d-.": {
+   "toggle": "store.zen"
+  },
+  "d-s-t": {
+   "theme": "next"
+  }
+ },
+ "status_bar": false,
+ "store": {
+  "zen": false,
+  "naming": false,
+  "newname": "",
+  "here": {
+   "kind": "page",
+   "id": "Welcome",
+   "title": "Welcome"
+  },
+  "days": [
+   {
+    "id": "2026-10-11",
+    "short": "Sun 11 Oct",
+    "long": "Sunday, October 11 2026"
+   },
+   {
+    "id": "2026-10-12",
+    "short": "Mon 12 Oct",
+    "long": "Monday, October 12 2026"
+   }
+  ],
+  "pages": [
+   {
+    "id": "Welcome"
+   },
+   {
+    "id": "Reading list"
+   },
+   {
+    "id": "Garden"
+   }
+  ],
+  "page/Welcome": "Daybook keeps a page a day, and pages for everything else.\n\n- [ ] Write today's entry (⌘T)\n- [ ] Make a page for [[Garden]] notes\n- [ ] Try zen mode (⌥Z)\n",
+  "page/Reading list": "- [x] The Peregrine\n- [ ] Pilgrim at Tinker Creek\n- [ ] The Living Mountain\n",
+  "page/Garden": "- [ ] Plant the garlic before the frost\n- [ ] Mulch the raspberries\n  - [ ] Ask the farm for straw\n\nSee [[Reading list]].\n",
+  "day/2026-10-11": "Rain all morning. Fixed the shed door.\n\n- [x] Call the library\n- [ ] Order seeds\n",
+  "day/2026-10-12": "A walk by the river before work.\n\n- [ ] Order seeds\n- [x] Return the ladder\n"
+ },
+ "focus": "page"
+}

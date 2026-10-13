@@ -139,6 +139,8 @@ pub struct Drawn {
     /// When (on the logical clock) the frame changes by itself next: a toast going, a spinner
     /// turning.
     pub wake: Option<u64>,
+    /// The nodes some of whose text the frame cut to fit (ending it in `…`).
+    pub cut: Vec<String>,
 }
 
 /// The mouse, as whatever draws reports it.
@@ -760,7 +762,17 @@ fn save_store(path: &Path, st: &State) -> Result<()> {
 /// Themes from a file: a JSON object of theme specs by name.
 pub fn load_themes(path: &Path) -> Result<BTreeMap<String, crate::model::ThemeSpec>> {
     let raw = std::fs::read_to_string(path).with_context(|| format!("reading {}", path.display()))?;
-    serde_json::from_str(&raw).with_context(|| format!("{} is not a set of themes", path.display()))
+    let mut themes: BTreeMap<String, crate::model::ThemeSpec> = serde_json::from_str(&raw).with_context(|| format!("{} is not a set of themes", path.display()))?;
+    // A font file is found beside the themes, wherever the screen runs from.
+    let dir = path.parent().unwrap_or(Path::new("."));
+    for t in themes.values_mut() {
+        for f in t.fonts.values_mut() {
+            if crate::style::is_font_file(f) && Path::new(f.as_str()).is_relative() {
+                *f = dir.join(&*f).to_string_lossy().into_owned();
+            }
+        }
+    }
+    Ok(themes)
 }
 
 /// A screen to run: its UI (a value, or a file), and what it starts from. Whatever draws it starts
@@ -926,6 +938,7 @@ impl App {
             drawn: false,
             hits: Vec::new(),
             rects: Vec::new(),
+            cut: Vec::new(),
             drag: None,
             #[cfg(feature = "fuzz")]
             host_act: None,
@@ -999,6 +1012,7 @@ impl App {
             socket: self.socket,
             hits: Vec::new(),
             rects: Vec::new(),
+            cut: Vec::new(),
             drag: None,
             wake: None,
             last_tick: Instant::now(),
@@ -1024,6 +1038,8 @@ pub struct Live {
     /// The last frame's hit regions and node rectangles.
     hits: Vec<Hit>,
     rects: Vec<(String, Rect)>,
+    /// The nodes the last frame cut text in.
+    cut: Vec<String>,
     /// An editor a press started a drag in.
     drag: Option<(String, Rect)>,
     /// When the last frame said it would change by itself.
@@ -1057,7 +1073,7 @@ impl Live {
     /// A batch of events, then the chores: hosted entries saved, the store file written, sources
     /// that are due fetched, the watched file reloaded, the clock moved for whatever animates.
     fn step(&mut self, batch: Vec<Event>) -> bool {
-        let n = apply_batch(batch, &mut self.d, &mut self.st, (&self.hits, &self.rects), &mut self.screens, &mut self.drag);
+        let n = apply_batch(batch, &mut self.d, &mut self.st, (&self.hits, &self.rects, &self.cut), &mut self.screens, &mut self.drag);
         self.meter.msgs += n;
         let mut changed = n > 0;
         self.d.keep(&mut self.st, Duration::from_millis(500));
@@ -1166,7 +1182,7 @@ impl Live {
 
     /// The shown nodes, with the last frame's rectangles.
     pub fn readback(&self) -> Vec<crate::readback::Shown> {
-        crate::readback::readback(&self.st, &self.rects)
+        crate::readback::readback(&self.st, &self.rects, &self.cut)
     }
 
     /// The frame drew, taking `took`: what it drew goes back to the engine (editors learn their
@@ -1174,8 +1190,8 @@ impl Live {
     /// another frame should follow.
     pub fn drew(&mut self, took: Duration, drawn: Drawn) -> bool {
         self.meter.frame(took);
-        let Drawn { hits, rects, sizes, areas, wake } = drawn;
-        (self.hits, self.rects, self.wake) = (hits, rects, wake);
+        let Drawn { hits, rects, sizes, areas, wake, cut } = drawn;
+        (self.hits, self.rects, self.wake, self.cut) = (hits, rects, wake, cut);
         resize_editors(&mut self.d, &mut self.st, sizes) | report_areas(&mut self.d, &mut self.st, areas)
     }
 
@@ -1227,7 +1243,7 @@ impl Drop for Live {
 /// Apply a batch of queued events. A source's value replaces the last one, so of several queued
 /// values for one source only the newest is applied (the rest still count as received). Returns
 /// how many events arrived.
-fn apply_batch(batch: Vec<Event>, d: &mut Driver, st: &mut State, (hits, rects): (&[Hit], &[(String, Rect)]), screens: &mut Vec<Sender<Value>>, drag: &mut Option<(String, Rect)>) -> usize {
+fn apply_batch(batch: Vec<Event>, d: &mut Driver, st: &mut State, (hits, rects, cut): (&[Hit], &[(String, Rect)], &[String]), screens: &mut Vec<Sender<Value>>, drag: &mut Option<(String, Rect)>) -> usize {
     let n = batch.len();
     let mut newest: BTreeMap<String, usize> = BTreeMap::new();
     for (i, ev) in batch.iter().enumerate() {
@@ -1248,7 +1264,7 @@ fn apply_batch(batch: Vec<Event>, d: &mut Driver, st: &mut State, (hits, rects):
             }
             Event::Request(Request::Screen, reply) => screens.push(reply),
             Event::Request(Request::Readback, reply) => {
-                let _ = reply.send(json!({"ok": true, "nodes": crate::readback::readback(st, rects)}));
+                let _ = reply.send(json!({"ok": true, "nodes": crate::readback::readback(st, rects, cut)}));
             }
             Event::Request(Request::Mouse { kind, x, y }, reply) => {
                 let msg = pointer(Pointer::requested(&kind), x, y, hits, st, &mut None);
@@ -1374,6 +1390,8 @@ pub struct Headless {
     /// screen's would.
     hits: Vec<Hit>,
     rects: Vec<(String, Rect)>,
+    /// The nodes the last frame cut text in.
+    cut: Vec<String>,
     /// An editor a press started a drag in, as the engine keeps it.
     drag: Option<(String, Rect)>,
     /// What the app does for the fuzz driver's host acts (`fuzz::Act::Host`): an agent's write,
@@ -1587,7 +1605,7 @@ impl Headless {
     /// The shown nodes, in order, with where the last frame laid each out.
     pub fn readback(&mut self) -> Vec<crate::readback::Shown> {
         self.frame();
-        crate::readback::readback(&self.st, &self.rects)
+        crate::readback::readback(&self.st, &self.rects, &self.cut)
     }
 
     fn drain(&mut self) {
@@ -1606,14 +1624,14 @@ impl Headless {
         }
         self.drawn = true;
         let Some(f) = &mut self.frame else { return };
-        let Drawn { hits, rects, sizes, areas, .. } = f.draw(&self.st);
-        (self.hits, self.rects) = (hits, rects);
+        let Drawn { hits, rects, sizes, areas, cut, .. } = f.draw(&self.st);
+        (self.hits, self.rects, self.cut) = (hits, rects, cut);
         // What drawing sent (a window's cell size) and what it learned (an editor's size) change
         // the state: once more, so the frame is the state's.
         let changed = resize_editors(&mut self.d, &mut self.st, sizes) | report_areas(&mut self.d, &mut self.st, areas) | self.absorb();
         if changed && let Some(f) = &mut self.frame {
-            let Drawn { hits, rects, .. } = f.draw(&self.st);
-            (self.hits, self.rects) = (hits, rects);
+            let Drawn { hits, rects, cut, .. } = f.draw(&self.st);
+            (self.hits, self.rects, self.cut) = (hits, rects, cut);
             self.absorb();
             self.drawn = true;
         }

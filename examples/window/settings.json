@@ -25,7 +25,7 @@
       "children": [
        {
         "type": "text",
-        "text": "<b>Profile</>\n<dim>How you appear to your team.</>",
+        "text": "<heading>Profile</>\n<dim>How you appear to your team.</>",
         "size": 2
        },
        {
@@ -86,7 +86,7 @@
        },
        {
         "type": "text",
-        "text": "<b>Preferences</>",
+        "text": "<heading>Preferences</>",
         "size": 1
        },
        {

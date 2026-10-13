@@ -5,14 +5,14 @@
   "children": [
    {
     "type": "text",
-    "text": "<b>\u25c6 fictty</>\t<dim>Docs   Blog   Pricing</>   <accent+b>Get started</>",
+    "text": "<heading>\u25c6 fictty</>\t<dim>Docs   Blog   Pricing</>   <accent+b>Get started</>",
     "size": 1
    },
    {
-    "type": "big",
+    "type": "text",
+    "text": "<display>UI as data</>",
     "id": "hero",
-    "size": 4,
-    "text": "UI AS DATA",
+    "size": "84px",
     "align": "center"
    },
    {
@@ -60,7 +60,7 @@
        1,
        0
       ],
-      "text": "<accent+b>One value</>\nThe whole screen is JSON you can push, patch and diff."
+      "text": "<heading+accent>One value</>\nThe whole screen is JSON you can push, patch and diff."
      },
      {
       "type": "text",
@@ -70,7 +70,7 @@
        1,
        0
       ],
-      "text": "<accent+b>Agent-native</>\nRead the screen back as text or nodes."
+      "text": "<heading+accent>Agent-native</>\nRead the screen back as text or nodes."
      },
      {
       "type": "text",
@@ -80,7 +80,7 @@
        1,
        0
       ],
-      "text": "<accent+b>Fast</>\nThousands of updates a second, drawn at 60 fps."
+      "text": "<heading+accent>Fast</>\nThousands of updates a second, drawn at 60 fps."
      }
     ]
    },
@@ -100,8 +100,8 @@
       "children": [
        {
         "type": "text",
-        "text": "<b>$0</>  <dim>/ month</>",
-        "size": 1
+        "text": "<stat>$0</>  <dim>/ month</>",
+        "size": "40px"
        },
        {
         "type": "text",
@@ -128,8 +128,8 @@
       "children": [
        {
         "type": "text",
-        "text": "<b>$12</>  <dim>/ month</>",
-        "size": 1
+        "text": "<stat>$12</>  <dim>/ month</>",
+        "size": "40px"
        },
        {
         "type": "text",
@@ -156,8 +156,8 @@
       "children": [
        {
         "type": "text",
-        "text": "<b>$40</>  <dim>/ month</>",
-        "size": 1
+        "text": "<stat>$40</>  <dim>/ month</>",
+        "size": "40px"
        },
        {
         "type": "text",

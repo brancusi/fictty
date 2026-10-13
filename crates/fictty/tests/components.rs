@@ -142,16 +142,6 @@ fn toasts_go_when_their_time_is_up() {
     assert!(!s.screen().contains("Saved"));
 }
 
-#[test]
-fn a_cut_line_ends_in_an_ellipsis_and_keeps_its_right_side() {
-    let ui = json!({"root": {"type": "list", "id": "l", "item": "{t}\t<d>{when}</>",
-                              "items": [{"t": "a title far too long to fit", "when": "Tue · tilde"}]}});
-    let mut s = screen(ui, 30, 3);
-    let line = s.screen().lines().next().unwrap().to_string();
-    assert!(line.ends_with("Tue · tilde"), "{line:?}");
-    assert!(line.contains("…"), "{line:?}");
-}
-
 fn text(s: &mut fictty::Headless, key: &str) -> String {
     s.state().store[key].read()["text"].as_str().unwrap().to_string()
 }
@@ -286,15 +276,6 @@ fn a_selection_stays_on_its_row_when_rows_arrive_above_it() {
 }
 
 #[test]
-fn keep_holds_room_for_the_text_before_the_meta() {
-    let ui = json!({"root": {"type": "list", "id": "l", "keep": 12, "mark": "", "lead": "",
-                              "item": "{t}\t{meta}", "items": [{"t": "Water the plants", "meta": "Tue 14:00 · tilde · from the agent"}]}});
-    let mut s = screen(ui, 30, 2);
-    let line = s.screen().lines().next().unwrap().to_string();
-    assert!(line.starts_with("Water the p…"), "{line:?}");
-}
-
-#[test]
 fn rows_can_take_two_lines() {
     let ui = json!({"root": {"type": "list", "id": "l", "lines": 2, "item": "<b>{at}</> {op}\n{what}",
                               "items": [{"at": "09:00", "op": "put", "what": "notes"}, {"at": "09:01", "op": "edit", "what": "page/home"}]}});
@@ -311,31 +292,6 @@ fn a_tree_takes_a_mark_and_a_leaf_glyph_like_a_list() {
                               "items": [{"id": "a", "text": "A", "children": [{"id": "b", "text": "B"}]}]}});
     let mut s = screen(ui, 20, 3);
     assert!(s.screen().starts_with("▌▾ A\n   B"), "{}", s.screen());
-}
-
-#[test]
-fn templates_fit_fields_escape_brackets_and_take_tabs_from_values() {
-    let ui = json!({"root": {"type": "col", "children": [
-        {"type": "text", "size": 1, "text": "a << b <b>bold</>"},
-        {"type": "text", "size": 1, "bind": "kv", "text": "{k:6}|{v:>4}|{long:5}|"},
-        {"type": "text", "size": 1, "bind": "kv", "text": "{row|markup}"}
-    ]}, "data": {"kv": {"value": {"k": "ab", "v": "7", "long": "abcdefgh", "row": "left\tright"}}}});
-    let mut s = screen(ui, 20, 4);
-    let text = s.screen();
-    let lines: Vec<&str> = text.lines().collect();
-    assert_eq!(lines[0], "a < b bold");
-    assert_eq!(lines[1], "ab    |   7|abcd…|");
-    assert_eq!(lines[2], format!("left{}right", " ".repeat(11)));
-}
-
-#[test]
-fn a_markup_tag_can_name_a_theme_part() {
-    let themes: std::collections::BTreeMap<String, fictty::model::ThemeSpec> =
-        serde_json::from_value(json!({"t": {"parts": {"link": "#ff0000+u"}}})).unwrap();
-    let ui: fictty::model::Ui = serde_json::from_value(json!({"root": {"type": "text", "text": "see <link>the docs</>"}})).unwrap();
-    let mut s = App::new(ui).themes(themes).headless(30, 2).unwrap();
-    let ansi = s.ansi();
-    assert!(ansi.contains("\u{1b}[0;4;38;2;255;0;0mt"), "{ansi:?}");
 }
 
 #[test]
@@ -357,16 +313,6 @@ fn chords_wait_for_their_last_key() {
     assert_eq!(entry(&mut s, "prio")["value"], "x");
 }
 
-#[test]
-fn tab_titles_are_templates_with_a_lead_and_a_trail() {
-    let ui = json!({"root": {"type": "tabs", "id": "t", "bind": "counts", "tabs": ["Inbox {inbox}", "Done"], "lead": "<b>thc</>", "trail": "Sat 11",
-                              "children": [{"type": "text", "text": "one"}, {"type": "text", "text": "two"}]},
-                    "data": {"counts": {"value": {"inbox": 4}}}});
-    let mut s = screen(ui, 40, 3);
-    let first = s.screen().lines().next().unwrap().to_string();
-    assert_eq!(first, format!("thc  Inbox 4   Done{}Sat 11", " ".repeat(15)));
-}
-
 fn views() -> Value {
     json!({"root": {"type": "tabs", "id": "views", "tab": 1, "tabs": ["Today", "Inbox <b>{n}</>"], "bind": "counts", "children": [
         {"type": "list", "id": "today", "items": ["a"]},
@@ -376,18 +322,6 @@ fn views() -> Value {
         ]}
     ]}, "keys": {"1": {"tab": 0, "of": "views"}, "2": {"tab": 1, "of": "views"}},
     "data": {"counts": {"value": {"n": 2}}}, "store": {"asking": false}})
-}
-
-#[test]
-fn tabs_start_where_they_say_and_choosing_one_moves_the_focus_into_it() {
-    let mut s = screen(views(), 30, 5);
-    assert!(s.screen().contains("x"), "starts on Inbox: {}", s.screen());
-    assert_eq!(s.state().focus.as_deref(), Some("inbox"), "the content, not the tab bar");
-    s.keys(&["1"]);
-    assert_eq!(s.state().focus.as_deref(), Some("today"));
-    s.msg(Msg::Click { id: "views".into(), row: None, tab: Some(1) });
-    assert_eq!(s.state().focus.as_deref(), Some("inbox"));
-    assert!(s.screen().starts_with(" Today   Inbox 2"), "{}", s.screen());
 }
 
 #[test]
@@ -403,15 +337,6 @@ fn focus_goes_back_where_it_was() {
     let mut s = screen(ui, 20, 4);
     s.keys(&["g"]);
     assert_eq!(s.state().focus.as_deref(), Some("b"));
-}
-
-#[test]
-fn a_cut_meta_ends_in_an_ellipsis_too() {
-    let ui = json!({"root": {"type": "list", "id": "l", "keep": 12, "mark": "", "lead": "",
-                              "item": "{t}\t{meta}", "items": [{"t": "Water the plants", "meta": "due Oct 18 (in 7d) · !"}]}});
-    let mut s = screen(ui, 30, 2);
-    let line = s.screen().lines().next().unwrap().to_string();
-    assert!(line.ends_with('…') && line.starts_with("Water the p…"), "{line:?}");
 }
 
 #[test]
@@ -749,4 +674,28 @@ fn a_live_screen_runs_its_engine_on_its_own_thread() {
         let _ = rx.recv_timeout(std::time::Duration::from_millis(50));
     }
     drop(live);
+}
+
+/// Every example screen, under every theme meant for it, names nothing its theme lacks: type
+/// roles, variants, tokens, parts.
+#[test]
+fn every_example_screen_wears_every_theme_without_problems() {
+    let root = concat!(env!("CARGO_MANIFEST_DIR"), "/../../examples/");
+    for (themes, dirs) in [("window/themes.json", &["window", "demo"][..]), ("showcase/themes.json", &["showcase"][..])] {
+        let all = fictty::engine::load_themes(std::path::Path::new(&format!("{root}{themes}"))).unwrap();
+        for dir in dirs {
+            for f in std::fs::read_dir(format!("{root}{dir}")).unwrap() {
+                let p = f.unwrap().path();
+                if p.extension().is_none_or(|e| e != "json") || p.ends_with("themes.json") {
+                    continue;
+                }
+                let ui: fictty::model::Ui = serde_json::from_str(&std::fs::read_to_string(&p).unwrap()).unwrap_or_else(|e| panic!("{}: {e}", p.display()));
+                for t in all.keys() {
+                    let mut s = App::new(ui.clone()).commands(false).themes(all.clone()).theme(t.clone()).headless(160, 40).unwrap();
+                    let problems = &s.state().problems;
+                    assert!(problems.is_empty(), "{} in {t}: {problems:?}", p.display());
+                }
+            }
+        }
+    }
 }

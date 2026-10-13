@@ -1,10 +1,12 @@
-//! The active theme as the window's colours and text styles: tokens are colours, and parts and
-//! `<spec>` runs (`accent+b`, `fg+on-ring`) are inks. Read from the state each frame, as the
-//! terminal's view reads it, so switching themes is a message like any other.
+//! The active theme as the window's: a resolved style (`style::Resolved`, worked out in the core)
+//! drawn on a GPUI element by `boxed`, and `<spec>` runs in text (`accent+b`, `fg+on-ring`) as
+//! inks. Read from the state each frame, so switching themes is a message like any other.
 
-use crate::model::{Style, ThemeSpec};
+use crate::model::Len;
 use crate::state::State;
-use gpui::{FontStyle, FontWeight, HighlightStyle, Hsla, StrikethroughStyle, UnderlineStyle, px, rgb};
+use crate::style::{self, Resolved, Role, Theme};
+use std::collections::HashMap;
+use gpui::{BoxShadow, CursorStyle, FontStyle, FontWeight, HighlightStyle, Hsla, StrikethroughStyle, Styled, UnderlineStyle, linear_color_stop, linear_gradient, point, px, rgb};
 
 /// How a run of text looks: colours and the `b d i u r s` modifiers of a spec.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -21,157 +23,61 @@ pub struct Ink {
 
 /// The theme the window draws a frame with.
 pub struct Look<'a> {
-    st: &'a State,
-    active: Option<&'a ThemeSpec>,
+    th: Theme<'a>,
+    /// The family each font file the window loaded turned out to be.
+    faces: &'a HashMap<String, String>,
     pub bg: Hsla,
     pub fg: Hsla,
     pub dim: Hsla,
     pub border: Hsla,
     pub accent: Hsla,
-    pub panel: Hsla,
     /// A selected row's or text's background.
     pub ring: Hsla,
-    pub hover: Hsla,
     /// What a dialog dims the screen behind it with: the background, part see-through.
     pub scrim: Hsla,
-    /// The theme's `edge` token: how borders that don't name their own are drawn. Anything but
-    /// `rounded` (the default) squares every corner: panels, fields, buttons, tabs, rows.
-    pub edge: Option<&'a str>,
     pub pos: Hsla,
     pub neg: Hsla,
 }
 
-/// A colour by name: `#rrggbb`, or one of the terminal's named colours.
+/// A colour by name: `#rrggbb`, `#rgb`, or one of the named colours.
 pub fn parse(name: &str) -> Option<Hsla> {
-    if let Some(hex) = name.strip_prefix('#') {
-        let hex = match hex.len() {
-            3 => hex.chars().flat_map(|c| [c, c]).collect(),
-            _ => hex.to_string(),
-        };
-        return u32::from_str_radix(&hex, 16).ok().filter(|_| hex.len() == 6).map(|c| rgb(c).into());
-    }
-    let c = match name.to_ascii_lowercase().replace(['-', '_'], "").as_str() {
-        "black" => 0x000000,
-        "red" => 0xe06c75,
-        "green" => 0x8bd49c,
-        "yellow" => 0xf0c674,
-        "blue" => 0x6cb6ff,
-        "magenta" => 0xd291e4,
-        "cyan" => 0x5fd1c6,
-        "gray" | "grey" => 0xa0aab2,
-        "darkgray" | "darkgrey" => 0x5c6670,
-        "lightred" => 0xff8f8f,
-        "lightgreen" => 0xa8f0b8,
-        "lightyellow" => 0xffe08a,
-        "lightblue" => 0x9fd0ff,
-        "lightmagenta" => 0xf0b0ff,
-        "lightcyan" => 0x9ff0e8,
-        "white" => 0xffffff,
-        _ => return None,
-    };
-    Some(rgb(c).into())
+    let hex = style::hex(name)?;
+    u32::from_str_radix(&hex[1..], 16).ok().map(|c| rgb(c).into())
 }
 
 impl<'a> Look<'a> {
-    pub fn new(st: &'a State) -> Look<'a> {
-        let active = st.theme.as_ref().and_then(|n| st.themes.get(n));
-        let token = |k: &str| active.and_then(|t| t.tokens.get(k)).or_else(|| st.ui.theme.get(k)).and_then(|c| parse(c));
-        let get = |k: &str, d: u32| token(k).unwrap_or_else(|| rgb(d).into());
-        let bg = get("bg", 0x0f1418);
+    pub fn new(st: &'a State, faces: &'a HashMap<String, String>) -> Look<'a> {
+        let th = Theme::of(st);
+        let get = |k: &str| th.colour(k).as_deref().and_then(parse).unwrap_or_default();
+        let bg = get("bg");
         Look {
-            st,
-            active,
+            th,
+            faces,
             bg,
-            scrim: token("scrim").unwrap_or(Hsla { a: 0.6, ..bg }),
-            edge: active.and_then(|t| t.tokens.get("edge")).or_else(|| st.ui.theme.get("edge")).map(String::as_str),
-            fg: get("fg", 0xe3eaee),
-            dim: get("dim", 0x93a3ad),
-            border: get("border", 0x2a353d),
-            accent: get("accent", 0x5fd1c6),
-            panel: get("panel", 0x161d22),
-            ring: get("ring", 0x1d3b3a),
-            hover: get("hover", 0x1a2329),
-            pos: get("pos", 0x8bd49c),
-            neg: get("neg", 0xf07178),
-        }
-    }
-
-    /// Whether corners are square: the theme's edge isn't `rounded`.
-    pub fn square(&self) -> bool {
-        self.edge.is_some_and(|e| e != "rounded")
-    }
-
-    /// `el`'s corners: `r` pixels, or square under a square-edged theme.
-    pub fn round<E: gpui::Styled>(&self, el: E, r: f32) -> E {
-        if self.square() { el } else { el.rounded(gpui::px(r)) }
-    }
-
-    /// A theme token (`accent`, `violet`) or a colour name.
-    pub fn color(&self, name: &str) -> Option<Hsla> {
-        let token = self.active.and_then(|t| t.tokens.get(name)).or_else(|| self.st.ui.theme.get(name));
-        match name {
-            "fg" => Some(self.fg),
-            "bg" => Some(self.bg),
-            "dim" | "muted" => Some(self.dim),
-            "accent" => Some(self.accent),
-            "border" => Some(self.border),
-            "panel" => Some(self.panel),
-            "ring" => Some(self.ring),
-            "hover" => Some(self.hover),
-            "pos" => Some(self.pos),
-            "neg" => Some(self.neg),
-            _ => parse(token.map_or(name, String::as_str)),
+            scrim: th.colour("scrim").as_deref().and_then(parse).unwrap_or(Hsla { a: 0.6, ..bg }),
+            fg: get("fg"),
+            dim: get("dim"),
+            border: get("border"),
+            accent: get("accent"),
+            ring: get("ring"),
+            pos: get("pos"),
+            neg: get("neg"),
         }
     }
 
     /// A style spec over `base`: `accent+b`, `muted`, `fg+on-ring`, `#ff8800+u`. A name that's no
     /// colour but one of the theme's parts takes that part's ink (`<link>`).
     pub fn spec(&self, spec: &str, base: Ink) -> Ink {
-        self.spec_at(spec, base, 0)
-    }
-
-    fn spec_at(&self, spec: &str, base: Ink, depth: u8) -> Ink {
-        let mut ink = base;
-        for t in spec.split('+') {
-            match t {
-                "b" => ink.bold = true,
-                "d" => ink.dim = true,
-                "i" => ink.italic = true,
-                "u" => ink.underline = true,
-                "r" => ink.reverse = true,
-                "s" => ink.strike = true,
-                t => match t.strip_prefix("on-") {
-                    Some(c) => ink.bg = self.color(c).or(ink.bg),
-                    None => match (self.color(t), self.active.and_then(|a| a.parts.get(t))) {
-                        (Some(c), _) => ink.fg = Some(c),
-                        (None, Some(part)) if depth < 4 => ink = self.spec_at(part, ink, depth + 1),
-                        _ => {}
-                    },
-                },
-            }
-        }
-        ink
-    }
-
-    /// A part of a component, inked by the active theme (`table.header`, `row.selected`), or
-    /// `fallback` when the theme doesn't say.
-    pub fn part(&self, part: &str, fallback: Ink) -> Ink {
-        match self.active.and_then(|t| t.parts.get(part)) {
-            Some(spec) => self.spec(spec, Ink::default()),
-            None => fallback,
-        }
-    }
-
-    /// A node's own `style`, as ink.
-    pub fn style(&self, s: Option<&Style>) -> Ink {
-        let Some(s) = s else { return Ink::default() };
+        let i = self.th.ink(spec, style::Ink::default());
         Ink {
-            fg: s.fg.as_deref().and_then(|c| self.color(c)),
-            bg: s.bg.as_deref().and_then(|c| self.color(c)),
-            bold: s.bold,
-            dim: s.dim,
-            italic: s.italic,
-            ..Ink::default()
+            fg: i.fg.as_deref().and_then(parse).or(base.fg),
+            bg: i.bg.as_deref().and_then(parse).or(base.bg),
+            bold: base.bold || i.bold,
+            dim: base.dim || i.dim,
+            italic: base.italic || i.italic,
+            underline: base.underline || i.underline,
+            reverse: base.reverse || i.reverse,
+            strike: base.strike || i.strike,
         }
     }
 
@@ -191,4 +97,114 @@ impl<'a> Look<'a> {
             fade_out: ink.dim.then_some(0.4),
         }
     }
+
+    /// The type role a `<spec>` names, if it names one.
+    pub fn role(&self, spec: &str) -> Option<Role> {
+        self.th.role_in(spec)
+    }
+
+    /// A role's font as a family: a family's name as it is, a font file as the family it
+    /// loaded as (the default font until it has).
+    pub fn fonts(&self) -> impl Fn(&str) -> String + '_ {
+        |f: &str| if style::is_font_file(f) { self.faces.get(f).cloned().unwrap_or_default() } else { f.to_string() }
+    }
+
+    /// A resolved ink as the window's colours.
+    pub fn ink(&self, i: &style::Ink) -> Ink {
+        Ink {
+            fg: i.fg.as_deref().and_then(parse),
+            bg: i.bg.as_deref().and_then(parse),
+            bold: i.bold,
+            dim: i.dim,
+            italic: i.italic,
+            underline: i.underline,
+            reverse: i.reverse,
+            strike: i.strike,
+        }
+    }
+
+    /// A resolved style's pad in pixels, `(x, y)`: cells are the window's cells.
+    pub fn pad(r: &Resolved, cell: (f32, f32)) -> (f32, f32) {
+        let px_of = |l: &Len, per: f32| match l {
+            Len::Cells(n) => n * per,
+            Len::Spec(s) => s.trim().trim_end_matches("px").trim().parse().unwrap_or(0.),
+        };
+        r.pad.as_ref().map_or((0., 0.), |[x, y]| (px_of(x, cell.0), px_of(y, cell.1)))
+    }
+
+    /// A resolved style on a box: its background (a colour or a gradient), its text, `extra`
+    /// pixels of pad over its own, its corners, border, shadows and ring, opacity and cursor.
+    /// The one place the theme's looks become GPUI's.
+    pub fn boxed<E: Styled>(&self, mut el: E, r: &Resolved, cell: (f32, f32), extra: (f32, f32)) -> E {
+        el = inked(el, self.ink(&r.ink));
+        if let Some(g) = &r.gradient
+            && let (Some(a), Some(b)) = (parse(&g.from), parse(&g.to))
+        {
+            el = el.bg(linear_gradient(g.angle, linear_color_stop(a, 0.), linear_color_stop(b, 1.)));
+        }
+        let (x, y) = Self::pad(r, cell);
+        if (x, y) != (0., 0.) || extra != (0., 0.) {
+            el = el.px(px(x + extra.0)).py(px(y + extra.1));
+        }
+        if let Some(rad) = r.radius {
+            el = el.rounded(px(rad));
+        }
+        if let Some(b) = &r.border {
+            el = el.border(px(b.width)).border_color(parse(&b.color).unwrap_or(self.border));
+            if b.style == "dashed" {
+                el = el.border_dashed();
+            }
+        }
+        let mut shadows: Vec<BoxShadow> = r
+            .shadow
+            .iter()
+            .map(|s| BoxShadow {
+                color: parse(&s.color).map_or(self.bg, |c| Hsla { a: c.a * s.alpha.unwrap_or(1.), ..c }),
+                offset: point(px(s.x), px(s.y)),
+                blur_radius: px(s.blur),
+                spread_radius: px(s.spread),
+            })
+            .collect();
+        // A ring is a hard shadow its width wide, `offset` out, with the page's colour between.
+        if let Some(ring) = &r.ring {
+            let at = |spread: f32, color: Hsla| BoxShadow { color, offset: point(px(0.), px(0.)), blur_radius: px(0.), spread_radius: px(spread) };
+            shadows.push(at(ring.offset + ring.width, parse(&ring.color).unwrap_or(self.accent)));
+            if ring.offset > 0. {
+                shadows.push(at(ring.offset, self.bg));
+            }
+        }
+        if !shadows.is_empty() {
+            el.style().box_shadow = Some(shadows);
+        }
+        if let Some(o) = r.opacity {
+            el = el.opacity(o);
+        }
+        match r.cursor.as_deref() {
+            Some("pointer") => el.cursor(CursorStyle::PointingHand),
+            Some("text") => el.cursor(CursorStyle::IBeam),
+            Some("grab") => el.cursor(CursorStyle::OpenHand),
+            _ => el,
+        }
+    }
+}
+
+/// Ink on an element: its colours, weight and slant.
+pub fn inked<E: Styled>(mut el: E, ink: Ink) -> E {
+    let (fg, bg) = if ink.reverse { (ink.bg, ink.fg) } else { (ink.fg, ink.bg) };
+    if let Some(c) = fg {
+        el = el.text_color(c);
+    }
+    if let Some(c) = bg {
+        el = el.bg(c);
+    }
+    if ink.bold {
+        el = el.font_weight(FontWeight::BOLD);
+    }
+    if ink.italic {
+        el = el.italic();
+    }
+    if ink.dim {
+        el = el.opacity(0.6);
+    }
+    el
 }

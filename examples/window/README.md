@@ -15,7 +15,9 @@ fictty --socket /tmp/fw-kanban.sock screen --nodes       # read it back
 python3 examples/window/screens.py           # regenerate the seven generated screens
 ```
 
-`mail.json` and `ops.json` are written by hand; `screens.py` writes the other seven.
+`mail.json` and `ops.json` are written by hand; `screens.py` writes the other seven, and
+`themes.py` writes `themes.json`. What the styling study found is in
+[docs/design/styling-study.md](../../docs/design/styling-study.md).
 `ops` streams live numbers and a log from `feed.py` (a `merge` and a `put` every 0.7 s).
 Themes: `night-city` (hard edges, acid yellow on near-black), `glass`, `paper`, `phosphor`,
 `brutal`, `soft` (`themes.json`).

@@ -53,6 +53,7 @@ fictty key j x                                            # type keys
 fictty get --state                                        # everything on screen, as JSON
 fictty run --watch my.json                                # hot reload while you edit
 fictty screen --nodes                                     # the shown nodes: kind, id, focus, text, where
+fictty screen --nodes --style                             # and each one's style under the theme
 fictty run --window my.json                               # in a native window (macOS, early)
 fictty render examples/tasks.json --size 100x30 --keys j  # no terminal
 fictty read ledger                                        # one store entry: rev, by, value or text
@@ -120,7 +121,9 @@ fictty theme paper                                        # choose a loaded them
   arrives), `{"theme": "next"}`, `{"copy": "text"}` (onto the system clipboard, through
   the terminal's OSC 52), `{"toast": "Saved", "tone": "pos"}`, `{"host": "name", "args": {…}}`,
   and store actions: `append`, `put`, `remove` (the selected row, or with `where` every row that
-  matches), `toggle` (a true/false field of the selected row: a checkbox), `do`. A node's `click`
+  matches), `toggle` (a true/false field of the selected row: a checkbox; `"store.zen"` flips a store
+  entry instead), `do`. An action's templates read the selected row's fields, `{store.key}` and
+  the UI's sources by name (`{today.id}`). A node's `click`
   runs an action too, after the click selects the row; a `button` runs its click on Enter and
   Space. A focused node's keys win over the UI's, which win over the defaults; a binding of
   several keys (`"p h"`) is a chord. While fictty has the mouse, hold Shift (Option in some macOS
@@ -155,14 +158,15 @@ document with its undo history), each with a revision (`rev`) and who wrote it l
 - **`fictty run --store file.json`** keeps it across runs, written atomically after each change.
 - **Editors**: `{"type": "editor", "bind": "@notes", "doc": "note/{id}", "text": "# {title}"}` edits
   the entry its template names from the selected note, so a list and an editor make a notes app.
-  An editor takes every key but Tab, Shift-Tab and Esc; `input` is the one-line version, and
-  Enter runs its `keys.enter`. `"accept": "number"` makes an input refuse typing that can't make
+  An editor takes every key but Tab, Shift-Tab and Esc, and the ⌃, ⌥ and ⌘ keys it has no use
+  for, which go on to the UI's keys (⌘T while writing); `input` is the one-line version, and
+  Enter runs its `keys.enter`; with `"required": true` its keys wait while it's blank. `"accept": "number"` makes an input refuse typing that can't make
   a number, and its keys wait until the text is a whole one (the status says why).
   `"syntax": "markdown"` styles headings, list markers, quotes, inline code and task items
   (theme parts `md.heading`, `md.bullet`, `md.quote`, `md.code`, `md.task`, `md.done`) while the
   text stays plain. Ctrl-T makes the lines it's on tasks (`text` → `- [ ] text`, `- item` →
   `- [ ] item`) and ticks open ones; a ticked one is unticked, or with `"tasks": "cycle"` made
-  plain text again. A click on a `[ ]` ticks it. `"links"` makes spans act on a click: `{"kind": "wiki" | "tag" | "url", "click": action,
+  plain text again. A click on a `[ ]` ticks it and leaves the caret where it was. `"links"` makes spans act on a click: `{"kind": "wiki" | "tag" | "url", "click": action,
   "s-click": action}`, with `{$match}` the page, tag or address; a key reads the link at the
   caret as `{$link}`; links take the theme part `md.link`.
   `"caret": "end"` starts the caret at the end of an entry the editor shows for the first time.
@@ -201,8 +205,82 @@ for a `variant` and a `tone`, never a colour. A UI's own `theme` map still works
 every theme. `examples/showcase/themes.json` has three: glass, paper and phosphor. In the window, a
 token `edge` sets the border of every node that doesn't name its own: anything but `rounded`
 squares the corners of panels, buttons, fields, tabs, rows and toasts, and `thick` or `double`
-draws them heavier. `examples/window/themes.json` has six more for the window, worn by the
-wringer's nine screens (`examples/window/open.sh`).
+draws them heavier. `examples/window/themes.json` has six more for the window, written by
+`themes.py` and worn by the wringer's nine screens and the demo (`examples/window/open.sh`). They
+share one vocabulary, so a screen can name it and wear any of them: type roles `display` and
+`stat` (sized in pixels), `heading`, `label`, `body`, `caption`, `num`, `mono`; scales `s1`–`s6`,
+`r1`–`r3`, `e1`–`e2`; variants `card`, `quiet`, `hero`, `alert`, `bare`. The `screen` part is the
+window's own (`{"type": "body"}` gives everything the theme's body font).
+
+A part is a short ink (`"accent+b"`) or a whole style, an object; so is a node's own `style` and a
+variant's `style`:
+
+```json
+"space":  {"s2": "8px", "s3": "14px"},
+"radius": {"r2": 6},
+"depth":  {"e1": [{"y": 1, "blur": 2, "color": "black", "alpha": 0.3}]},
+"type":   {"label": {"font": "ui", "size": 13, "weight": 600, "tracking": 0.2}},
+"fonts":  {"ui": "Inter"},
+"parts": {
+  "button":         {"fg": "fg", "bg": "panel", "type": "label", "pad": ["s3", "s2"], "radius": "r2",
+                     "border": {"color": "border"}, "shadow": "e1", "cursor": "pointer"},
+  "button.focused": {"bg": {"from": "accent", "to": "glow", "angle": 160}, "ring": {"width": 2, "offset": 2}},
+  "tabs":           {"shape": "pill"}
+}
+```
+
+A style's fields: `fg`; `bg` (a colour or a gradient `{"from", "to", "angle"}`); `bold`, `dim`,
+`italic`, `underline`, `strike`, `reverse`; `type` (a role from the theme's `type`); `pad` (one
+length for every side, or `[x, y]`: cells, `"8px"` or a `space` name); `radius` (pixels or a
+`radius` name); `border` (`width`, `color`, `style`: `solid`, `dashed`, `double`); `shadow` (a
+`depth` name, or `none`); `ring` (`width`, `offset`, `color`); `shape` (tabs `underline`, `pill`,
+`segment`, `plain`; a scrollbar `thin`, `overlay`, `none`; an edge `rounded`, `square`, `double`,
+`thick`); `opacity`; `cursor` (`default`, `pointer`, `text`, `grab`). A style never arranges: no
+size, gap or position. The scales let a theme change its whole feel in a few lines; `fonts`
+names families or font files that type roles use. The window draws all of it.
+
+**Type.** A theme's `type` names roles: `{"font": "serif", "size": 44, "weight": 700, "line":
+54, "tracking": -1, "tabular": true}`. `font` is a `fonts` name or a family; a `fonts` entry is
+a family (`"Georgia"`) or a font file beside the themes (`"fonts/Anton.ttf"`), loaded the first
+time it's needed. A node asks for a role through its style, `"style": {"type": "display"}`
+(a node's own `type` is its kind), and markup asks with `<display>…</>`: a line takes the first
+role it names. `tabular` lines numbers up; `tracking` reads back but isn't drawn yet. Text
+wraps; `"wrap": false` keeps each line on one, and `"lines": 2` shows at most two. A line that
+doesn't fit ends in `…`: a row keeps the part after its tab (a time, a count) whole while it
+can, and `keep` (cells) holds room for the left before the right is cut too. The readback marks
+a node whose text was cut, `(cut)` in the outline and `"cut": true` in the JSON.
+
+**Cards and the status line.** A `backdrop` (`fill`, `fill2` for a gradient down, `border`,
+`radius` and `shadow` as fractions of a cell's height, `glow` for a lit edge) draws as a card in
+the window. A row or column clips what it holds, so give a row of cards `pad` to leave their
+shadows room. The status line at the bottom shows the status, else the first problem, else
+hints; `"status_bar": false` gives the UI every row, and `"status_bar": "speed"` adds the
+speed meter (`$stats` has the numbers either way). Its look is the `status` and `status.error`
+parts.
+
+Every component's look comes from parts, including the window's own: when a theme doesn't say,
+default parts do (`button` has a 12px pad and a 6px radius, a bordered node is a `panel` with
+the `panel` colour and 8px of pad, `row.hover`, `row.selected`, `tabs.active`, `input`,
+`toast`…), and `fictty screen --nodes --style` shows them. A theme's part of the same name owns
+its ink and keeps the default's box unless it says otherwise. Rows are `row` with the states
+that hold for that row; tabs are `tabs.active` and `tabs.idle`, in the shape the `tabs` part
+gives (`pill`, `underline`, `segment`, `plain`).
+
+A node's style is worked out in one place, and nothing else applies: its part (the component's
+`type`, so `button`; containers have none), with the parts for the states that hold layered over
+it, then its variant, then its `tone`, then its own `style`. States are suffixes, layered in this
+order, every combination fewer before more: `.hover`, `.focused`, `.active`, `.selected`,
+`.disabled`, `.blur` (`row.selected.blur` is `row`, `row.selected`, `row.blur`, then itself).
+Today `hover`, `focused` and `blur` (focusable, without the focus) hold for a node; the rest come
+with the state that says so. Its border and title take `border` and `title` with the same states.
+`fictty screen --nodes --style` (or `render --nodes --style`) prints it under each node, with
+tokens as colours (`┊ button.focused · #0f1418+on-#5fd1c6+b`); the JSON has it as `style`.
+Each part, the variant and the node's own style lay over the last: what one says replaces, the
+rest stays. Wrong names are `problems`, on the status line and in the reply to a push: a part no
+component has (`button.focsed`; a name outside the components' families, like `link`, is the
+theme's own, for markup), a word in a spec that means nothing, a colour that's no token, a
+`space`, `radius`, `depth` or `type` name the theme doesn't have, a shape or cursor that isn't
+one, a field no style has (`colour`), a row variant a list skips but doesn't have.
 
 ## Embedding fictty in an app
 

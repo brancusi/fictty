@@ -18,7 +18,7 @@
     "children": [
      {
       "type": "text",
-      "text": "<b>Grace Hopper</>  <pos>\u25cf</> <dim>online</>\t<dim>\u2315  \u22ef</>",
+      "text": "<heading>Grace Hopper</>  <pos>\u25cf</> <dim>online</>\t<dim>\u2315  \u22ef</>",
       "size": 1
      },
      {

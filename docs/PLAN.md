@@ -172,11 +172,40 @@ The phases of [design/native.md](design/native.md), where each is broken down.
         The terminal is dropped (no more terminal work), what GPUI has is adopted, themes become
         whole styles; the wringer (nine screens, six themes) is in `examples/window/` as the test
         of done
-  - [ ] **Next: step 2a**, style resolution in the core (native.md, "Next, step by step"). Then,
-        in order: text and themes as whole styles (2b–2f, ending in the styling study), the
-        layout vocabulary, lists and rows as nodes, the rest of editors, charts and icons, toasts
-        and layers, embedding and the examples, then the terminal goes. Each step moves its share
-        of the 32 grid tests left into the window
+  - [x] Step 2a, style resolution in the core: `style.rs` resolves each shown node's style
+        (its part with the parts of its states layered over it, its variant, its tone, its own
+        style; tokens as colours), the readback carries it (`screen --nodes --style`, `render
+        --nodes --style`), and wrong names in a theme are `problems` (2026-10-13)
+  - [x] The public demo decided and started (2026-10-13): one app an agent builds live in the
+        window ([design/demo.md](design/demo.md), `examples/demo/`). It grows with each step
+        and is part of each step's test of done, beside the wringer
+  - [x] Step 2b, parts as whole styles: a part is an ink or a whole style (fg, bg or a
+        gradient, type, pad, radius, border, shadow, ring, shape, opacity, cursor), as are a
+        node's and a variant's `style`; the theme's scales (`space`, `radius`, `depth`, `type`)
+        and `fonts`; problems for wrong names and fields (2026-10-13)
+  - [x] Step 2c, the window draws the resolved style (`Look::boxed`): the window's own looks
+        are default parts in the core, inner parts resolve like nodes, hover holds for any node,
+        tabs take a shape (2026-10-13)
+  - [x] Step 2d, type: roles on nodes (`style.type`) and in markup, theme fonts (files
+        loaded), tabular numbers; our own ellipsis and `keep`, `wrap` and `lines` on text,
+        `(cut)` in the readback; tab bars' lead and trail in the window (2026-10-13)
+  - [x] Step 2e, cards and the status bar: backdrops resolve into cards (fill or gradient,
+        border, corners, shadow or glow); the status line is the UI's (status, problems, hints;
+        `"status_bar": "speed"` for the meter); the demo's typo beat (2026-10-13)
+  - [x] Step 2f, the styling study ([design/styling-study.md](design/styling-study.md)): the six
+        themes as whole styles (`examples/window/themes.py`), one vocabulary of roles, scales and
+        variants, the screens and the demo naming roles, before and after screenshots (2026-10-13)
+  - [x] Daybook (`examples/journal/`), a journal written as data after Thought Control's, its
+        flows tested in the window (`tests/journal.rs`) and fuzzed. It found and fixed: ⌃/⌥/⌘
+        keys an editor doesn't use reach the UI's keys; action templates read sources;
+        `toggle` of a store entry; a selection a `do` moved no longer snaps back on a write; a
+        click on a task's box keeps the caret; `required` inputs (2026-10-13). Still open, in its
+        README: a task action to bind (⌃T is wired in), proportional editors (phase 4), a map's
+        catch-all reading its value
+  - [ ] **Next: step 3**, the layout vocabulary, planned in
+        [design/layout-step.md](design/layout-step.md). Then: lists and rows as nodes, the rest of
+        editors, charts and icons, toasts and layers, embedding and the examples, then the terminal
+        goes. Each step moves its share of the 32 grid tests left into the window
 - [ ] Phase 2 · The agent's portal (M): `watch` and `emit`, drop zones, tabs (`fictty open
       --tab`), screenshots, the command policy
 - [ ] Phase 3 · Media (M): images, video, pasted and dropped media, animation
