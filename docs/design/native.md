@@ -252,7 +252,8 @@ floats, `px`, `pad` and `align`. Not yet done: looking at the tour's chapters in
 terminal is dropped (no more terminal work; new fields are window-only), themes become whole
 styles with the theme kit pulled forward from phase 4, a layout vocabulary on GPUI's Taffy is a
 step of its own, and rows become nodes. [examples/window/](../../examples/window/README.md) (the
-wringer: nine screens, six themes, `open.sh`) is what each step is measured against. **The next
+wringer: nine screens, six themes, `open.sh`) is what each step is measured against, with the
+public demo ([demo.md](demo.md), `examples/demo/`): each step lands with the demo showing it. **The next
 step is 2, and it starts with 2a.**
 
 Step 2a landed on 13 October: `crates/fictty-core/src/style.rs` resolves each shown node's

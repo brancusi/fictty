@@ -176,6 +176,9 @@ The phases of [design/native.md](design/native.md), where each is broken down.
         (its part with the parts of its states layered over it, its variant, its tone, its own
         style; tokens as colours), the readback carries it (`screen --nodes --style`, `render
         --nodes --style`), and wrong names in a theme are `problems` (2026-10-13)
+  - [x] The public demo decided and started (2026-10-13): one app an agent builds live in the
+        window ([design/demo.md](design/demo.md), `examples/demo/`). It grows with each step
+        and is part of each step's test of done, beside the wringer
   - [ ] **Next: step 2b**, parts as whole styles (native.md, "Next, step by step"). Then,
         in order: the rest of text and themes (2c–2f, ending in the styling study), the
         layout vocabulary, lists and rows as nodes, the rest of editors, charts and icons, toasts

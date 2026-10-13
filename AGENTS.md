@@ -76,7 +76,8 @@ embedding apps depend on `fictty` alone.
   `FUZZ_RUNS=2000` in a release build to go deeper), `sim.rs` (the binary in a pty)
 - `examples/`: UIs and their feeds. `showcase/` is the demo the one-liners run (the tour's chapters
   are written by `tour.py`; `autopilot.sh` is its agent); `window/` is the wringer (nine screens
-  and six themes for the window, `open.sh`, the test of done for expressive.md); `stress/` and
+  and six themes for the window, `open.sh`, the test of done for expressive.md); `demo/` is the public demo, an agent building an app live
+  in the window (`open.sh`, `agent.py`; see docs/design/demo.md); `stress/` and
   `finance/` are standalone; `thc/` and `pixels/` need Thought Control installed (they move to
   that repo, see the plan)
 - `docs/`: the guide, the plan, design proposals, the identity explorations, the blog
