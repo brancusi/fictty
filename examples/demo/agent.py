@@ -94,7 +94,7 @@ FLOOR = {"type": "col", "gap": 1, "children": [
             ("WALK-INS", "<stat>{walkins}</>\n<dim>since 9:00</>"),
         ])
     ]},
-    {"type": "list", "id": "floorlog", "title": "THE FLOOR, LIVE", "bind": "floorlog", "item": "<dim>{t}</>  {msg}"},
+    {"type": "list", "id": "floorlog", "title": "THE FLOOR, LIVE", "bind": "floorlog", "item": "<dim>{t}</>  {kind|done=<pos>done</>;paid=<pos>paid</>;low=<warn>low</>;in=<accent>in</>;sold=<accent>sold</>;stand=<accent>on stand</>}  {msg}"},
 ]}
 
 NOTES = {"type": "editor", "id": "notes", "title": "NOTES", "syntax": "markdown", "pad": [1, 0],
@@ -169,10 +169,12 @@ STOCK_DATA = [
     {"id": "p12", "name": "Dynamo hub", "brand": "Truewheel", "bin": "W3", "qty": 1, "price": "129.00"},
 ]
 
-FLOOR_EVENTS = ["<pos>done</> Commuter · Maya L. back on the rack", "<accent>in</> walk-in: puncture, 700×28",
-                "<accent>sold</> 2 × inner tube 700×28", "<warn>low</> 11-speed chain: 3 left",
-                "<accent>on stand</> Kids' 20\" · the Rossis", "<accent>sold</> bar tape, cork",
-                "<pos>paid</> Tourer · Tom O. collected", "<accent>in</> walk-in: gears skipping"]
+# What happens on the floor: a kind, which the log's template styles, and plain text. Data carries
+# no markup; the UI decides how a kind looks.
+FLOOR_EVENTS = [("done", "Commuter · Maya L. back on the rack"), ("in", "walk-in: puncture, 700×28"),
+                ("sold", "2 × inner tube 700×28"), ("low", "11-speed chain: 3 left"),
+                ("stand", "Kids' 20\" · the Rossis"), ("sold", "bar tape, cork"),
+                ("paid", "Tourer · Tom O. collected"), ("in", "walk-in: gears skipping")]
 
 
 def type_into(key, text, every=0.05):
@@ -204,7 +206,7 @@ def run():
     step(f"Read the screen back: the inbox shows {count} rows, the first selected.", "fictty screen --nodes", wait=1.8)
 
     # 4. Select, then reply in the person's editor.
-    step("Selected Dev's message: the reader follows the selection.", "fictty set inbox '{\"selected\": 5}'",
+    step("Selected Dev's message: the reader follows the selection.", "echo '{\"selected\": 5}' | fictty set inbox -",
          "set", "inbox", "-", data={"selected": 5}, wait=1.6)
     type_into("reply", "Hi Dev, please don't ride it until we've looked. Bring it in today and Ana will inspect the frame; no charge for the check.")
     step("Wrote a reply in the editor. Each write is an edit you can undo.", "fictty put reply -", wait=1.6)
@@ -216,7 +218,7 @@ def run():
         fictty("put", f"jobs_{k}", "-", "--by", "agent", data=rows)
     step("Added a Jobs board by replacing one node. Your selection stayed put.", "fictty patch main jobs.json",
          "patch", "main", "-", data=json.dumps(main(2)), wait=0.8)
-    step("Switched to it.", "fictty set main '{\"tab\": 1}'", "set", "main", "-", data={"tab": 1}, wait=1.6)
+    step("Switched to it.", "echo '{\"tab\": 1}' | fictty set main -", "set", "main", "-", data={"tab": 1}, wait=1.6)
     booked = JOBS_DATA["booked"][:]
     stand = JOBS_DATA["stand"][:]
     dev = booked.pop(1)
@@ -231,7 +233,7 @@ def run():
     fictty("set", "main", "-", data={"tab": 2})
     pause(1.2)
     type_into("part", "chain", every=0.2)
-    step("Filtered it by typing into the field, as you would.", "fictty put part '\"chain\"'", wait=2)
+    step("Filtered it by typing into the field, as you would.", "echo '\"chain\"' | fictty put part -", wait=2)
     fictty("put", "part", "-", "--by", "agent", data="")
 
     # 7. Live numbers.
@@ -284,7 +286,8 @@ def live(floor, events):
     floor["avg"] = random.randint(41, 55)
     fictty("merge", "floor", "-", "--by", "agent", data={**floor, "takings": f"{floor['takings']:,}",
            "dtakings": round(random.uniform(-4, 12), 1), "davg": random.randint(-6, 4)})
-    events.insert(0, {"t": time.strftime("%H:%M:%S"), "msg": random.choice(FLOOR_EVENTS)})
+    kind, msg = random.choice(FLOOR_EVENTS)
+    events.insert(0, {"t": time.strftime("%H:%M:%S"), "kind": kind, "msg": msg})
     fictty("put", "floorlog", "-", "--by", "agent", data=events[:40])
 
 
