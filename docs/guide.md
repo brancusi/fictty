@@ -230,8 +230,18 @@ length for every side, or `[x, y]`: cells, `"8px"` or a `space` name); `radius` 
 `segment`, `plain`; a scrollbar `thin`, `overlay`, `none`; an edge `rounded`, `square`, `double`,
 `thick`); `opacity`; `cursor` (`default`, `pointer`, `text`, `grab`). A style never arranges: no
 size, gap or position. The scales let a theme change its whole feel in a few lines; `fonts`
-names families or font files that type roles use. The window draws all of it except `type`, which
-comes with type roles (step 2d of the plan).
+names families or font files that type roles use. The window draws all of it.
+
+**Type.** A theme's `type` names roles: `{"font": "serif", "size": 44, "weight": 700, "line":
+54, "tracking": -1, "tabular": true}`. `font` is a `fonts` name or a family; a `fonts` entry is
+a family (`"Georgia"`) or a font file beside the themes (`"fonts/Anton.ttf"`), loaded the first
+time it's needed. A node asks for a role through its style, `"style": {"type": "display"}`
+(a node's own `type` is its kind), and markup asks with `<display>…</>`: a line takes the first
+role it names. `tabular` lines numbers up; `tracking` reads back but isn't drawn yet. Text
+wraps; `"wrap": false` keeps each line on one, and `"lines": 2` shows at most two. A line that
+doesn't fit ends in `…`: a row keeps the part after its tab (a time, a count) whole while it
+can, and `keep` (cells) holds room for the left before the right is cut too. The readback marks
+a node whose text was cut, `(cut)` in the outline and `"cut": true` in the JSON.
 
 Every component's look comes from parts, including the window's own: when a theme doesn't say,
 default parts do (`button` has a 12px pad and a 6px radius, a bordered node is a `panel` with

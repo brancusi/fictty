@@ -186,8 +186,11 @@ The phases of [design/native.md](design/native.md), where each is broken down.
   - [x] Step 2c, the window draws the resolved style (`Look::boxed`): the window's own looks
         are default parts in the core, inner parts resolve like nodes, hover holds for any node,
         tabs take a shape (2026-10-13)
-  - [ ] **Next: step 2d**, type (native.md, "Next, step by step"). Then, in order: the rest of
-        text and themes (2e–2f, ending in the styling study), the
+  - [x] Step 2d, type: roles on nodes (`style.type`) and in markup, theme fonts (files
+        loaded), tabular numbers; our own ellipsis and `keep`, `wrap` and `lines` on text,
+        `(cut)` in the readback; tab bars' lead and trail in the window (2026-10-13)
+  - [ ] **Next: step 2e**, cards and the status bar (native.md, "Next, step by step"). Then:
+        the styling study (2f), the
         layout vocabulary, lists and rows as nodes, the rest of editors, charts and icons, toasts
         and layers, embedding and the examples, then the terminal goes. Each step moves its share
         of the 32 grid tests left into the window

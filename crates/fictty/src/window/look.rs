@@ -4,7 +4,8 @@
 
 use crate::model::Len;
 use crate::state::State;
-use crate::style::{self, Resolved, Theme};
+use crate::style::{self, Resolved, Role, Theme};
+use std::collections::HashMap;
 use gpui::{BoxShadow, CursorStyle, FontStyle, FontWeight, HighlightStyle, Hsla, StrikethroughStyle, Styled, UnderlineStyle, linear_color_stop, linear_gradient, point, px, rgb};
 
 /// How a run of text looks: colours and the `b d i u r s` modifiers of a spec.
@@ -23,6 +24,8 @@ pub struct Ink {
 /// The theme the window draws a frame with.
 pub struct Look<'a> {
     th: Theme<'a>,
+    /// The family each font file the window loaded turned out to be.
+    faces: &'a HashMap<String, String>,
     pub bg: Hsla,
     pub fg: Hsla,
     pub dim: Hsla,
@@ -44,12 +47,13 @@ pub fn parse(name: &str) -> Option<Hsla> {
 }
 
 impl<'a> Look<'a> {
-    pub fn new(st: &'a State) -> Look<'a> {
+    pub fn new(st: &'a State, faces: &'a HashMap<String, String>) -> Look<'a> {
         let th = Theme::of(st);
         let get = |k: &str| th.colour(k).as_deref().and_then(parse).unwrap_or_default();
         let bg = get("bg");
         Look {
             th,
+            faces,
             bg,
             scrim: th.colour("scrim").as_deref().and_then(parse).unwrap_or(Hsla { a: 0.6, ..bg }),
             fg: get("fg"),
@@ -94,6 +98,17 @@ impl<'a> Look<'a> {
             strikethrough: ink.strike.then(|| StrikethroughStyle { thickness: px(1.), color: fg }),
             fade_out: ink.dim.then_some(0.4),
         }
+    }
+
+    /// The type role a `<spec>` names, if it names one.
+    pub fn role(&self, spec: &str) -> Option<Role> {
+        self.th.role_in(spec)
+    }
+
+    /// A role's font as a family: a family's name as it is, a font file as the family it
+    /// loaded as (the default font until it has).
+    pub fn fonts(&self) -> impl Fn(&str) -> String + '_ {
+        |f: &str| if style::is_font_file(f) { self.faces.get(f).cloned().unwrap_or_default() } else { f.to_string() }
     }
 
     /// A resolved ink as the window's colours.

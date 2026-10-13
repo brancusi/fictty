@@ -246,7 +246,7 @@ impl App {
                         let _ = s.send(json!({"ok": true, "screen": text}));
                     }
                 }
-                let drawn = Drawn { hits: out.hits, rects: out.rects, sizes: out.sizes, areas: out.areas, wake: out.wake };
+                let drawn = Drawn { hits: out.hits, rects: out.rects, sizes: out.sizes, areas: out.areas, wake: out.wake, cut: Vec::new() };
                 pending = l.drew(t.elapsed(), drawn);
                 last_draw = Instant::now();
             }
@@ -307,7 +307,7 @@ impl Frame for Grid {
         let last = &mut self.last;
         let _ = self.term.draw(|f| {
             let out = view::draw(st, f);
-            drawn = Drawn { hits: out.hits, rects: out.rects, sizes: out.sizes, areas: out.areas, wake: out.wake };
+            drawn = Drawn { hits: out.hits, rects: out.rects, sizes: out.sizes, areas: out.areas, wake: out.wake, cut: Vec::new() };
             *last = f.buffer_mut().clone();
         });
         #[cfg(feature = "fuzz")]

@@ -317,6 +317,27 @@ ms, patch storm 0.07 → 0.13 ms, a 60/s push storm 0.12 → 0.20 ms), the frame
 5,000–5,800 after over repeated runs. Resolution isn't cached yet; when it matters, cache it
 per theme revision and node, as expressive.md says.
 
+Step 2d landed on 13 October. A node asks for a type role through its style (`"style":
+{"type": "display"}`): a node's own `type` is its kind, so expressive.md's `"type": "display"`
+on a node couldn't be. Markup names a role like a part (`<display>…</>`), and a line takes the
+first role it names, since GPUI shapes a line at one size. A role sets the font (a family, or
+a `fonts` file loaded with GPUI's `add_fonts` the first time a theme names it, its family found
+by what the text system knows after that it didn't before; font paths are made absolute beside
+the themes file), the size, the weight, the line height and tabular numbers (`tnum`). Tracking
+resolves and reads back but isn't drawn: GPUI 0.2.2 has no letter spacing. A line that stays
+on one (a row, a table cell, a title, `wrap: false` text) is our own element, `text::line`: a
+canvas that shapes its runs once it knows its width, arranges the left side, a fill and the
+right side (`text::arrange`), and cuts what doesn't fit with `…` (`text::fit`): the right side
+whole while the left keeps `keep`, then the right cut too. `lines: n` wraps and shows at most
+`n` lines, the last cut with `…`: also ours, by shaping prefixes, because GPUI's clamp has the
+trouble its ellipsis had (taffy keeps the smallest size it measured, and it showed one word). A
+frame notes the nodes it cut (`Drawn::cut`), and the readback says `(cut)`, so an agent knows
+it isn't reading what's all on screen; a tab in read-back text stays a tab. A tab bar draws its
+`lead` and `trail` in the window now, and reads them back (`thc · Inbox 4 | Done · Sat 11`).
+Moved: the cut, keep, tab-title and tab-focus grid tests to the window, the template and
+markup-part tests to the core (`text::fit` and `text::arrange` are unit-tested on a monospace
+measure); their grid twins and view.rs's variant-and-pad test are deleted.
+
 Each step builds a slice, moves the grid tests that slice owns onto `App::in_window`
 (readback, state and the finders, not characters), and ends with the tour's chapters that use it
 looked at in a real window. A step is done when its tests pass in the window, its grid twins are
@@ -332,7 +353,7 @@ deleted, and the window fuzz runs stay clean.
    `the_readback_has_each_nodes_rectangle_from_the_grid`,
    `headless_takes_the_mouse_and_resizes_like_a_terminal`,
    `keys_type_into_a_field_a_key_just_showed`.
-2. **Text and themes as whole styles (M–L). Next: 2d.** Native.md's text-and-themes work
+2. **Text and themes as whole styles (M–L). Next: 2e.** Native.md's text-and-themes work
    plus expressive.md's "Looks", "Type" and the theme kit, in this order:
    - **2a. Style resolution in the core.** A pure function in `fictty-core` (a new `style.rs`):
      for each shown node, its theme part plus the state suffixes that hold (`.hover`, `.focused`,

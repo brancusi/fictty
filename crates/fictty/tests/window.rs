@@ -585,3 +585,92 @@ fn tabs_take_the_shape_their_part_gives_them_and_still_take_clicks() {
         assert_eq!(node(&mut s, "t").selected, Some(1), "{shape}: a click picks the tab");
     }
 }
+
+#[test]
+fn a_cut_line_ends_in_an_ellipsis_and_the_readback_says_so() {
+    let ui = json!({"root": {"type": "col", "children": [
+        {"type": "list", "id": "long", "size": 2, "item": "{t}\t{when}", "items": [{"t": "a title far too long to fit in thirty cells", "when": "Tue · tilde"}]},
+        {"type": "list", "id": "short", "size": 2, "item": "{t}\t{when}", "items": [{"t": "fits", "when": "Tue"}]}
+    ]}});
+    let mut s = window(ui, 30, 6);
+    assert!(node(&mut s, "long").cut, "the long row is cut");
+    assert!(!node(&mut s, "short").cut, "the short one isn't");
+    let screen = s.screen();
+    assert!(screen.contains("list long (focus) (cut)"), "the outline says so: {screen}");
+    assert!(screen.contains("thirty cells   Tue · tilde"), "a tab reads as a gap: {screen}");
+    s.resize(120, 6);
+    assert!(!node(&mut s, "long").cut, "with room, nothing is cut");
+}
+
+#[test]
+fn keep_holds_room_for_a_rows_left_so_its_meta_is_cut_too() {
+    let row = |keep: Option<u16>| {
+        let mut l = json!({"type": "list", "id": "l", "item": "{t}\t{meta}", "items": [{"t": "Water the plants", "meta": "Tue 14:00 · tilde · from the agent, by the window"}]});
+        if let Some(k) = keep {
+            l["keep"] = json!(k);
+        }
+        let mut s = window(json!({"root": l}), 30, 3);
+        node(&mut s, "l").cut
+    };
+    assert!(row(None) && row(Some(12)), "too long either way: cut");
+}
+
+#[test]
+fn wrap_false_and_lines_keep_text_to_its_lines_and_cut_it() {
+    let long = "a sentence long enough to need a second line at thirty cells, and a third";
+    let text = |extra: Value| {
+        let mut t = json!({"type": "text", "id": "t", "text": long});
+        t.as_object_mut().unwrap().extend(extra.as_object().unwrap().clone());
+        let mut s = window(json!({"root": t}), 30, 6);
+        node(&mut s, "t").cut
+    };
+    assert!(!text(json!({})), "text wraps by default, so nothing is cut");
+    assert!(text(json!({"wrap": false})), "on one line, it's cut");
+    assert!(text(json!({"lines": 1})), "one line shown, the rest cut");
+}
+
+#[test]
+fn a_type_role_sets_a_nodes_text_and_a_bigger_one_takes_more_room() {
+    let theme = json!({"type": {"display": {"size": 40, "weight": 800, "line": 48}, "body": {"size": 14}}, "fonts": {"ui": "Helvetica"}});
+    let cut = |role: &str| {
+        let ui = json!({"root": {"type": "text", "id": "t", "wrap": false, "style": {"type": role}, "text": "Kestrel Cycles"}});
+        let mut s = themed(theme.clone(), ui, 30, 4);
+        let t = node(&mut s, "t");
+        (t.style.role.map(|r| (r.name, r.role.size)), t.cut)
+    };
+    assert_eq!(cut("body"), (Some(("body".to_string(), Some(14.))), false), "fourteen pixels fit in thirty cells");
+    assert_eq!(cut("display"), (Some(("display".to_string(), Some(40.))), true), "forty don't");
+    // Markup names a role for its line.
+    let ui = json!({"root": {"type": "text", "id": "t", "wrap": false, "text": "<display>Kestrel Cycles</>"}});
+    let mut s = themed(theme, ui, 30, 4);
+    assert!(node(&mut s, "t").cut, "<display> sizes its line");
+    assert!(s.state().problems.is_empty(), "a role is a known word in a spec: {:?}", s.state().problems);
+}
+
+#[test]
+fn tab_titles_are_templates_with_a_lead_and_a_trail() {
+    let ui = json!({"root": {"type": "tabs", "id": "t", "bind": "counts", "tabs": ["Inbox {inbox}", "Done"], "lead": "<b>thc</>", "trail": "Sat 11",
+                              "children": [{"type": "text", "text": "one"}, {"type": "text", "text": "two"}]},
+                    "data": {"counts": {"value": {"inbox": 4}}}});
+    let mut s = window(ui, 40, 4);
+    assert_eq!(node(&mut s, "t").text, "thc · Inbox 4 | Done · Sat 11");
+    let (x, y) = s.at("t", None, Some(1)).unwrap();
+    s.mouse("press", x, y).mouse("release", x, y);
+    assert_eq!(node(&mut s, "t").selected, Some(1), "the tabs still take clicks beside a lead");
+}
+
+#[test]
+fn tabs_start_where_they_say_and_choosing_one_moves_the_focus_into_it() {
+    let ui = json!({"root": {"type": "tabs", "id": "views", "tab": 1, "tabs": ["Today", "Inbox <b>{n}</>"], "bind": "counts", "children": [
+        {"type": "list", "id": "today", "items": ["a"]},
+        {"type": "list", "id": "inbox", "items": ["x", "y"]}
+    ]}, "keys": {"1": {"tab": 0, "of": "views"}, "2": {"tab": 1, "of": "views"}},
+    "data": {"counts": {"value": {"n": 2}}}});
+    let mut s = window(ui, 30, 5);
+    assert_eq!((node(&mut s, "views").selected, s.state().focus.as_deref()), (Some(1), Some("inbox")), "starts on Inbox, in its content");
+    s.keys(&["1"]);
+    assert_eq!(s.state().focus.as_deref(), Some("today"));
+    let (x, y) = s.at("views", None, Some(1)).unwrap();
+    s.mouse("press", x, y).mouse("release", x, y);
+    assert_eq!(s.state().focus.as_deref(), Some("inbox"), "a click on a tab moves the focus into it too");
+}

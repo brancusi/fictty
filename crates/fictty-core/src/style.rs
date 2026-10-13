@@ -94,7 +94,8 @@ const DEFAULT_TOKENS: [(&str, u32); 10] = [
     ("neg", 0xf07178),
 ];
 
-/// How a run of text looks: colours (`#rrggbb`) and the `b d i u r s` modifiers of a spec.
+/// How a run of text looks: colours (`#rrggbb`) and the `b d i u r s` modifiers of a spec. A
+/// spec may also name a type role (`<display>…</>`), which sets the run's line's font.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct Ink {
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -343,7 +344,7 @@ impl<'a> Theme<'a> {
             .filter(|w| !w.is_empty() && !modifier(w))
             .filter(|w| match w.strip_prefix("on-") {
                 Some(c) => !self.knows(c),
-                None => !self.knows(w) && self.part(w).is_none(),
+                None => !self.knows(w) && self.part(w).is_none() && self.role(w).is_none(),
             })
             .collect()
     }
@@ -418,8 +419,13 @@ impl<'a> Theme<'a> {
         Some(list.iter().map(|s| Shadow { color: self.colour(&s.color).unwrap_or_else(|| s.color.clone()), ..s.clone() }).collect())
     }
 
+    /// The type role a spec names (`display`, `caption+b`): the first word that is one.
+    pub fn role_in(&self, spec: &str) -> Option<Role> {
+        spec.split('+').map(str::trim).find_map(|w| self.role(w))
+    }
+
     /// A type role, its font filled in from `fonts`.
-    fn role(&self, name: &str) -> Option<Role> {
+    pub fn role(&self, name: &str) -> Option<Role> {
         let r = self.active?.types.get(name)?;
         let font = r.font.as_ref().map(|f| self.active.and_then(|t| t.fonts.get(f)).unwrap_or(f).clone());
         Some(Role { name: name.to_string(), role: TypeRole { font, ..r.clone() } })
@@ -475,6 +481,12 @@ impl<'a> Theme<'a> {
         }
         out
     }
+}
+
+/// Whether a `fonts` entry is a font file (`fonts/Anton.ttf`) rather than a family name.
+pub fn is_font_file(f: &str) -> bool {
+    let f = f.to_ascii_lowercase();
+    [".ttf", ".otf", ".ttc", ".woff", ".woff2"].iter().any(|e| f.ends_with(e))
 }
 
 /// A colour by itself as `#rrggbb`: `#rgb`, `#rrggbb`, or one of the named colours.
@@ -850,6 +862,16 @@ mod tests {
         let t = of(&st, "t");
         assert_eq!((t.shape.as_deref(), t.pad.clone()), (Some("pill"), Some([Len::Cells(1.), Len::Cells(1.)])), "one length pads every side");
         assert!(st.problems.is_empty(), "{:?}", st.problems);
+    }
+
+    #[test]
+    fn a_markup_tag_can_name_a_theme_part_or_a_type_role() {
+        let th: ThemeSpec = serde_json::from_value(json!({"parts": {"link": "#ff0000+u"}, "type": {"display": {"size": 40}}})).unwrap();
+        let ui = BTreeMap::new();
+        let th = Theme { active: Some(&th), ui: &ui };
+        assert_eq!(th.ink("link", Ink::default()).spec(), "#ff0000+u", "<link>…</> takes the part's ink");
+        assert_eq!(th.role_in("display+b").map(|r| r.role.size), Some(Some(40.)), "<display+b>…</> names a role");
+        assert!(th.unknown("display+link+b").is_empty());
     }
 
     #[test]

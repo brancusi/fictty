@@ -371,7 +371,7 @@ impl Default for Node {
             modal: false,
             min: None,
             max: None,
-            kind: Kind::Text { text: String::new() },
+            kind: Kind::Text { text: String::new(), wrap: None, lines: None },
         }
     }
 }
@@ -417,8 +417,16 @@ pub enum Kind {
         #[serde(default, skip_serializing_if = "String::is_empty")]
         text: String,
     },
-    /// Text. `{field}` placeholders fill from the bound value (`{a.b}` reaches in).
-    Text { text: String },
+    /// Text. `{field}` placeholders fill from the bound value (`{a.b}` reaches in). A line with
+    /// no tab or fill wraps; `wrap: false` keeps each line on one, cut with `…` where it doesn't
+    /// fit, and `lines` shows at most that many, the last ending in `…`.
+    Text {
+        text: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        wrap: Option<bool>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        lines: Option<u16>,
+    },
     /// A selectable list of `items`, or of the bound array, drawn as `Rows` say.
     List {
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -1741,6 +1749,15 @@ pub fn is_colour(name: &str) -> bool {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn templates_fit_fields_escape_brackets_and_take_tabs_from_values() {
+        let v = json!({"k": "ab", "v": "7", "long": "abcdefgh", "row": "left\tright"});
+        let text = |t: &str| segments(t, &v).into_iter().map(|s| if s.tab { "⇥".to_string() } else { s.text }).collect::<String>();
+        assert_eq!(text("a << b <b>bold</>"), "a < b bold");
+        assert_eq!(text("{k:6}|{v:>4}|{long:5}|"), "ab    |   7|abcd…|");
+        assert_eq!(text("{row|markup}"), "left⇥right", "a tab in a value marked up is a tab");
+    }
 
     #[test]
     fn fill_reads_fields_and_paths() {

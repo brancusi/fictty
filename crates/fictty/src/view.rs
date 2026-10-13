@@ -769,7 +769,7 @@ fn node(cx: &mut Cx, n: &Node, f: &mut Frame, area: Rect) {
             f.buffer_mut().set_style(r, bs);
             f.buffer_mut().set_stringn(r.x + 2, r.y, &text, w.saturating_sub(4) as usize, bs);
         }
-        Kind::Text { text } if n.scale.is_some_and(|k| k > 1) && st.text_sizing => {
+        Kind::Text { text, .. } if n.scale.is_some_and(|k| k > 1) && st.text_sizing => {
             // Larger text: the terminal draws it over `scale` rows; the cells under it stay blank.
             let v = bound(st, n).unwrap_or(&Value::Null);
             let k = n.scale.unwrap_or(1);
@@ -784,7 +784,7 @@ fn node(cx: &mut Cx, n: &Node, f: &mut Frame, area: Rect) {
                 cx.scaled.push(Scaled { x: inner.x, y, text: t, scale: k, style: st_ });
             }
         }
-        Kind::Text { text } if n.scale.is_some_and(|k| k >= 3) => {
+        Kind::Text { text, .. } if n.scale.is_some_and(|k| k >= 3) => {
             // No larger text here: three times the size falls back to the block-digit font.
             let v = bound(st, n).unwrap_or(&Value::Null);
             let segs = segments(text.split('\n').next().unwrap_or(""), v);
@@ -793,7 +793,7 @@ fn node(cx: &mut Cx, n: &Node, f: &mut Frame, area: Rect) {
             let lines: Vec<Line> = big(&t).into_iter().map(|l| Line::styled(l, st_)).collect();
             f.render_widget(Paragraph::new(lines).alignment(align), inner);
         }
-        Kind::Text { text } => {
+        Kind::Text { text, .. } => {
             let v = bound(st, n).unwrap_or(&Value::Null);
             // Lines with a tab or a fill are laid out by hand (no wrapping); the rest wrap.
             // Lines whose placeholders all came out empty are left out (optional details).
@@ -1888,32 +1888,7 @@ mod tests {
         assert_eq!(rows[1], "food ████▊ 363", "a quarter of the width: 4.75 cells");
     }
 
-    #[test]
-    fn a_variant_and_pad_come_from_the_theme_and_the_node() {
-        use crate::state::{Msg, update};
-        let mut st = State::default();
-        let theme: ThemeSpec = serde_json::from_value(serde_json::json!({
-            "tokens": {"warn": "#ffbd4f"},
-            "parts": {"title": "warn+b"},
-            "variants": {"card": {"edge": "double"}}
-        }))
-        .unwrap();
-        update(&mut st, Msg::Theme { add: [("t".to_string(), theme)].into(), choose: None });
-        let ui = serde_json::json!({"root": {"type": "text", "title": "T", "variant": "card", "pad": 2, "text": "hi"}, "status_bar": false});
-        update(&mut st, Msg::Push { ui: serde_json::from_value(ui).unwrap() });
-        let mut term = ratatui::Terminal::new(ratatui::backend::TestBackend::new(12, 3)).unwrap();
-        term.draw(|f| {
-            draw(&st, f);
-        })
-        .unwrap();
-        let buf = term.backend().buffer();
-        let row = |y: u16| (0..12).map(|x| buf[(x, y)].symbol()).collect::<String>();
-        assert_eq!(row(0), "╔ T ═══════╗", "the variant's double edge");
-        assert_eq!(row(1), "║  hi      ║", "two cells of pad");
-        assert_eq!(buf[(2, 0)].fg, Color::Rgb(0xff, 0xbd, 0x4f), "the theme's title part");
-    }
-
-    #[test]
+        #[test]
     fn markdown_styles_headings_markers_quotes_and_code() {
         let md = Markdown {
             heading: Style::default().fg(Color::Cyan),

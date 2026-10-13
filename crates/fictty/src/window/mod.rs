@@ -26,6 +26,7 @@ use gpui::{
 };
 use serde_json::{Value, json};
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -80,6 +81,8 @@ struct Laid {
     sizes: Vec<(String, Bounds<Pixels>, u16)>,
     /// The area each node whose `when` reads `$width` or `$height` was laid out in.
     areas: Vec<(String, Bounds<Pixels>)>,
+    /// The nodes it cut text in.
+    cut: Vec<String>,
 }
 
 type Shared = Rc<RefCell<Laid>>;
@@ -160,6 +163,9 @@ struct Portal {
     wheel: (String, f32),
     /// When (on the logical clock) the frame being built changes by itself next.
     wake: Option<u64>,
+    /// The font files the themes name, by path, and the family each loaded as (empty when it
+    /// couldn't be).
+    faces: HashMap<String, String>,
 }
 
 impl Portal {
@@ -172,7 +178,7 @@ impl Portal {
         engine.send(Msg::Caps { caps: state::Caps { graphics: false, cell_w: cell.w, cell_h: cell.h }, text_sizing: false });
         let focus = cx.focus_handle();
         focus.focus(window);
-        Portal { engine, focus, cell, screen: (0, 0), laid: Shared::default(), shown: Rc::default(), drag: None, wheel: (String::new(), 0.0), wake: None }
+        Portal { engine, focus, cell, screen: (0, 0), laid: Shared::default(), shown: Rc::default(), drag: None, wheel: (String::new(), 0.0), wake: None, faces: HashMap::new() }
     }
 
     fn send(&mut self, msg: Msg, cx: &mut Context<Self>) {
@@ -327,8 +333,14 @@ impl Portal {
             Some("right") => el.text_right(),
             _ => el,
         };
+        // Its type role, for its text and everything in it; `keep` holds room on a row's left.
+        let role = rs.role.as_ref();
+        el = text::typed(el, role, &lk.fonts());
+        let laid = self.laid.clone();
+        let keep = n.rows().and_then(|r| r.keep).map_or(0., |k| k as f32 * cell.w);
+        let tx = text::Tx { lk, laid: &laid, id: &id, keep, line_h: text::line_height(role, cell.h) };
         if let (Some(t), Some(ink)) = (&n.title, &rs.title) {
-            el = el.gap_1().child(div().flex_none().w_full().text_sm().child(text::line(lk, t, v, lk.ink(ink), false)));
+            el = el.gap_1().child(div().flex_none().w_full().text_sm().child(text::line(&tx, t, v, lk.ink(ink), false)));
         }
         let body: AnyElement = match &n.kind {
             Kind::Col { children, gap } | Kind::Row { children, gap } => {
@@ -370,12 +382,12 @@ impl Portal {
                 }
                 div().relative().size_full().children(kids).into_any_element()
             }
-            Kind::Text { text } => text::lines(lk, text, v, Ink::default()),
+            Kind::Text { text, wrap, lines } => text::lines(&tx, text, v, Ink::default(), wrap.unwrap_or(true), *lines),
             Kind::Spinner { text } => {
                 let (glyph, next) = state::spinner(st.now_ms);
                 self.soon(next);
                 let ink = lk.ink(&style::inner(st, "spinner", &[]).ink);
-                div().flex().flex_row().gap_2().child(inked(div(), ink).child(glyph)).child(text::line(lk, text, v, Ink::default(), false)).into_any_element()
+                div().flex().flex_row().gap_2().child(inked(div(), ink).child(glyph)).child(text::line(&tx, text, v, Ink::default(), false)).into_any_element()
             }
             Kind::Button { label } => {
                 let label = text::plain(label, v);
@@ -413,7 +425,7 @@ impl Portal {
                         lk.boxed(div().id(k).relative().flex().flex_row().h(px(cell.h)), &style::inner(st, "row", &style::row_states(st, n, k)), c, (0., 0.))
                             .child(measure(&self.laid, move |l, b| l.hits.push((b, hit(under, Some(k), None, false)))))
                             .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, _, cx| this.send(Msg::Click { id: target.clone(), row: Some(k), tab: None }, cx)))
-                            .children(columns.iter().map(|c| div().flex_1().min_w_0().child(text::line(lk, &c.value, r, Ink::default(), false))))
+                            .children(columns.iter().map(|c| div().flex_1().min_w_0().child(text::line(&tx, &c.value, r, Ink::default(), false))))
                             .into_any_element()
                     })
                     .collect();
@@ -434,7 +446,7 @@ impl Portal {
                 div().flex().flex_col().size_full().child(head).child(rows_area).into_any_element()
             }
             Kind::Editor { .. } | Kind::Input { .. } => self.editor(st, lk, n, &id, focused, cx),
-            Kind::Tabs { tabs, children, .. } => {
+            Kind::Tabs { tabs, children, lead, trail, .. } => {
                 let at = state::tab_of(st, n).min(children.len().saturating_sub(1));
                 let tabs = tabs.clone();
                 let (mut active, mut idle) = (style::inner(st, "tabs.active", &[]), style::inner(st, "tabs.idle", &[]));
@@ -461,6 +473,7 @@ impl Portal {
                 }
                 let underline = (shape == "underline").then(|| line.as_deref().and_then(look::parse)).flatten();
                 let child = children.get(at).cloned();
+                let (lead, trail) = (lead.as_deref().map(|t| text::whole(lk, t, v, Ink::default())), trail.as_deref().map(|t| text::whole(lk, t, v, Ink::default())));
                 let bar = bar.children(tabs.iter().enumerate().map(|(k, t)| {
                     let target = id.clone();
                     let under = id.clone();
@@ -472,7 +485,7 @@ impl Portal {
                 }));
                 let shown = child.map(|c| self.node(st, lk, &c, false, &format!("{key}.{at}"), cx)).unwrap_or_else(|| div().into_any_element());
                 // In a row of its own, so a segmented bar is as wide as its tabs.
-                div().flex().flex_col().size_full().gap_1().child(div().flex().flex_row().child(bar)).child(div().flex().flex_1().min_h(px(0.)).child(shown)).into_any_element()
+                div().flex().flex_col().size_full().gap_1().child(div().flex().flex_row().items_center().gap_4().children(lead).child(bar).child(div().flex_1()).children(trail)).child(div().flex().flex_1().min_h(px(0.)).child(shown)).into_any_element()
             }
             Kind::Toasts {} => {
                 if let Some(at) = st.toasts.iter().map(|t| t.until).min() {
@@ -524,6 +537,8 @@ impl Portal {
         let cell = self.cell;
         let rows = state::items(st, n);
         let per = look.lines.unwrap_or(1).max(1);
+        let laid = self.laid.clone();
+        let tx = text::Tx { lk, laid: &laid, id, keep: look.keep.map_or(0., |k| k as f32 * cell.w), line_h: cell.h };
         if rows.is_empty() {
             return lk.boxed(div(), &style::inner(st, "empty", &[]), (cell.w, cell.h), (8., 0.)).child(look.empty.clone().unwrap_or_else(|| "(nothing)".into())).into_any_element();
         }
@@ -531,7 +546,7 @@ impl Portal {
             .map(|k| {
                 let r = &rows[k];
                 let text = match &look.item {
-                    Some(t) => text::lines(lk, t, r, Ink::default()),
+                    Some(t) => text::lines(&tx, t, r, Ink::default(), false, None),
                     None => div().child(crate::model::scalar(Some(r))).into_any_element(),
                 };
                 let (target, under) = (id.to_string(), id.to_string());
@@ -723,7 +738,9 @@ impl Render for Portal {
 impl Portal {
     /// The whole window for `st`, started at `t`.
     fn frame(&mut self, st: &State, t: Instant, cx: &mut Context<Self>) -> gpui::Stateful<gpui::Div> {
-        let lk = Look::new(st);
+        self.load_fonts(st, cx);
+        let faces = std::mem::take(&mut self.faces);
+        let lk = Look::new(st, &faces);
         let body = self.node(st, &lk, st.tree(), false, "root", cx);
         // A lasting write going, or a toast, changes the frame too.
         for at in st.expiring.iter().map(|e| e.at).chain(st.toasts.iter().map(|t| t.until)) {
@@ -762,7 +779,7 @@ impl Portal {
             .absolute()
             .size_0()
         };
-        div()
+        let frame = div()
             .id("portal")
             .track_focus(&self.focus)
             .on_key_down(cx.listener(|this, e: &KeyDownEvent, _, cx| {
@@ -789,7 +806,23 @@ impl Portal {
             .child(div().flex().flex_1().min_h(px(0.)).px(px(self.cell.w)).py(px(self.cell.h)).child(body))
             .child(div().absolute().bottom(px(32.)).right(px(16.)).flex().flex_col().gap_1().children(toasts))
             .child(div().h(px(ROW)).px_3().text_xs().text_color(lk.dim).bg(lk.panel).child(status))
-            .child(handover)
+            .child(handover);
+        self.faces = faces;
+        frame
+    }
+
+    /// Load the font files the themes name that aren't loaded yet, noting the family each
+    /// turned out to be (what the text system knows after that it didn't before).
+    fn load_fonts(&mut self, st: &State, cx: &mut Context<Self>) {
+        let files: Vec<String> = st.themes.values().flat_map(|t| t.fonts.values()).filter(|f| style::is_font_file(f) && !self.faces.contains_key(*f)).cloned().collect();
+        for f in files {
+            let ts = cx.text_system().clone();
+            let before = ts.all_font_names();
+            let family = std::fs::read(&f).ok().filter(|bytes| ts.add_fonts(vec![std::borrow::Cow::Owned(bytes.clone())]).is_ok()).and_then(|_| {
+                ts.all_font_names().into_iter().find(|n| !before.contains(n))
+            });
+            self.faces.insert(f, family.unwrap_or_default());
+        }
     }
 }
 
@@ -843,6 +876,7 @@ fn handover(laid: &Shared, shown: &RefCell<DrawnHits>, engine: &Engine, cell: Ce
         sizes: l.sizes.into_iter().map(|(id, b, per)| { let (w, h) = cell.fit(b); (id, w, h / per.max(1)) }).collect(),
         areas: l.areas.into_iter().map(|(id, b)| { let (w, h) = cell.fit(b); (id, w, h) }).collect(),
         wake,
+        cut: l.cut,
     };
     *shown.borrow_mut() = l.hits;
     if engine.drew(took, drawn) {

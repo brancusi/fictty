@@ -34,6 +34,9 @@ pub struct Shown {
     /// Where the last frame laid it out (nodes with an id).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rect: Option<Rect>,
+    /// Whether the last frame cut some of its text to fit, ending it in `…`.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub cut: bool,
     /// Its style under the active theme (see `style::resolve`).
     #[serde(default, skip_serializing_if = "plain")]
     pub style: Resolved,
@@ -43,39 +46,43 @@ fn plain(r: &Resolved) -> bool {
     *r == Resolved::default()
 }
 
-/// The shown nodes of `st`, in order, with the rectangles the last frame laid them out in.
-pub fn readback(st: &State, rects: &[(String, Rect)]) -> Vec<Shown> {
+/// The shown nodes of `st`, in order, with the rectangles the last frame laid them out in and
+/// whether it cut their text.
+pub fn readback(st: &State, rects: &[(String, Rect)], cut: &[String]) -> Vec<Shown> {
     let mut out = Vec::new();
-    walk(st, st.tree(), 0, rects, &mut out);
+    walk(st, st.tree(), 0, (rects, cut), &mut out);
     out
 }
 
-fn walk(st: &State, n: &Node, depth: usize, rects: &[(String, Rect)], out: &mut Vec<Shown>) {
+type Frame<'a> = (&'a [(String, Rect)], &'a [String]);
+
+fn walk(st: &State, n: &Node, depth: usize, frame: Frame, out: &mut Vec<Shown>) {
     if !state::shown(st, n) {
         return;
     }
-    out.push(shown(st, n, depth, rects));
+    out.push(shown(st, n, depth, frame));
     match &n.kind {
         Kind::Tabs { children, .. } => {
             if let Some(c) = children.get(state::tab_of(st, n).min(children.len().saturating_sub(1))) {
-                walk(st, c, depth + 1, rects, out);
+                walk(st, c, depth + 1, frame, out);
             }
         }
         _ => {
             for c in n.children() {
-                walk(st, c, depth + 1, rects, out);
+                walk(st, c, depth + 1, frame, out);
             }
         }
     }
 }
 
 /// A template's lines filled from `v`, leaving out lines whose placeholders all came out empty.
+/// A tab stays a tab: what's after it is the line's right side.
 fn lines(template: &str, v: &Value) -> String {
-    let shown: Vec<String> = template.split('\n').filter(|l| shows(l, v)).map(|l| segments(l, v).into_iter().map(|s| s.text).collect()).collect();
+    let shown: Vec<String> = template.split('\n').filter(|l| shows(l, v)).map(|l| segments(l, v).into_iter().map(|s| if s.tab { "\t".to_string() } else { s.text }).collect()).collect();
     shown.join("\n")
 }
 
-fn shown(st: &State, n: &Node, depth: usize, rects: &[(String, Rect)]) -> Shown {
+fn shown(st: &State, n: &Node, depth: usize, (rects, cut): Frame) -> Shown {
     let v = state::bound(st, n).unwrap_or(&Value::Null);
     let id = n.id.clone();
     let mut s = Shown {
@@ -88,10 +95,11 @@ fn shown(st: &State, n: &Node, depth: usize, rects: &[(String, Rect)]) -> Shown 
         selected: None,
         rect: id.as_deref().and_then(|i| rects.iter().find(|(r, _)| r == i)).map(|(_, r)| *r),
         style: style::resolve(st, n),
+        cut: id.as_deref().is_some_and(|i| cut.iter().any(|c| c == i)),
         id,
     };
     match &n.kind {
-        Kind::Text { text } | Kind::Big { text } | Kind::Spinner { text } => s.text = lines(text, v),
+        Kind::Text { text, .. } | Kind::Big { text } | Kind::Spinner { text } => s.text = lines(text, v),
         Kind::Button { label } => s.text = fill(label, v),
         Kind::Editor { .. } | Kind::Input { .. } => {
             s.text = s
@@ -124,10 +132,12 @@ fn shown(st: &State, n: &Node, depth: usize, rects: &[(String, Rect)]) -> Shown 
                 s.text = columns.iter().map(|c| fill(&c.value, r)).collect::<Vec<_>>().join(" · ");
             }
         }
-        Kind::Tabs { tabs, .. } => {
+        Kind::Tabs { tabs, lead, trail, .. } => {
             s.rows = Some(tabs.len());
             s.selected = Some(state::tab_of(st, n).min(tabs.len().saturating_sub(1)));
-            s.text = tabs.iter().map(|t| fill(t, v)).collect::<Vec<_>>().join(" | ");
+            // The titles, between the bar's lead and trail when it has them.
+            let titles = tabs.iter().map(|t| fill(t, v)).collect::<Vec<_>>().join(" | ");
+            s.text = [lead.as_deref().map(|t| fill(t, v)), Some(titles), trail.as_deref().map(|t| fill(t, v))].into_iter().flatten().collect::<Vec<_>>().join(" · ");
         }
         Kind::Toasts {} => s.text = st.toasts.iter().map(|t| t.text.clone()).collect::<Vec<_>>().join("\n"),
         _ => {}
@@ -161,6 +171,9 @@ fn outline_with(shown: &[Shown], styled: bool) -> String {
         if s.focus {
             line.push_str(" (focus)");
         }
+        if s.cut {
+            line.push_str(" (cut)");
+        }
         match (s.selected, s.rows) {
             (Some(k), Some(n)) => line.push_str(&format!(" ({}/{n})", k + 1)),
             (None, Some(n)) => line.push_str(&format!(" (0/{n})")),
@@ -171,7 +184,7 @@ fn outline_with(shown: &[Shown], styled: bool) -> String {
         }
         if !s.text.is_empty() {
             line.push_str(": ");
-            line.push_str(&s.text.replace('\n', " ⏎ "));
+            line.push_str(&s.text.replace('\n', " ⏎ ").replace('\t', "   "));
         }
         out.push_str(&line);
         out.push('\n');

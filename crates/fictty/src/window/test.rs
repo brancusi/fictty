@@ -72,7 +72,7 @@ impl Frame for Windowed {
         let _ = self.window.update(&mut self.cx, |_, _, cx| cx.notify());
         self.cx.run_until_parked();
         let drawn = self.side.borrow_mut().drawn.take().unwrap_or_default();
-        self.text = crate::readback::outline(&crate::readback::readback(st, &drawn.rects));
+        self.text = crate::readback::outline(&crate::readback::readback(st, &drawn.rects, &drawn.cut));
         drawn
     }
 
