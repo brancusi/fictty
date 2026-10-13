@@ -8,9 +8,12 @@ use serde_json::{Value, json};
 
 fn cfg() -> Config {
     let env = |k: &str| std::env::var(k).ok().and_then(|v| v.parse().ok());
-    // A debug build is slow: a few runs there, more in release, many with FUZZ_RUNS.
+    // A debug build is slow: a few runs there, more in release, many with FUZZ_RUNS. Its time
+    // budget per act is four times a release build's too (a shared CI runner in debug took 322ms
+    // for a key that takes a few here); FUZZ_BUDGET_MS sets it.
     let runs = if cfg!(debug_assertions) { 6 } else { 40 };
-    Config { runs: env("FUZZ_RUNS").unwrap_or(runs) as u32, seed: env("FUZZ_SEED").unwrap_or(1), ..Config::default() }
+    let budget = env("FUZZ_BUDGET_MS").map(std::time::Duration::from_millis).unwrap_or(Config::default().budget * if cfg!(debug_assertions) { 4 } else { 1 });
+    Config { runs: env("FUZZ_RUNS").unwrap_or(runs) as u32, seed: env("FUZZ_SEED").unwrap_or(1), budget, ..Config::default() }
 }
 
 fn screen(ui: Value, w: u16, h: u16) -> impl Fn() -> fictty::Headless {

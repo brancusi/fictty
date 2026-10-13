@@ -66,7 +66,7 @@ impl Sim {
         let (mut master, mut slave) = (0, 0);
         let mut ws = libc::winsize { ws_row: height, ws_col: width, ws_xpixel: width * 8, ws_ypixel: height * 16 };
         // SAFETY: openpty writes two descriptors it opened; the winsize outlives the call.
-        if unsafe { libc::openpty(&mut master, &mut slave, std::ptr::null_mut(), std::ptr::null_mut(), &mut ws) } != 0 {
+        if unsafe { libc::openpty(&mut master, &mut slave, std::ptr::null_mut(), std::ptr::null_mut(), &raw mut ws) } != 0 {
             bail!("openpty: {}", std::io::Error::last_os_error());
         }
         // SAFETY: both were just opened and are owned here alone.

@@ -320,11 +320,12 @@ impl Frame for Grid {
     fn resize(&mut self, width: u16, height: u16) {
         self.term.backend_mut().resize(width, height);
         let _ = self.term.resize(ratatui::layout::Rect::new(0, 0, width, height));
-        // The terminal resized: the emulator's grid too, and ratatui draws the whole frame again.
+        // The terminal resized: a fresh emulator at the new size, and ratatui draws the whole
+        // frame again. Not `Terminal::resize`, which asks the real terminal its size before it
+        // clears: with no terminal and no TERM (CI), that fails and the old frame stays.
         #[cfg(feature = "fuzz")]
         if let Some(w) = &mut self.wire {
-            w.vt.screen_mut().set_size(height, width);
-            let _ = w.term.resize(ratatui::layout::Rect::new(0, 0, width, height));
+            *w = Wire::new(width, height);
         }
     }
 
