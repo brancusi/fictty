@@ -96,6 +96,12 @@ fn random_acts_leave_the_real_screen_where_they_leave_a_headless_one() {
             s.request(write(a));
         });
         for (i, a) in acts.iter().enumerate() {
+            // One clock for both: the real screen runs on the wall clock, and the test's own
+            // round trips make its presses land further apart than a headless screen's, so three
+            // presses were a triple click to one and three single clicks to the other.
+            if let Some(now_ms) = s.state()["now_ms"].as_u64() {
+                h.msg(fictty::state::Msg::Tick { now_ms });
+            }
             a.apply(&mut h);
             s.act(a);
             if h.quit() {
