@@ -17,8 +17,8 @@ use std::collections::BTreeMap;
 pub const STATES: [&str; 6] = ["hover", "focused", "active", "selected", "disabled", "blur"];
 
 /// The parts the runtime draws inside a node, besides each component's own (its `type`).
-const INNER: [&str; 27] = [
-    "border", "title", "row", "empty", "status", "status.error", "toast", "table.header", "table.total", "tabs.active", "tabs.idle",
+const INNER: [&str; 28] = [
+    "panel", "border", "title", "row", "empty", "status", "status.error", "toast", "table.header", "table.total", "tabs.active", "tabs.idle",
     "tabs.underline", "editor.caret", "editor.selection", "input.placeholder", "md.heading", "md.bullet", "md.quote", "md.code",
     "md.task", "md.done", "md.link", "scrollbar", "scrollbar.thumb", "tree.guide", "bars.label", "spinner",
 ];
@@ -30,16 +30,48 @@ const COMPONENTS: [&str; 20] = [
     "bars", "gauge", "plot", "image", "svg", "map",
 ];
 
-/// Parts under every theme, where it doesn't say.
-const DEFAULT_PARTS: [(&str, &str); 7] = [
-    ("button", "fg+on-ring"),
-    ("button.focused", "bg+on-accent+b"),
-    ("title", "fg"),
-    ("title.focused", "accent+b"),
-    ("border", "border"),
-    ("border.focused", "accent"),
-    ("spinner", "accent"),
-];
+/// Parts under every theme: how the window draws a component when the theme doesn't say. A
+/// theme's part of the same name owns its ink (colours and modifiers) and keeps the box (pad,
+/// radius, border, shadow, cursor) unless it says otherwise.
+const DEFAULT_PARTS: &str = r#"{
+    "button": {"fg": "fg", "bg": "ring", "pad": ["12px", 0], "radius": 6, "cursor": "pointer"},
+    "button.hover": {"bg": "hover"},
+    "button.focused": {"fg": "bg", "bg": "accent", "bold": true},
+    "panel": {"bg": "panel", "radius": 8, "pad": "8px"},
+    "title": "dim+b",
+    "title.focused": "accent+b",
+    "border": "border",
+    "border.focused": "accent",
+    "spinner": "accent",
+    "tabs.active": {"fg": "bg", "bg": "accent", "bold": true, "pad": ["8px", 0], "radius": 6, "cursor": "pointer"},
+    "tabs.idle": {"fg": "dim", "pad": ["8px", 0], "radius": 6, "cursor": "pointer"},
+    "tabs.underline": "accent",
+    "row": {"pad": ["8px", 0], "radius": 2, "cursor": "pointer"},
+    "row.hover": {"bg": "hover"},
+    "row.selected": {"fg": "accent", "bg": "ring"},
+    "row.selected.blur": {"fg": "fg", "bg": "panel"},
+    "table.header": "accent+b",
+    "empty": "dim+i",
+    "input.placeholder": "dim+i",
+    "editor.selection": "on-ring",
+    "editor.caret": "on-accent",
+    "input": {"bg": "bg", "radius": 6, "border": {"color": "border"}},
+    "input.focused": {"border": {"color": "accent"}},
+    "md.heading": "accent+b",
+    "md.bullet": "accent",
+    "md.quote": "dim+i",
+    "md.code": "pos",
+    "md.task": "accent+b",
+    "md.done": "dim+s",
+    "md.link": "accent+u",
+    "toast": {"fg": "fg", "bg": "panel", "pad": ["12px", "4px"], "radius": 6, "border": {"color": "accent"}}
+}"#;
+
+/// The default parts, read once.
+fn defaults() -> &'static BTreeMap<String, Part> {
+    static PARTS: std::sync::OnceLock<BTreeMap<String, Part>> = std::sync::OnceLock::new();
+    PARTS.get_or_init(|| serde_json::from_str(DEFAULT_PARTS).expect("the default parts"))
+}
 
 /// The shapes a style can ask a component to take.
 const SHAPES: [&str; 11] = ["underline", "pill", "segment", "plain", "thin", "overlay", "none", "rounded", "square", "double", "thick"];
@@ -261,10 +293,17 @@ impl<'a> Theme<'a> {
 
     /// A part: the theme's, else the default.
     pub fn part(&self, name: &str) -> Option<Part> {
-        self.active
-            .and_then(|t| t.parts.get(name))
-            .cloned()
-            .or_else(|| DEFAULT_PARTS.iter().find(|(k, _)| *k == name).map(|(_, v)| Part::Ink(v.to_string())))
+        self.active.and_then(|t| t.parts.get(name)).or_else(|| defaults().get(name)).cloned()
+    }
+
+    /// A part as a whole style: the theme's over the default's box, or either alone.
+    fn part_style(&self, name: &str) -> Option<Style> {
+        let theirs = self.active.and_then(|t| t.parts.get(name)).map(|p| self.whole(p));
+        let ours = defaults().get(name).map(|p| self.whole(p));
+        match (theirs, ours) {
+            (Some(t), Some(d)) => Some(t.over(&Style { fg: None, bg: None, bold: false, dim: false, italic: false, underline: false, strike: false, reverse: false, ..d })),
+            (t, d) => t.or(d),
+        }
     }
 
     /// A spec over `base`: `accent+b`, `muted`, `fg+on-ring`, `#ff8800+u`. A word that's no colour
@@ -332,7 +371,7 @@ impl<'a> Theme<'a> {
 
     /// `part` with the parts for `states` layered over it.
     pub fn layered(&self, part: &str, states: &[&str]) -> Style {
-        names(part, states).iter().filter_map(|n| self.part(n)).fold(Style::default(), |s, p| self.whole(&p).over(&s))
+        names(part, states).iter().filter_map(|n| self.part_style(n)).fold(Style::default(), |s, p| p.over(&s))
     }
 
     /// A style's colours and modifiers as ink, colours filled in.
@@ -514,7 +553,12 @@ pub fn resolve(st: &State, n: &Node) -> Resolved {
     let states = states(st, n);
     let var = th.variant(n);
     let part = part_of(n);
-    let mut s = part.map_or_else(Style::default, |p| th.layered(p, &states));
+    let own_edge = n.edge.as_deref().or(var.and_then(|v| v.edge.as_deref()));
+    let backdrop = n.backdrop.as_ref().or(var.and_then(|v| v.backdrop.as_ref()));
+    let bordered = n.title.is_some() || n.border || own_edge.is_some() || backdrop.is_some() || var.is_some_and(|v| v.border);
+    // A node with a border is a panel under its own part.
+    let under = if bordered { th.layered("panel", &states) } else { Style::default() };
+    let mut s = part.map_or(under.clone(), |p| th.layered(p, &states).over(&under));
     if let Some(v) = var.and_then(|v| v.style.as_ref()) {
         s = v.over(&s);
     }
@@ -524,44 +568,10 @@ pub fn resolve(st: &State, n: &Node) -> Resolved {
     if let Some(own) = &n.style {
         s = own.over(&s);
     }
-    let own_edge = n.edge.as_deref().or(var.and_then(|v| v.edge.as_deref()));
-    let backdrop = n.backdrop.as_ref().or(var.and_then(|v| v.backdrop.as_ref()));
-    let bordered = n.title.is_some() || n.border || own_edge.is_some() || backdrop.is_some() || var.is_some_and(|v| v.border);
-    // The border's colour comes from the `border` part (its border colour, or its ink), under
-    // the node's own style's border.
-    let edge_part = th.layered("border", &states);
-    let border = (bordered || s.border.is_some()).then(|| {
-        let line = s.border.clone().unwrap_or_default();
-        let color = line.color.or(edge_part.border.and_then(|b| b.color)).or(edge_part.fg).unwrap_or_else(|| "border".into());
-        Border { width: line.width.unwrap_or(1.), color: th.colour(&color).unwrap_or(color), style: line.style.unwrap_or_else(|| "solid".into()) }
-    });
+    let edge = own_edge.or(th.token("edge")).filter(|e| *e != "rounded" && (bordered || n.focusable()));
     let fill = |c: &str| th.colour(c).unwrap_or_else(|| c.to_string());
     Resolved {
         part: part.map(str::to_string),
-        states: states.iter().map(|s| s.to_string()).collect(),
-        ink: th.ink_of(&s),
-        gradient: match &s.bg {
-            Some(Fill::Gradient { from, to, angle }) => Some(Gradient { from: fill(from), to: fill(to), angle: *angle }),
-            _ => None,
-        },
-        role: s.role.as_deref().and_then(|r| th.role(r)),
-        pad: match &s.pad {
-            Some(Lens::One(l)) => th.len(l).map(|l| [l.clone(), l]),
-            Some(Lens::XY([x, y])) => th.len(x).zip(th.len(y)).map(|(x, y)| [x, y]),
-            None => None,
-        },
-        radius: s.radius.as_ref().and_then(|r| th.radius(r)),
-        border,
-        shadow: s.shadow.as_deref().and_then(|d| th.shadows(d)).unwrap_or_default(),
-        ring: s.ring.as_ref().map(|r: &Ring| Halo {
-            width: r.width.unwrap_or(2.),
-            offset: r.offset.unwrap_or(0.),
-            color: fill(r.color.as_deref().unwrap_or("accent")),
-        }),
-        shape: s.shape.clone(),
-        opacity: s.opacity,
-        cursor: s.cursor.clone(),
-        edge: own_edge.or(th.token("edge")).filter(|e| *e != "rounded" && (bordered || n.focusable())).map(str::to_string),
         title: n.title.as_ref().map(|_| {
             let t = th.ink_of(&th.layered("title", &states));
             match var.and_then(|v| v.title.as_deref()) {
@@ -576,6 +586,83 @@ pub fn resolve(st: &State, n: &Node) -> Resolved {
             glow: b.glow.as_deref().map(fill),
             ..b.clone()
         }),
+        ..filled(&th, &s, &states, edge, bordered)
+    }
+}
+
+/// A part a component draws inside a node (`row`, `tabs.active`, `table.header`, `toast`), in
+/// the states that hold for it, resolved like a node's: a list's row is `row` with `selected`,
+/// `hover` and `blur` as they hold for that row.
+pub fn inner(st: &State, part: &str, states: &[&str]) -> Resolved {
+    let th = Theme::of(st);
+    let s = th.layered(part, states);
+    let edge = th.token("edge").filter(|e| *e != "rounded");
+    Resolved { part: Some(part.to_string()), ..filled(&th, &s, states, edge, false) }
+}
+
+/// The states that hold for row `k` of list, tree or table `n`, in their order.
+pub fn row_states(st: &State, n: &Node, k: usize) -> Vec<&'static str> {
+    let Some(id) = n.id.as_deref() else { return vec![] };
+    let focused = st.focus.as_deref() == Some(id);
+    let hover = st.hover.as_ref().is_some_and(|h| h.id == id && h.row == Some(k));
+    let selected = state::selected(st, id) == k;
+    STATES
+        .into_iter()
+        .filter(|s| match *s {
+            "hover" => hover,
+            "focused" => focused && selected,
+            "selected" => selected,
+            "blur" => !focused,
+            _ => false,
+        })
+        .collect()
+}
+
+/// A layered style with every name filled in. A border shows where the node draws one or the
+/// style asks for one; its colour comes from the `border` part (its border colour, or its ink)
+/// unless the style names one. An edge other than `rounded` squares the corners, and `thick`
+/// or `double` draws the border two pixels wide.
+fn filled(th: &Theme, s: &Style, states: &[&str], edge: Option<&str>, bordered: bool) -> Resolved {
+    let edge_part = th.layered("border", states);
+    let border = (bordered || s.border.is_some()).then(|| {
+        let line = s.border.clone().unwrap_or_default();
+        let color = line.color.or(edge_part.border.and_then(|b| b.color)).or(edge_part.fg).unwrap_or_else(|| "border".into());
+        let heavy = matches!(edge, Some("thick" | "double"));
+        Border {
+            width: line.width.unwrap_or(if heavy { 2. } else { 1. }),
+            color: th.colour(&color).unwrap_or(color),
+            style: line.style.unwrap_or_else(|| if edge == Some("double") { "double".into() } else { "solid".into() }),
+        }
+    });
+    let fill = |c: &str| th.colour(c).unwrap_or_else(|| c.to_string());
+    Resolved {
+        part: None,
+        states: states.iter().map(|s| s.to_string()).collect(),
+        ink: th.ink_of(s),
+        gradient: match &s.bg {
+            Some(Fill::Gradient { from, to, angle }) => Some(Gradient { from: fill(from), to: fill(to), angle: *angle }),
+            _ => None,
+        },
+        role: s.role.as_deref().and_then(|r| th.role(r)),
+        pad: match &s.pad {
+            Some(Lens::One(l)) => th.len(l).map(|l| [l.clone(), l]),
+            Some(Lens::XY([x, y])) => th.len(x).zip(th.len(y)).map(|(x, y)| [x, y]),
+            None => None,
+        },
+        radius: if edge.is_some() { None } else { s.radius.as_ref().and_then(|r| th.radius(r)) },
+        border,
+        shadow: s.shadow.as_deref().and_then(|d| th.shadows(d)).unwrap_or_default(),
+        ring: s.ring.as_ref().map(|r: &Ring| Halo {
+            width: r.width.unwrap_or(2.),
+            offset: r.offset.unwrap_or(0.),
+            color: fill(r.color.as_deref().unwrap_or("accent")),
+        }),
+        shape: s.shape.clone(),
+        opacity: s.opacity,
+        cursor: s.cursor.clone(),
+        edge: edge.map(str::to_string),
+        title: None,
+        backdrop: None,
     }
 }
 

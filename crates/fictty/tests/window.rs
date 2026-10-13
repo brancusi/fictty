@@ -535,3 +535,53 @@ fn keys_type_into_a_field_a_key_just_showed() {
     s.keys(&["/", "m", "q", "4"]);
     assert_eq!(node(&mut s, "find").text, "mq4");
 }
+
+/// A screen in the window under one theme.
+fn themed(theme: Value, ui: Value, w: u16, h: u16) -> fictty::Headless {
+    let theme: fictty::model::ThemeSpec = serde_json::from_value(theme).unwrap();
+    App::new(serde_json::from_value(ui).unwrap()).themes([("t".to_string(), theme)].into()).in_window(w, h).unwrap()
+}
+
+#[test]
+fn the_mouse_over_a_button_holds_its_hover_part() {
+    let ui = json!({"root": {"type": "col", "children": [
+        {"type": "list", "id": "l", "items": ["a"], "size": 2},
+        {"type": "button", "id": "go", "label": "Go", "size": 1}
+    ]}});
+    let mut s = themed(json!({"tokens": {"lit": "#ff8800"}, "parts": {"button.hover": {"bg": "lit"}}}), ui, 40, 8);
+    assert_eq!(node(&mut s, "go").style.ink.bg.as_deref(), Some("#1d3b3a"), "the default button, not hovered");
+    let (x, y) = s.at("go", None, None).unwrap();
+    s.mouse("move", x, y);
+    assert_eq!(s.state().hover.as_ref().map(|h| (h.id.as_str(), h.row)), Some(("go", None)), "the window tells the engine a button is hovered, not only rows");
+    let go = node(&mut s, "go");
+    assert_eq!((go.style.states.clone(), go.style.ink.bg.as_deref()), (vec!["hover".to_string(), "blur".to_string()], Some("#ff8800")));
+    s.mouse("move", 39, 7);
+    assert_eq!(s.state().hover, None, "and when it leaves");
+}
+
+#[test]
+fn a_parts_pad_widens_a_buttons_face_and_its_press() {
+    let ui = json!({"root": {"type": "col", "children": [{"type": "button", "id": "go", "label": "Go", "size": 1}]}});
+    let middle = |pad: &str| {
+        let mut s = themed(json!({"parts": {"button": {"pad": [pad, 0]}}}), ui.clone(), 40, 4);
+        s.at("go", None, None).unwrap().0
+    };
+    let (narrow, wide) = (middle("4px"), middle("60px"));
+    assert!(wide >= narrow + 6, "60px a side moves the face's middle out ({narrow} → {wide})");
+    let mut s = themed(json!({"parts": {"button": {"pad": ["60px", 0]}}}), ui.clone(), 40, 4);
+    let (x, y) = s.at("go", None, None).unwrap();
+    s.mouse("press", x, y).mouse("release", x, y);
+    assert_eq!(s.state().focus.as_deref(), Some("go"), "the press lands on the wider face");
+}
+
+#[test]
+fn tabs_take_the_shape_their_part_gives_them_and_still_take_clicks() {
+    for shape in ["pill", "underline", "segment", "plain"] {
+        let ui = json!({"root": {"type": "tabs", "id": "t", "tabs": ["One", "Two"], "children": [{"type": "text", "text": "1"}, {"type": "text", "text": "2"}]}});
+        let mut s = themed(json!({"parts": {"tabs": {"shape": shape}}}), ui, 40, 6);
+        assert_eq!(node(&mut s, "t").style.shape.as_deref(), Some(shape));
+        let (x, y) = s.at("t", None, Some(1)).unwrap_or_else(|| panic!("{shape}: the second tab is drawn"));
+        s.mouse("press", x, y).mouse("release", x, y);
+        assert_eq!(node(&mut s, "t").selected, Some(1), "{shape}: a click picks the tab");
+    }
+}

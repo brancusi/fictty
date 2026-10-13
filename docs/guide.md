@@ -230,8 +230,16 @@ length for every side, or `[x, y]`: cells, `"8px"` or a `space` name); `radius` 
 `segment`, `plain`; a scrollbar `thin`, `overlay`, `none`; an edge `rounded`, `square`, `double`,
 `thick`); `opacity`; `cursor` (`default`, `pointer`, `text`, `grab`). A style never arranges: no
 size, gap or position. The scales let a theme change its whole feel in a few lines; `fonts`
-names families or font files that type roles use. The window draws these from step 2c of the
-plan on; until then they resolve and read back, and the window draws their colours.
+names families or font files that type roles use. The window draws all of it except `type`, which
+comes with type roles (step 2d of the plan).
+
+Every component's look comes from parts, including the window's own: when a theme doesn't say,
+default parts do (`button` has a 12px pad and a 6px radius, a bordered node is a `panel` with
+the `panel` colour and 8px of pad, `row.hover`, `row.selected`, `tabs.active`, `input`,
+`toast`…), and `fictty screen --nodes --style` shows them. A theme's part of the same name owns
+its ink and keeps the default's box unless it says otherwise. Rows are `row` with the states
+that hold for that row; tabs are `tabs.active` and `tabs.idle`, in the shape the `tabs` part
+gives (`pill`, `underline`, `segment`, `plain`).
 
 A node's style is worked out in one place, and nothing else applies: its part (the component's
 `type`, so `button`; containers have none), with the parts for the states that hold layered over

@@ -33,6 +33,9 @@ macOS stops drawing a window that's covered, so keep it in front.
 
 ## It grows with the window
 
+Since step 2c the window draws whole styles (pad, radius, borders, shadows, gradients, rings), so
+the theme beat changes more than colours as soon as the themes use them (step 2f rewrites them).
+
 The demo is part of the plan's test of done, next to the wringer (`examples/window/`): each
 step of [docs/design/native.md](../../docs/design/native.md) lands with the demo showing it
 off. What each step adds is in [docs/design/demo.md](../../docs/design/demo.md).

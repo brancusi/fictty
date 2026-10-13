@@ -1,11 +1,11 @@
-//! The active theme as the window's colours and text styles: tokens are colours, and parts and
-//! `<spec>` runs (`accent+b`, `fg+on-ring`) are inks. Read from the state each frame, as the
-//! terminal's view reads it, so switching themes is a message like any other.
+//! The active theme as the window's: a resolved style (`style::Resolved`, worked out in the core)
+//! drawn on a GPUI element by `boxed`, and `<spec>` runs in text (`accent+b`, `fg+on-ring`) as
+//! inks. Read from the state each frame, so switching themes is a message like any other.
 
-use crate::model::Style;
+use crate::model::Len;
 use crate::state::State;
-use crate::style::{self, Theme};
-use gpui::{FontStyle, FontWeight, HighlightStyle, Hsla, StrikethroughStyle, UnderlineStyle, px, rgb};
+use crate::style::{self, Resolved, Theme};
+use gpui::{BoxShadow, CursorStyle, FontStyle, FontWeight, HighlightStyle, Hsla, StrikethroughStyle, Styled, UnderlineStyle, linear_color_stop, linear_gradient, point, px, rgb};
 
 /// How a run of text looks: colours and the `b d i u r s` modifiers of a spec.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -31,12 +31,8 @@ pub struct Look<'a> {
     pub panel: Hsla,
     /// A selected row's or text's background.
     pub ring: Hsla,
-    pub hover: Hsla,
     /// What a dialog dims the screen behind it with: the background, part see-through.
     pub scrim: Hsla,
-    /// The theme's `edge` token: how borders that don't name their own are drawn. Anything but
-    /// `rounded` (the default) squares every corner: panels, fields, buttons, tabs, rows.
-    pub edge: Option<&'a str>,
     pub pos: Hsla,
     pub neg: Hsla,
 }
@@ -56,32 +52,15 @@ impl<'a> Look<'a> {
             th,
             bg,
             scrim: th.colour("scrim").as_deref().and_then(parse).unwrap_or(Hsla { a: 0.6, ..bg }),
-            edge: th.token("edge"),
             fg: get("fg"),
             dim: get("dim"),
             border: get("border"),
             accent: get("accent"),
             panel: get("panel"),
             ring: get("ring"),
-            hover: get("hover"),
             pos: get("pos"),
             neg: get("neg"),
         }
-    }
-
-    /// Whether corners are square: the theme's edge isn't `rounded`.
-    pub fn square(&self) -> bool {
-        self.edge.is_some_and(|e| e != "rounded")
-    }
-
-    /// `el`'s corners: `r` pixels, or square under a square-edged theme.
-    pub fn round<E: gpui::Styled>(&self, el: E, r: f32) -> E {
-        if self.square() { el } else { el.rounded(gpui::px(r)) }
-    }
-
-    /// A theme token (`accent`, `violet`) or a colour name.
-    pub fn color(&self, name: &str) -> Option<Hsla> {
-        parse(&self.th.colour(name)?)
     }
 
     /// A style spec over `base`: `accent+b`, `muted`, `fg+on-ring`, `#ff8800+u`. A name that's no
@@ -97,28 +76,6 @@ impl<'a> Look<'a> {
             underline: base.underline || i.underline,
             reverse: base.reverse || i.reverse,
             strike: base.strike || i.strike,
-        }
-    }
-
-    /// A part of a component, inked by the active theme (`table.header`, `row.selected`), or
-    /// `fallback` when the theme doesn't say.
-    pub fn part(&self, part: &str, fallback: Ink) -> Ink {
-        match self.th.active.and_then(|t| t.parts.get(part)) {
-            Some(spec) => self.spec(&spec.spec(), Ink::default()),
-            None => fallback,
-        }
-    }
-
-    /// A node's own `style`, as ink.
-    pub fn style(&self, s: Option<&Style>) -> Ink {
-        let Some(s) = s else { return Ink::default() };
-        Ink {
-            fg: s.fg.as_deref().and_then(|c| self.color(c)),
-            bg: s.bg.as_ref().and_then(|c| self.color(c.colour())),
-            bold: s.bold,
-            dim: s.dim,
-            italic: s.italic,
-            ..Ink::default()
         }
     }
 
@@ -138,4 +95,103 @@ impl<'a> Look<'a> {
             fade_out: ink.dim.then_some(0.4),
         }
     }
+
+    /// A resolved ink as the window's colours.
+    pub fn ink(&self, i: &style::Ink) -> Ink {
+        Ink {
+            fg: i.fg.as_deref().and_then(parse),
+            bg: i.bg.as_deref().and_then(parse),
+            bold: i.bold,
+            dim: i.dim,
+            italic: i.italic,
+            underline: i.underline,
+            reverse: i.reverse,
+            strike: i.strike,
+        }
+    }
+
+    /// A resolved style's pad in pixels, `(x, y)`: cells are the window's cells.
+    pub fn pad(r: &Resolved, cell: (f32, f32)) -> (f32, f32) {
+        let px_of = |l: &Len, per: f32| match l {
+            Len::Cells(n) => n * per,
+            Len::Spec(s) => s.trim().trim_end_matches("px").trim().parse().unwrap_or(0.),
+        };
+        r.pad.as_ref().map_or((0., 0.), |[x, y]| (px_of(x, cell.0), px_of(y, cell.1)))
+    }
+
+    /// A resolved style on a box: its background (a colour or a gradient), its text, `extra`
+    /// pixels of pad over its own, its corners, border, shadows and ring, opacity and cursor.
+    /// The one place the theme's looks become GPUI's.
+    pub fn boxed<E: Styled>(&self, mut el: E, r: &Resolved, cell: (f32, f32), extra: (f32, f32)) -> E {
+        el = inked(el, self.ink(&r.ink));
+        if let Some(g) = &r.gradient
+            && let (Some(a), Some(b)) = (parse(&g.from), parse(&g.to))
+        {
+            el = el.bg(linear_gradient(g.angle, linear_color_stop(a, 0.), linear_color_stop(b, 1.)));
+        }
+        let (x, y) = Self::pad(r, cell);
+        if (x, y) != (0., 0.) || extra != (0., 0.) {
+            el = el.px(px(x + extra.0)).py(px(y + extra.1));
+        }
+        if let Some(rad) = r.radius {
+            el = el.rounded(px(rad));
+        }
+        if let Some(b) = &r.border {
+            el = el.border(px(b.width)).border_color(parse(&b.color).unwrap_or(self.border));
+            if b.style == "dashed" {
+                el = el.border_dashed();
+            }
+        }
+        let mut shadows: Vec<BoxShadow> = r
+            .shadow
+            .iter()
+            .map(|s| BoxShadow {
+                color: parse(&s.color).map_or(self.bg, |c| Hsla { a: c.a * s.alpha.unwrap_or(1.), ..c }),
+                offset: point(px(s.x), px(s.y)),
+                blur_radius: px(s.blur),
+                spread_radius: px(s.spread),
+            })
+            .collect();
+        // A ring is a hard shadow its width wide, `offset` out, with the page's colour between.
+        if let Some(ring) = &r.ring {
+            let at = |spread: f32, color: Hsla| BoxShadow { color, offset: point(px(0.), px(0.)), blur_radius: px(0.), spread_radius: px(spread) };
+            shadows.push(at(ring.offset + ring.width, parse(&ring.color).unwrap_or(self.accent)));
+            if ring.offset > 0. {
+                shadows.push(at(ring.offset, self.bg));
+            }
+        }
+        if !shadows.is_empty() {
+            el.style().box_shadow = Some(shadows);
+        }
+        if let Some(o) = r.opacity {
+            el = el.opacity(o);
+        }
+        match r.cursor.as_deref() {
+            Some("pointer") => el.cursor(CursorStyle::PointingHand),
+            Some("text") => el.cursor(CursorStyle::IBeam),
+            Some("grab") => el.cursor(CursorStyle::OpenHand),
+            _ => el,
+        }
+    }
+}
+
+/// Ink on an element: its colours, weight and slant.
+pub fn inked<E: Styled>(mut el: E, ink: Ink) -> E {
+    let (fg, bg) = if ink.reverse { (ink.bg, ink.fg) } else { (ink.fg, ink.bg) };
+    if let Some(c) = fg {
+        el = el.text_color(c);
+    }
+    if let Some(c) = bg {
+        el = el.bg(c);
+    }
+    if ink.bold {
+        el = el.font_weight(FontWeight::BOLD);
+    }
+    if ink.italic {
+        el = el.italic();
+    }
+    if ink.dim {
+        el = el.opacity(0.6);
+    }
+    el
 }

@@ -291,6 +291,32 @@ sides: the layout step settles node pads with four-sided `pad`. Fonts are names 
 the window loads font files in 2d. Not done yet: the window draws only colours from all this
 (2c).
 
+Step 2c landed on 13 October: the window draws every node from its resolved style through one
+mapping, `Look::boxed` (look.rs): background or gradient, ink, pad, corners, border (dashed
+too), shadows, a ring (hard shadows, with the page's colour between for its offset), opacity and
+cursor. A button's style goes on its face. The inner parts resolve the same way
+(`style::inner`): a list's or table's row with `selected`, `hover`, `focused` and `blur` as they
+hold for that row (`style::row_states`), the tabs, the table header, empty lists, placeholders,
+the caret and selection, Markdown's roles, toasts. What the window used to hard-code (a button's
+pad and radius, a panel's inset and background, tab pills, row hover and selection, the input's
+box, the Markdown inks) is now default parts in the core, so the readback shows what's drawn,
+and a theme's part of the same name owns its ink and keeps the default's box unless it says
+otherwise. The theme's `edge` folded in: anything but `rounded` squares corners (the radius
+goes), `thick` and `double` draw two pixels. The window now tells the engine what any node the
+mouse is over is, not only rows, so `.hover` parts hold for buttons and the rest, and GPUI's own
+hover styling is gone. Tabs take the shape their part gives them: `pill` (the default),
+`underline` (the `tabs.underline` part's colour under the shown tab), `segment` (joined in one
+box) or `plain`. Tests in the window: a button's hover part, a part's pad widening a button's
+face and its press, every tab shape taking clicks. The six wringer themes look as they did, with
+square edges where they ask. Not yet: type roles and fonts (2d).
+
+Its cost, measured in a release build with the window in front (`examples/stress/play.sh`,
+5 s a stage, against main before 2a): frames build in about twice the time (ticker 0.06 → 0.11
+ms, patch storm 0.07 → 0.13 ms, a 60/s push storm 0.12 → 0.20 ms), the frame rate is unchanged
+(120 fps; 60 under the 60/s storm), and pushes flat out are 5,600–6,000 a second before and
+5,000–5,800 after over repeated runs. Resolution isn't cached yet; when it matters, cache it
+per theme revision and node, as expressive.md says.
+
 Each step builds a slice, moves the grid tests that slice owns onto `App::in_window`
 (readback, state and the finders, not characters), and ends with the tour's chapters that use it
 looked at in a real window. A step is done when its tests pass in the window, its grid twins are
@@ -306,7 +332,7 @@ deleted, and the window fuzz runs stay clean.
    `the_readback_has_each_nodes_rectangle_from_the_grid`,
    `headless_takes_the_mouse_and_resizes_like_a_terminal`,
    `keys_type_into_a_field_a_key_just_showed`.
-2. **Text and themes as whole styles (M–L). Next: 2c.** Native.md's text-and-themes work
+2. **Text and themes as whole styles (M–L). Next: 2d.** Native.md's text-and-themes work
    plus expressive.md's "Looks", "Type" and the theme kit, in this order:
    - **2a. Style resolution in the core.** A pure function in `fictty-core` (a new `style.rs`):
      for each shown node, its theme part plus the state suffixes that hold (`.hover`, `.focused`,
