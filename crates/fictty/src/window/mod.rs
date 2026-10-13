@@ -351,7 +351,14 @@ impl Portal {
         // A title or a border: a panel with rounded corners, the title on top.
         if panel {
             let edge = if focused { lk.part("border.focused", Ink { fg: Some(lk.accent), ..Ink::default() }) } else { lk.part("border", Ink { fg: Some(lk.border), ..Ink::default() }) };
-            el = el.bg(lk.panel).rounded_lg().border_1().border_color(edge.fg.unwrap_or(lk.border)).gap_1();
+            el = el.bg(lk.panel).border_color(edge.fg.unwrap_or(lk.border)).gap_1();
+            // Its edge, or the theme's: rounded (the default), or square, `thick` and `double`
+            // heavier.
+            el = match n.edge.as_deref().or(lk.edge) {
+                None | Some("rounded") => el.rounded_lg().border_1(),
+                Some("thick" | "double") => el.border_2(),
+                Some(_) => el.border_1(),
+            };
             if let Some(t) = &n.title {
                 let ink = if focused { lk.part("title.focused", Ink { fg: Some(lk.accent), bold: true, ..Ink::default() }) } else { lk.part("title", Ink { fg: Some(lk.dim), bold: true, ..Ink::default() }) };
                 el = el.child(div().flex_none().w_full().text_sm().child(text::line(lk, t, v, ink, false)));
@@ -420,7 +427,7 @@ impl Portal {
                     let under = id.clone();
                     measure(&self.laid, move |l, b| l.hits.push((b, hit(under, None, None, false))))
                 });
-                inked(div().id(SharedString::from(format!("btn-{key}"))).relative().flex_none().px_3().rounded_md().cursor_pointer(), ink)
+                inked(lk.round(div().id(SharedString::from(format!("btn-{key}"))).relative().flex_none().px_3().cursor_pointer(), 6.), ink)
                     .children(face)
                     .when(!focused, |d| d.hover(move |s| s.bg(hover)))
                     .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, _, cx| this.send(Msg::Click { id: target.clone(), row: None, tab: None }, cx)))
@@ -485,7 +492,7 @@ impl Portal {
                         .relative()
                         .child(measure(&self.laid, move |l, b| l.hits.push((b, hit(under, None, Some(k), false)))))
                         .px_2()
-                        .rounded_md()
+                        .map(|d| lk.round(d, 6.))
                         .cursor_pointer()
                         .map(|d| if k == at { inked(d, active) } else { inked(d, idle) })
                         .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, _, cx| this.send(Msg::Click { id: target.clone(), row: None, tab: Some(k) }, cx)))
@@ -567,7 +574,7 @@ impl Portal {
                     .child(measure(&self.laid, move |l, b| l.hits.push((b, hit(under, Some(k), None, false)))))
                     .h(px(cell.h * per as f32))
                     .px_2()
-                    .rounded_sm()
+                    .map(|d| lk.round(d, 2.))
                     .flex()
                     .flex_col()
                     .justify_center()
@@ -698,7 +705,7 @@ impl Portal {
             // A column in, so the text sits on the cell grid wherever the editor does.
             .px(px(cell.w))
             .font_family(MONO)
-            .when(single, |d| d.justify_center().bg(lk.bg).rounded_md().border_1().border_color(if focused { lk.accent } else { lk.border }))
+            .when(single, |d| lk.round(d, 6.).justify_center().bg(lk.bg).border_1().border_color(if focused { lk.accent } else { lk.border }))
             // A press in the text puts the caret there (twice a word, three times the line) and
             // starts a drag; the wheel scrolls it. The same messages a terminal's mouse makes.
             .on_mouse_down(
@@ -864,7 +871,7 @@ fn selected_ink(lk: &Look, focused: bool) -> Ink {
 fn toast(lk: &Look, t: &state::Toast) -> AnyElement {
     let ink = lk.part("toast", Ink { fg: Some(lk.fg), bg: Some(lk.panel), ..Ink::default() });
     let edge = t.tone.as_deref().and_then(|c| lk.color(c)).unwrap_or(lk.accent);
-    inked(div().px_3().py_1().rounded_md().border_1().border_color(edge), ink).child(t.text.clone()).into_any_element()
+    inked(lk.round(div().px_3().py_1().border_1().border_color(edge), 6.), ink).child(t.text.clone()).into_any_element()
 }
 
 /// What a painted frame laid out, to the engine, in cells.

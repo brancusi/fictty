@@ -34,6 +34,9 @@ pub struct Look<'a> {
     pub hover: Hsla,
     /// What a dialog dims the screen behind it with: the background, part see-through.
     pub scrim: Hsla,
+    /// The theme's `edge` token: how borders that don't name their own are drawn. Anything but
+    /// `rounded` (the default) squares every corner: panels, fields, buttons, tabs, rows.
+    pub edge: Option<&'a str>,
     pub pos: Hsla,
     pub neg: Hsla,
 }
@@ -80,6 +83,7 @@ impl<'a> Look<'a> {
             active,
             bg,
             scrim: token("scrim").unwrap_or(Hsla { a: 0.6, ..bg }),
+            edge: active.and_then(|t| t.tokens.get("edge")).or_else(|| st.ui.theme.get("edge")).map(String::as_str),
             fg: get("fg", 0xe3eaee),
             dim: get("dim", 0x93a3ad),
             border: get("border", 0x2a353d),
@@ -90,6 +94,16 @@ impl<'a> Look<'a> {
             pos: get("pos", 0x8bd49c),
             neg: get("neg", 0xf07178),
         }
+    }
+
+    /// Whether corners are square: the theme's edge isn't `rounded`.
+    pub fn square(&self) -> bool {
+        self.edge.is_some_and(|e| e != "rounded")
+    }
+
+    /// `el`'s corners: `r` pixels, or square under a square-edged theme.
+    pub fn round<E: gpui::Styled>(&self, el: E, r: f32) -> E {
+        if self.square() { el } else { el.rounded(gpui::px(r)) }
     }
 
     /// A theme token (`accent`, `violet`) or a colour name.
