@@ -640,6 +640,8 @@ fn apply(st: &mut State, msg: Msg) -> Vec<Effect> {
                 _ => 1,
             };
             st.clicks = Some(Clicks { id: id.clone(), col, row, at: now, count });
+            // Where the caret was: a click on a task's box ticks it and leaves the caret there.
+            let before = field_view(st, &id).map(|(k, v)| (k, v.selection.clone(), v.scroll));
             let mut fx = on_doc(st, &id, caretline::Msg::Click { col, row, extend }, "person");
             match count {
                 2 => {
@@ -673,6 +675,13 @@ fn apply(st: &mut State, msg: Msg) -> Vec<Effect> {
                 && (b.saturating_sub(1)..=b + 1).contains(&at)
             {
                 toggle_task(st, &id, line);
+                // The tick changed one character for one, so where the caret was is still there.
+                if let Some((key, sel, scroll)) = before
+                    && let Some(v) = st.local.get_mut(&id).and_then(|l| l.editors.get_mut(&key))
+                {
+                    v.selection = sel;
+                    v.scroll = scroll;
+                }
             }
             editor_effects(st, fx)
         }
@@ -892,7 +901,7 @@ fn apply(st: &mut State, msg: Msg) -> Vec<Effect> {
                 tasks_key(st, &id);
                 return vec![];
             }
-            if let Some(why) = not_a_number(st, &key) {
+            if let Some(why) = not_ready(st, &key) {
                 st.status = Some(why);
                 return vec![];
             }
@@ -968,6 +977,15 @@ fn action_context(st: &State) -> Value {
         })
         .collect();
     ctx["store"] = Value::Object(store);
+    // The UI's sources by name (`{today}`), where the selected row has no field of that name.
+    for (name, slot) in &st.data {
+        if let (Slot::Ready { value }, Some(m)) = (slot, ctx.as_object_mut())
+            && !name.starts_with('$')
+            && !m.contains_key(name)
+        {
+            m.insert(name.clone(), value.clone());
+        }
+    }
     let next: u64 = st.store.values().map(|e| e.rev).sum::<u64>() + 1;
     ctx["$id"] = format!("{next:x}").into();
     if let Some(Slot::Ready { value }) = st.data.get("$self") {
@@ -1163,10 +1181,11 @@ fn log(st: &mut State, op: String, what: String, at: String) {
     st.data.insert("$log".into(), Slot::Ready { value: Value::Array(entries) });
 }
 
-/// Why the focused number field's own `key` can't run yet: its text isn't a number.
-fn not_a_number(st: &State, key: &str) -> Option<String> {
+/// Why the focused field's own `key` can't run yet: its text isn't a number, or it's required and blank.
+fn not_ready(st: &State, key: &str) -> Option<String> {
     let n = tree!(st).find(st.focus.as_ref()?)?;
-    if !n.field()?.number || !n.keys.contains_key(key) {
+    let f = n.field()?;
+    if !(f.number || f.required) || !n.keys.contains_key(key) {
         return None;
     }
     let (doc_key, _) = field_view(st, n.id.as_ref()?)?;
@@ -1175,7 +1194,10 @@ fn not_a_number(st: &State, key: &str) -> Option<String> {
         Body::Value { .. } => return None,
     };
     let name = n.title.as_deref().or(n.id.as_deref()).unwrap_or("input");
-    (!crate::model::number_done(&text)).then(|| format!("{name}: {text:?} isn't a number"))
+    if f.required && text.trim().is_empty() {
+        return Some(format!("{name}: it needs some text first"));
+    }
+    (f.number && !crate::model::number_done(&text)).then(|| format!("{name}: {text:?} isn't a number"))
 }
 
 /// The focused editor or input that takes this key, if any: everything but Tab, Shift-Tab, Esc
@@ -1194,7 +1216,16 @@ fn editing(st: &State, key: &str) -> Option<String> {
     };
     // A selection is dropped first, even where the node binds Esc itself.
     let selecting = key == "esc" && field_view(st, id).is_some_and(|(_, v)| v.selection.primary().anchor != v.selection.primary().head);
-    let taken = n.field().is_some() && (!n.keys.contains_key(key) || selecting) && !leaves;
+    // A key with Ctrl, Alt or ⌘ that the editor does nothing with goes on to the UI's keys
+    // (⌘T while writing), so an app's shortcuts work wherever the focus is.
+    let mut modified = false;
+    let mut rest = key;
+    while let Some((m, r)) = rest.split_once('-').filter(|(m, r)| m.len() == 1 && !r.is_empty()) {
+        modified |= matches!(m, "c" | "a" | "d");
+        rest = r;
+    }
+    let unused = modified && key != "c-t" && editor_key(key).and_then(|k| caretline::keymap(&k)).is_none();
+    let taken = n.field().is_some() && (!n.keys.contains_key(key) || selecting) && !leaves && !unused;
     taken.then(|| id.clone())
 }
 
@@ -1900,6 +1931,37 @@ fn act(st: &mut State, a: Action) -> Vec<Effect> {
             settle(st);
             vec![]
         }
+        // `store.zen`: a true-or-false store entry (or a path into one), not a row's field.
+        Action::Toggle { toggle } if toggle.starts_with("store.") => {
+            let path = &toggle["store.".len()..];
+            let (key, inner) = split_bind(path);
+            let ptr: String = if inner.is_empty() { String::new() } else { inner.split('.').map(|p| format!("/{p}")).collect() };
+            let flipped = match st.store.get_mut(key).map(|e| &mut e.body) {
+                None if ptr.is_empty() => {
+                    st.store.insert(key.to_string(), Entry { rev: 0, by: "person".into(), body: Body::Value { value: Value::Bool(true) } });
+                    true
+                }
+                Some(Body::Value { value }) => match value.pointer_mut(&ptr) {
+                    Some(Value::Bool(b)) => {
+                        *b = !*b;
+                        true
+                    }
+                    Some(v @ Value::Null) => {
+                        *v = Value::Bool(true);
+                        true
+                    }
+                    _ => false,
+                },
+                _ => false,
+            };
+            if !flipped {
+                st.status = Some(format!("toggle: {path} isn't true or false"));
+                return vec![];
+            }
+            wrote(st, key, "person");
+            settle(st);
+            vec![]
+        }
         Action::Toggle { toggle } => {
             let Some((key, ptr)) = row_target(st) else {
                 st.status = Some(format!("toggle: the focused list doesn't show a store entry, so {toggle} can't change"));
@@ -2223,8 +2285,12 @@ fn step(st: &mut State, f: impl Fn(usize, usize) -> usize) -> Vec<Effect> {
             }
         }
     }
+    // Its key now, not once the message is done: a store write later in the same `do` would
+    // have the selection follow the row it left.
+    let key = rows.get(to).and_then(|r| key_of(n, r));
     let local = st.local.entry(id).or_default();
     local.selected = to;
+    local.key = key;
     // A view the wheel moved stays put while the selection is in it, and follows it again
     // once it leaves.
     if let Some(top) = local.top

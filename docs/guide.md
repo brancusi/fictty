@@ -121,7 +121,9 @@ fictty theme paper                                        # choose a loaded them
   arrives), `{"theme": "next"}`, `{"copy": "text"}` (onto the system clipboard, through
   the terminal's OSC 52), `{"toast": "Saved", "tone": "pos"}`, `{"host": "name", "args": {…}}`,
   and store actions: `append`, `put`, `remove` (the selected row, or with `where` every row that
-  matches), `toggle` (a true/false field of the selected row: a checkbox), `do`. A node's `click`
+  matches), `toggle` (a true/false field of the selected row: a checkbox; `"store.zen"` flips a store
+  entry instead), `do`. An action's templates read the selected row's fields, `{store.key}` and
+  the UI's sources by name (`{today.id}`). A node's `click`
   runs an action too, after the click selects the row; a `button` runs its click on Enter and
   Space. A focused node's keys win over the UI's, which win over the defaults; a binding of
   several keys (`"p h"`) is a chord. While fictty has the mouse, hold Shift (Option in some macOS
@@ -156,14 +158,15 @@ document with its undo history), each with a revision (`rev`) and who wrote it l
 - **`fictty run --store file.json`** keeps it across runs, written atomically after each change.
 - **Editors**: `{"type": "editor", "bind": "@notes", "doc": "note/{id}", "text": "# {title}"}` edits
   the entry its template names from the selected note, so a list and an editor make a notes app.
-  An editor takes every key but Tab, Shift-Tab and Esc; `input` is the one-line version, and
-  Enter runs its `keys.enter`. `"accept": "number"` makes an input refuse typing that can't make
+  An editor takes every key but Tab, Shift-Tab and Esc, and the ⌃, ⌥ and ⌘ keys it has no use
+  for, which go on to the UI's keys (⌘T while writing); `input` is the one-line version, and
+  Enter runs its `keys.enter`; with `"required": true` its keys wait while it's blank. `"accept": "number"` makes an input refuse typing that can't make
   a number, and its keys wait until the text is a whole one (the status says why).
   `"syntax": "markdown"` styles headings, list markers, quotes, inline code and task items
   (theme parts `md.heading`, `md.bullet`, `md.quote`, `md.code`, `md.task`, `md.done`) while the
   text stays plain. Ctrl-T makes the lines it's on tasks (`text` → `- [ ] text`, `- item` →
   `- [ ] item`) and ticks open ones; a ticked one is unticked, or with `"tasks": "cycle"` made
-  plain text again. A click on a `[ ]` ticks it. `"links"` makes spans act on a click: `{"kind": "wiki" | "tag" | "url", "click": action,
+  plain text again. A click on a `[ ]` ticks it and leaves the caret where it was. `"links"` makes spans act on a click: `{"kind": "wiki" | "tag" | "url", "click": action,
   "s-click": action}`, with `{$match}` the page, tag or address; a key reads the link at the
   caret as `{$link}`; links take the theme part `md.link`.
   `"caret": "end"` starts the caret at the end of an entry the editor shows for the first time.

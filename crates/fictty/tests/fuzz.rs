@@ -241,6 +241,21 @@ mod window {
     }
 
     #[test]
+    fn the_journal_in_the_window() {
+        // Daybook (examples/journal) with its shortcuts in the mix; today fixed, not `date`.
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples/journal/journal.json");
+        let mut ui: Value = serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
+        ui["data"]["today"] = json!({"value": {"id": "2026-10-13", "short": "Tue 13 Oct", "long": "Tuesday, October 13 2026"}});
+        let mut keys = Config::default().keys;
+        keys.extend(["d-t", "d-n", "d-1", "d-2", "a-[", "a-]", "a-z", "d-.", "c-t", "[", "]"].map(String::from));
+        let cfg = Config { keys, terminal: false, ..cfg() };
+        let make = move || App::new(serde_json::from_value(ui.clone()).unwrap()).in_window(120, 30).unwrap();
+        if let Err(f) = fuzz::run(make, &mut checks(), &cfg) {
+            panic!("{f}");
+        }
+    }
+
+    #[test]
     fn a_dialog_and_floats_over_a_list_in_the_window() {
         let ui = json!({
             "root": {"type": "stack", "id": "s", "children": [

@@ -71,13 +71,16 @@ embedding apps depend on `fictty` alone.
 - `crates/fictty/src/main.rs`: the CLI, one subcommand per socket operation
 - `crates/fictty/tests/`: the library from outside: `components.rs` (each component, driven and
   read back), `editing.rs` (the editing-keys contract), `host.rs` (an embedding app), `window.rs`
-  (the native window's layout and mouse, under GPUI's test platform), `fuzz.rs` (random input
-  over editors and every chapter of the tour, in the terminal's grid and in the window;
+  (the native window's layout and mouse, under GPUI's test platform), `journal.rs` (Daybook's
+  flows in the window), `fuzz.rs` (random input
+  over editors, every chapter of the tour and Daybook, in the terminal's grid and in the window;
   `FUZZ_RUNS=2000` in a release build to go deeper), `sim.rs` (the binary in a pty)
 - `examples/`: UIs and their feeds. `showcase/` is the demo the one-liners run (the tour's chapters
   are written by `tour.py`; `autopilot.sh` is its agent); `window/` is the wringer (nine screens
   and six themes for the window, `open.sh`, the test of done for expressive.md); `demo/` is the public demo, an agent building an app live
-  in the window (`open.sh`, `agent.py`; see docs/design/demo.md); `stress/` and
+  in the window (`open.sh`, `agent.py`; see docs/design/demo.md); `journal/` is Daybook, a journal written as data after
+  Thought Control's, used daily to find what fictty lacks (`open.sh`, `journal.py`; its flows are
+  `tests/journal.rs`); `stress/` and
   `finance/` are standalone; `thc/` and `pixels/` need Thought Control installed (they move to
   that repo, see the plan)
 - `docs/`: the guide, the plan, design proposals, the identity explorations, the blog

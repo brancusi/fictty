@@ -599,6 +599,9 @@ pub enum Kind {
         /// don't run until the text is one.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         accept: Option<String>,
+        /// The node's keys (Enter) don't run while the text is blank: a name a form needs.
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        required: bool,
     },
     /// One child at a time, picked by a row of tab titles (click one, or ←/→ when focused). The
     /// titles are templates over the node's bound value (`"Inbox {inbox}"`), and the row can
@@ -1026,6 +1029,8 @@ pub struct Field<'a> {
     pub markdown: bool,
     /// Numbers only (`accept: "number"`).
     pub number: bool,
+    /// Its keys wait for some text (`required`).
+    pub required: bool,
     /// Read only.
     pub readonly: bool,
     /// Tab and Shift-Tab indent and outdent instead of moving the focus.
@@ -1258,7 +1263,8 @@ pub enum Action {
         matching: Option<Value>,
     },
     /// Flip a true-or-false field of the focused list's or tree's selected row, in the store entry
-    /// it shows (a missing field becomes true): a checkbox.
+    /// it shows (a missing field becomes true): a checkbox. `store.zen` flips a store entry, or a
+    /// path into one, instead.
     Toggle { toggle: String },
     /// A message that shows for a while (`ms`, default 3000) in the corner, in a `tone`. A
     /// template, like `copy`.
@@ -1382,6 +1388,7 @@ impl Node {
                 line: false,
                 markdown: syntax.as_deref() == Some("markdown"),
                 number: false,
+                required: false,
                 readonly: *readonly,
                 indents: matches!(tab.as_deref(), Some("indent" | "indent-lines")),
                 indent_lines: tab.as_deref() == Some("indent-lines"),
@@ -1390,13 +1397,14 @@ impl Node {
                 links,
                 ordered,
             }),
-            Kind::Input { text, placeholder, accept } => Some(Field {
+            Kind::Input { text, placeholder, accept, required } => Some(Field {
                 seed: text,
                 doc: None,
                 placeholder: placeholder.as_deref(),
                 line: true,
                 markdown: false,
                 number: accept.as_deref() == Some("number"),
+                required: *required,
                 readonly: false,
                 indents: false,
                 indent_lines: false,

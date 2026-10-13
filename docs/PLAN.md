@@ -196,6 +196,13 @@ The phases of [design/native.md](design/native.md), where each is broken down.
         themes as whole styles (`examples/window/themes.py`), one vocabulary of roles, scales and
         variants, the screens and the demo naming roles (2026-10-13). Its screenshots are still to
         add
+  - [x] Daybook (`examples/journal/`), a journal written as data after Thought Control's, its
+        flows tested in the window (`tests/journal.rs`) and fuzzed. It found and fixed: ⌃/⌥/⌘
+        keys an editor doesn't use reach the UI's keys; action templates read sources;
+        `toggle` of a store entry; a selection a `do` moved no longer snaps back on a write; a
+        click on a task's box keeps the caret; `required` inputs (2026-10-13). Still open, in its
+        README: a task action to bind (⌃T is wired in), proportional editors (phase 4), a map's
+        catch-all reading its value
   - [ ] **Next: step 3**, the layout vocabulary (native.md, "Next, step by step"). Then: the
         layout vocabulary, lists and rows as nodes, the rest of editors, charts and icons, toasts
         and layers, embedding and the examples, then the terminal goes. Each step moves its share
