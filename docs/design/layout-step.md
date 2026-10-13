@@ -140,11 +140,6 @@ Small things found during step 2 and Daybook, picked up where they fit:
 - **A map's catch-all can't read its value** (`{kind|done=✓;*=<accent>{kind}</>}`); a template
   language fix, any time.
 - **A task action** (`{"task": "toggle"}`) so ⌘Enter can tick a task: editors, step 5.
-- **The pty diff test is timing-bound** (`tests/sim.rs`, `random_acts_…`): the real binary runs
-  on the wall clock, so a triple click can be three single clicks to it. The headless twin now
-  takes the real screen's clock before each act, which makes CI's three seeds pass; with
-  `SIM_RUNS=10`, seed 4 still differs now and then. It goes with the terminal (step 9), so no
-  test clock is built for it.
 - **Days as a calendar**, not a list: Daybook's ⌥[ walks rows. Date arithmetic is a host's or
   an agent's, so this stays out of the UI value.
 

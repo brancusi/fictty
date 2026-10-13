@@ -88,7 +88,17 @@ fn random_acts_leave_the_real_screen_where_they_leave_a_headless_one() {
     };
     let runs = std::env::var("SIM_RUNS").ok().and_then(|v| v.parse().ok()).unwrap_or(3u64);
     for seed in 0..runs {
-        let acts = fuzz::generate(&cfg, 100 + seed, (60, 12));
+        // Presses half a second apart on both clocks: the real screen runs on the wall clock and
+        // the test's own round trips take time, so presses close together were a triple click to
+        // one screen and single clicks to the other. Double and triple clicks are the window's
+        // tests' (a logical clock).
+        let acts: Vec<fuzz::Act> = fuzz::generate(&cfg, 100 + seed, (60, 12))
+            .into_iter()
+            .flat_map(|a| match &a {
+                fuzz::Act::Mouse(k, ..) if k.ends_with("press") => vec![fuzz::Act::Wait(500), a],
+                _ => vec![a],
+            })
+            .collect();
         let mut h = fictty::App::new(serde_json::from_value(ui.clone()).unwrap()).headless(60, 12).unwrap().on_host_act(move |h, a| {
             h.request(write(a));
         });
@@ -96,14 +106,12 @@ fn random_acts_leave_the_real_screen_where_they_leave_a_headless_one() {
             s.request(write(a));
         });
         for (i, a) in acts.iter().enumerate() {
-            // One clock for both: the real screen runs on the wall clock, and the test's own
-            // round trips make its presses land further apart than a headless screen's, so three
-            // presses were a triple click to one and three single clicks to the other.
-            if let Some(now_ms) = s.state()["now_ms"].as_u64() {
-                h.msg(fictty::state::Msg::Tick { now_ms });
-            }
             a.apply(&mut h);
             s.act(a);
+            // A wait is time on the headless clock; the real screen's is the wall clock.
+            if let fuzz::Act::Wait(ms) = a {
+                std::thread::sleep(std::time::Duration::from_millis(*ms));
+            }
             if h.quit() {
                 assert!(!s.running(), "seed {seed}: headless quit after {}, the real screen didn't", fuzz::line(&acts[..=i]));
                 break;
