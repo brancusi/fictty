@@ -9,7 +9,8 @@ behind each decision is in the dev blog post
 | layer | owns | depends on |
 |---|---|---|
 | **caretline** | text: the editing engine, callouts (`caretline-layers`), tours (`caretline-tour`) | nothing terminal-specific |
-| **fictty** | the UI runtime: a UI as one value, the Elm loop, primitives, data sources, the socket, pixels; later history and MCP | ratatui, caretline, caretline-layers |
+| **fictty-core** | a UI as one value, the Elm loop, the store, data sources, the socket, the host, readback: the engine, with nothing that draws | caretline |
+| **fictty** | drawing the state: the terminal's grid today, a native GPUI window next ([native.md](native.md)); pixels; the CLI; `App` for embedding. Re-exports the core | fictty-core, ratatui, caretline-layers, gpui (macOS) |
 | **apps** | Thought Control, ownpurse, anything else: their data, commands and screens | fictty, caretline |
 
 fictty knows nothing about any app. An app's screens are fictty UIs (JSON, or Rust that builds
@@ -29,6 +30,14 @@ sources (commands, JSON-line streams, values)        agents and people (socket, 
             ratatui: draw into a cell buffer, diff with the last frame, send only changed cells
             kitty graphics: rasterise pictures, send each once (cached by content), re-place what moved
 ```
+
+- **The engine runs on its own thread** (`Live::spawn`, in the core): it takes in sources,
+  socket requests and input as fast as they arrive, does its chores (saving, timers, the watched
+  file) and rings whatever draws when the state changed. The terminal and the window are both
+  "start the engine, then draw": each posts its input to the engine's `Inbox`, locks the state
+  only while it builds a frame, and hands back what the frame laid out (`Drawn`: hit regions,
+  each node's rectangle, editor sizes) so the mouse lands where things are and the readback
+  says where they were drawn.
 
 - **State** is serializable: the UI value, data, view state keyed by node id, focus, stats and
   the time (`now_ms`). If it isn't in the state, it can't be read back, replayed or tested.
@@ -70,7 +79,7 @@ new behaviour is proposed for the alphabet.
    components; that's a project component or a recipe.
 3. **One source of truth.** The UI value, the data and the view state each live in one place;
    everything else refers to them by id.
-4. **Agents read back what they write.** Every feature must be visible through `screen` (text)
-   or `state` (JSON).
+4. **Agents read back what they write.** Every feature must be visible through `screen` (text;
+   `screen --nodes` for the shown nodes, whatever draws them) or `state` (JSON).
 5. **Use ratatui where it fits.** Write our own drawing only for behaviour or speed.
 6. **Engine bugs go to caretline.** Text-editing problems are fixed there, released, then pulled in.

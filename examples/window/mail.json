@@ -1,0 +1,412 @@
+{
+ "root": {
+  "type": "stack",
+  "id": "app",
+  "children": [
+   {
+    "type": "col",
+    "gap": 1,
+    "children": [
+     {
+      "type": "text",
+      "size": 1,
+      "text": "<accent+b>\u25c6 FICTTY//MAIL</>   <dim>v@nightcity.example</>\t<dim>\u2318K COMMANDS \u00b7 / SEARCH \u00b7 T THEME</>"
+     },
+     {
+      "type": "row",
+      "gap": 2,
+      "children": [
+       {
+        "type": "col",
+        "size": 24,
+        "gap": 1,
+        "children": [
+         {
+          "type": "list",
+          "id": "boxes",
+          "size": 6,
+          "bind": "boxes",
+          "item": "{icon}  {name}\t<dim>{n}</>"
+         },
+         {
+          "type": "text",
+          "size": 1,
+          "text": "<dim>LABELS</>"
+         },
+         {
+          "type": "list",
+          "id": "labels",
+          "bind": "labels",
+          "item": "{name|markup}"
+         },
+         {
+          "type": "button",
+          "id": "compose",
+          "label": "\u270e  Compose",
+          "size": 1,
+          "click": {
+           "toast": "New draft",
+           "tone": "accent"
+          }
+         }
+        ]
+       },
+       {
+        "type": "col",
+        "size": "36%",
+        "min": 34,
+        "max": 56,
+        "gap": 1,
+        "children": [
+         {
+          "type": "input",
+          "id": "find",
+          "size": 1,
+          "placeholder": "Search mail"
+         },
+         {
+          "type": "list",
+          "id": "inbox",
+          "bind": "mail",
+          "filter": "find",
+          "lines": 2,
+          "item": "{unread|true=<accent>\u25cf</> ;*=  }<b>{from}</>\t<dim>{when}</>\n  {subject}",
+          "keys": {
+           "e": {
+            "do": [
+             {
+              "remove": "mail"
+             },
+             {
+              "toast": "Archived",
+              "tone": "pos"
+             }
+            ]
+           }
+          }
+         }
+        ]
+       },
+       {
+        "type": "col",
+        "id": "reader",
+        "gap": 1,
+        "children": [
+         {
+          "type": "text",
+          "id": "msg",
+          "bind": "@inbox",
+          "pad": [
+           1,
+           0
+          ],
+          "text": "<b>{subject}</>\n<dim>{from} \u00b7 {when} \u00b7 #{tag}</>\n\n{body}"
+         },
+         {
+          "type": "editor",
+          "id": "reply",
+          "title": "REPLY",
+          "size": "30%",
+          "syntax": "markdown",
+          "pad": [
+           1,
+           0
+          ],
+          "placeholder": "Write a reply\u2026  (**bold**, - lists, [[links]])"
+         },
+         {
+          "type": "row",
+          "size": 1,
+          "gap": 1,
+          "children": [
+           {
+            "type": "button",
+            "id": "send",
+            "label": "Send \u21b5",
+            "size": 12,
+            "click": {
+             "do": [
+              {
+               "toast": "Sent",
+               "tone": "pos"
+              }
+             ]
+            }
+           },
+           {
+            "type": "button",
+            "id": "archive",
+            "label": "Archive",
+            "size": 12,
+            "click": {
+             "toast": "Archived",
+             "tone": "pos"
+            }
+           },
+           {
+            "type": "text",
+            "text": ""
+           }
+          ]
+         }
+        ]
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "type": "col",
+    "id": "palette",
+    "modal": true,
+    "when": "palette",
+    "border": true,
+    "pad": [
+     1,
+     0
+    ],
+    "gap": 1,
+    "float": {
+     "width": 64,
+     "height": 13,
+     "at": "top",
+     "margin": 4
+    },
+    "keys": {
+     "esc": {
+      "do": [
+       {
+        "put": "palette",
+        "value": false
+       },
+       {
+        "focus": "$prev"
+       }
+      ]
+     }
+    },
+    "children": [
+     {
+      "type": "input",
+      "id": "cmd",
+      "size": 1,
+      "placeholder": "Type a command\u2026",
+      "keys": {
+       "down": {
+        "focus": "cmds"
+       },
+       "enter": {
+        "focus": "cmds"
+       }
+      }
+     },
+     {
+      "type": "list",
+      "id": "cmds",
+      "bind": "cmds",
+      "filter": "cmd",
+      "item": "{name}\t<dim>{key}</>",
+      "click": {
+       "do": [
+        {
+         "put": "palette",
+         "value": false
+        },
+        {
+         "toast": "Ran a command",
+         "tone": "accent"
+        },
+        {
+         "focus": "inbox"
+        }
+       ]
+      },
+      "keys": {
+       "enter": {
+        "do": [
+         {
+          "put": "palette",
+          "value": false
+         },
+         {
+          "toast": "Ran a command",
+          "tone": "accent"
+         },
+         {
+          "focus": "inbox"
+         }
+        ]
+       }
+      }
+     }
+    ]
+   }
+  ]
+ },
+ "store": {
+  "mail": [
+   {
+    "id": "m1",
+    "from": "Ada Lovelace",
+    "when": "09:41",
+    "subject": "Notes on the analytical engine",
+    "tag": "research",
+    "unread": true,
+    "body": "I've gone through the second draft. The section on loops is the strongest part; the table on page four needs the new figures. Can we talk before Thursday?"
+   },
+   {
+    "id": "m2",
+    "from": "Grace Hopper",
+    "when": "09:12",
+    "subject": "Compiler review, round two",
+    "tag": "work",
+    "unread": true,
+    "body": "Two fixes landed overnight. The rest is waiting on your call about the error messages: terse, or the friendly ones?"
+   },
+   {
+    "id": "m3",
+    "from": "Linear",
+    "when": "08:30",
+    "subject": "3 issues assigned to you",
+    "tag": "updates",
+    "unread": false,
+    "body": "FIC-212 Window: ellipsis for cut lines FIC-218 Cards: radius, gradient, shadow FIC-220 Charts drawn on canvas"
+   },
+   {
+    "id": "m4",
+    "from": "Alan Turing",
+    "when": "Yesterday",
+    "subject": "Re: the imitation game",
+    "tag": "research",
+    "unread": false,
+    "body": "A fair question, but I'd put it differently: not whether machines think, but whether we could tell."
+   },
+   {
+    "id": "m5",
+    "from": "Margaret Hamilton",
+    "when": "Yesterday",
+    "subject": "Flight software checklist",
+    "tag": "work",
+    "unread": false,
+    "body": "Attached is the checklist for Friday. Priority displays first, then the restart path."
+   },
+   {
+    "id": "m6",
+    "from": "Katherine Johnson",
+    "when": "Mon",
+    "subject": "Trajectory numbers, checked",
+    "tag": "work",
+    "unread": false,
+    "body": "All three runs agree to the fifth decimal. Go for the launch window."
+   },
+   {
+    "id": "m7",
+    "from": "Figma",
+    "when": "Mon",
+    "subject": "Your weekly design digest",
+    "tag": "updates",
+    "unread": false,
+    "body": "12 comments, 3 new files, 1 mention."
+   }
+  ],
+  "boxes": [
+   {
+    "id": "inbox",
+    "icon": "\u25c9",
+    "name": "Inbox",
+    "n": "2"
+   },
+   {
+    "id": "star",
+    "icon": "\u2605",
+    "name": "Starred",
+    "n": ""
+   },
+   {
+    "id": "sent",
+    "icon": "\u2197",
+    "name": "Sent",
+    "n": ""
+   },
+   {
+    "id": "drafts",
+    "icon": "\u270e",
+    "name": "Drafts",
+    "n": "1"
+   },
+   {
+    "id": "arch",
+    "icon": "\u25a4",
+    "name": "Archive",
+    "n": ""
+   }
+  ],
+  "labels": [
+   {
+    "id": "r",
+    "name": "<violet>\u25cf</> research"
+   },
+   {
+    "id": "w",
+    "name": "<accent>\u25cf</> work"
+   },
+   {
+    "id": "u",
+    "name": "<amber>\u25cf</> updates"
+   }
+  ],
+  "cmds": [
+   {
+    "id": "c1",
+    "name": "Compose",
+    "key": "c"
+   },
+   {
+    "id": "c2",
+    "name": "Reply",
+    "key": "r"
+   },
+   {
+    "id": "c3",
+    "name": "Archive",
+    "key": "e"
+   },
+   {
+    "id": "c4",
+    "name": "Next theme",
+    "key": "t"
+   },
+   {
+    "id": "c5",
+    "name": "Search mail",
+    "key": "/"
+   },
+   {
+    "id": "c6",
+    "name": "Mark all read",
+    "key": "\u21e7I"
+   }
+  ],
+  "palette": false
+ },
+ "keys": {
+  "d-k": {
+   "do": [
+    {
+     "put": "palette",
+     "value": true
+    },
+    {
+     "focus": "cmd"
+    }
+   ]
+  },
+  "/": {
+   "focus": "find"
+  },
+  "t": {
+   "theme": "next"
+  }
+ },
+ "focus": "inbox"
+}

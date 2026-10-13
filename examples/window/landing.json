@@ -1,0 +1,179 @@
+{
+ "root": {
+  "type": "col",
+  "gap": 1,
+  "children": [
+   {
+    "type": "text",
+    "text": "<b>\u25c6 fictty</>\t<dim>Docs   Blog   Pricing</>   <accent+b>Get started</>",
+    "size": 1
+   },
+   {
+    "type": "big",
+    "id": "hero",
+    "size": 4,
+    "text": "UI AS DATA",
+    "align": "center"
+   },
+   {
+    "type": "text",
+    "text": "<dim>A screen is one serializable value. Push it from anywhere; agents can read it back.</>",
+    "size": 1,
+    "align": "center"
+   },
+   {
+    "type": "row",
+    "size": 1,
+    "children": [
+     {
+      "type": "text",
+      "text": ""
+     },
+     {
+      "type": "button",
+      "id": "cta",
+      "label": "Try it in one line",
+      "size": 24
+     },
+     {
+      "type": "button",
+      "id": "cta2",
+      "label": "Read the docs",
+      "size": 18
+     },
+     {
+      "type": "text",
+      "text": ""
+     }
+    ]
+   },
+   {
+    "type": "row",
+    "size": 5,
+    "gap": 2,
+    "children": [
+     {
+      "type": "text",
+      "variant": "card",
+      "border": true,
+      "pad": [
+       1,
+       0
+      ],
+      "text": "<accent+b>One value</>\nThe whole screen is JSON you can push, patch and diff."
+     },
+     {
+      "type": "text",
+      "variant": "card",
+      "border": true,
+      "pad": [
+       1,
+       0
+      ],
+      "text": "<accent+b>Agent-native</>\nRead the screen back as text or nodes."
+     },
+     {
+      "type": "text",
+      "variant": "card",
+      "border": true,
+      "pad": [
+       1,
+       0
+      ],
+      "text": "<accent+b>Fast</>\nThousands of updates a second, drawn at 60 fps."
+     }
+    ]
+   },
+   {
+    "type": "row",
+    "gap": 2,
+    "children": [
+     {
+      "type": "col",
+      "border": true,
+      "title": "Hobby",
+      "pad": [
+       1,
+       0
+      ],
+      "variant": "card",
+      "children": [
+       {
+        "type": "text",
+        "text": "<b>$0</>  <dim>/ month</>",
+        "size": 1
+       },
+       {
+        "type": "text",
+        "text": "\u2713 1 screen\n\u2713 Community"
+       },
+       {
+        "type": "button",
+        "id": "buy-Hobby",
+        "label": "Choose Hobby",
+        "size": 1,
+        "align": "center"
+       }
+      ]
+     },
+     {
+      "type": "col",
+      "border": true,
+      "title": "Pro",
+      "pad": [
+       1,
+       0
+      ],
+      "variant": "hero",
+      "children": [
+       {
+        "type": "text",
+        "text": "<b>$12</>  <dim>/ month</>",
+        "size": 1
+       },
+       {
+        "type": "text",
+        "text": "\u2713 Unlimited screens\n\u2713 Themes\n\u2713 Priority support"
+       },
+       {
+        "type": "button",
+        "id": "buy-Pro",
+        "label": "Choose Pro",
+        "size": 1,
+        "align": "center"
+       }
+      ]
+     },
+     {
+      "type": "col",
+      "border": true,
+      "title": "Team",
+      "pad": [
+       1,
+       0
+      ],
+      "variant": "card",
+      "children": [
+       {
+        "type": "text",
+        "text": "<b>$40</>  <dim>/ month</>",
+        "size": 1
+       },
+       {
+        "type": "text",
+        "text": "\u2713 SSO\n\u2713 Audit log\n\u2713 Shared screens"
+       },
+       {
+        "type": "button",
+        "id": "buy-Team",
+        "label": "Choose Team",
+        "size": 1,
+        "align": "center"
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ }
+}

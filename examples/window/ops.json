@@ -1,0 +1,336 @@
+{
+ "root": {
+  "type": "col",
+  "gap": 1,
+  "children": [
+   {
+    "type": "text",
+    "size": 1,
+    "bind": "stats",
+    "text": "<accent+b>\u25b2 FICTTY//OPS</>   <dim>PROD \u00b7 EU-WEST \u00b7 {clock}</>\t{status|ok=<pos>\u25cf ALL SYSTEMS NOMINAL</>;*=<rose+b>\u25a0 1 INCIDENT OPEN</>}"
+   },
+   {
+    "type": "row",
+    "size": 4,
+    "gap": 2,
+    "children": [
+     {
+      "type": "text",
+      "id": "s1",
+      "title": "REQUESTS",
+      "bind": "stats",
+      "pad": [
+       1,
+       0
+      ],
+      "text": "<b>{rps}</> <dim>req/s</>\n{\u00b1drps}% <dim>vs last hour</>"
+     },
+     {
+      "type": "text",
+      "id": "s2",
+      "title": "P95 LATENCY",
+      "bind": "stats",
+      "pad": [
+       1,
+       0
+      ],
+      "text": "<b>{p95}</> <dim>ms</>\n{\u00b1dp95} ms <dim>vs last hour</>"
+     },
+     {
+      "type": "text",
+      "id": "s3",
+      "title": "ERROR RATE",
+      "bind": "stats",
+      "pad": [
+       1,
+       0
+      ],
+      "text": "<b>{errs}%</>\n{\u00b1derr} <dim>points</>"
+     },
+     {
+      "type": "text",
+      "id": "s4",
+      "title": "DEPLOYS TODAY",
+      "bind": "stats",
+      "pad": [
+       1,
+       0
+      ],
+      "text": "<b>{deploys}</>\n<dim>1 running \u00b7 1 failed</>"
+     }
+    ]
+   },
+   {
+    "type": "row",
+    "gap": 2,
+    "children": [
+     {
+      "type": "tabs",
+      "id": "views",
+      "tabs": [
+       "SERVICES",
+       "DEPLOYS",
+       "INCIDENT <rose>\u25a0</>"
+      ],
+      "children": [
+       {
+        "type": "table",
+        "id": "svc",
+        "bind": "services",
+        "columns": [
+         {
+          "title": "Service",
+          "value": "<b>{name}</>"
+         },
+         {
+          "title": "Status",
+          "value": "{status|up=<pos>\u25cf up</>;down=<neg>\u25cf down</>;*=<warn>\u25cf degraded</>}"
+         },
+         {
+          "title": "Region",
+          "value": "<dim>{region}</>"
+         },
+         {
+          "title": "p95",
+          "value": "{p95}",
+          "align": "right"
+         },
+         {
+          "title": "Errors",
+          "value": "{\u00b1err}%",
+          "align": "right"
+         },
+         {
+          "title": "CPU",
+          "value": "{cpu}",
+          "align": "right"
+         }
+        ]
+       },
+       {
+        "type": "list",
+        "id": "deploys",
+        "bind": "deploys",
+        "lines": 2,
+        "item": "{state|done=<pos>\u2713</>;running=<accent>\u25d0</>;failed=<neg>\u2715</>}  <b>{svc}</> <dim>{ver}</>\t<dim>{who} \u00b7 {when}</>\n   {msg}"
+       },
+       {
+        "type": "editor",
+        "id": "pm",
+        "syntax": "markdown",
+        "pad": [
+         1,
+         0
+        ],
+        "text": "# Notifications outage\n\n**Status:** investigating \u00b7 started 11:02 UTC\n\n## Timeline\n- 11:02 error rate passes 10% on `notifications`\n- 11:04 paged on-call; deploy v1.9.0 suspected\n- 11:09 rollback started\n\n## Next\n- [x] Roll back to v1.8.4\n- [ ] Confirm the queue drained\n- [ ] Write up [[queue client migration]]\n",
+        "links": [
+         {
+          "kind": "wiki"
+         }
+        ],
+        "tasks": "cycle"
+       }
+      ]
+     },
+     {
+      "type": "col",
+      "size": "32%",
+      "min": 36,
+      "gap": 1,
+      "children": [
+       {
+        "type": "spinner",
+        "id": "deploying",
+        "size": 1,
+        "text": "<accent>Deploying</> api-gateway v2.14.0 \u00b7 {pct}%",
+        "bind": "stats"
+       },
+       {
+        "type": "list",
+        "id": "log",
+        "title": "ACTIVITY",
+        "bind": "log",
+        "item": "<dim>{t}</>  {msg|markup}"
+       },
+       {
+        "type": "row",
+        "size": 1,
+        "gap": 1,
+        "children": [
+         {
+          "type": "button",
+          "id": "rollback",
+          "label": "Roll back",
+          "click": {
+           "toast": "Rolling back notifications",
+           "tone": "warn"
+          }
+         },
+         {
+          "type": "button",
+          "id": "page",
+          "label": "Page on-call",
+          "click": {
+           "toast": "Paged Grace",
+           "tone": "neg"
+          }
+         }
+        ]
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ "store": {
+  "stats": {
+   "clock": "11:12:04",
+   "status": "1 incident",
+   "rps": "12,480",
+   "drps": 4.2,
+   "p95": "118",
+   "dp95": -6,
+   "errs": "1.42",
+   "derr": 0.31,
+   "deploys": 7,
+   "pct": 38
+  },
+  "services": [
+   {
+    "id": "api",
+    "name": "api-gateway",
+    "status": "up",
+    "region": "eu-west",
+    "p95": "84 ms",
+    "err": -0.12,
+    "cpu": "41%"
+   },
+   {
+    "id": "auth",
+    "name": "auth",
+    "status": "up",
+    "region": "eu-west",
+    "p95": "22 ms",
+    "err": 0.0,
+    "cpu": "18%"
+   },
+   {
+    "id": "search",
+    "name": "search",
+    "status": "degraded",
+    "region": "us-east",
+    "p95": "412 ms",
+    "err": 1.84,
+    "cpu": "92%"
+   },
+   {
+    "id": "billing",
+    "name": "billing",
+    "status": "up",
+    "region": "eu-west",
+    "p95": "130 ms",
+    "err": -0.05,
+    "cpu": "33%"
+   },
+   {
+    "id": "media",
+    "name": "media-transcode",
+    "status": "up",
+    "region": "ap-south",
+    "p95": "1.2 s",
+    "err": 0.21,
+    "cpu": "77%"
+   },
+   {
+    "id": "notify",
+    "name": "notifications",
+    "status": "down",
+    "region": "us-east",
+    "p95": "\u2014",
+    "err": 12.5,
+    "cpu": "0%"
+   },
+   {
+    "id": "edge",
+    "name": "edge-cache",
+    "status": "up",
+    "region": "global",
+    "p95": "9 ms",
+    "err": -0.31,
+    "cpu": "25%"
+   }
+  ],
+  "deploys": [
+   {
+    "id": "d1",
+    "state": "running",
+    "svc": "api-gateway",
+    "ver": "v2.14.0",
+    "who": "tilde",
+    "when": "now",
+    "msg": "Stream responses for large exports"
+   },
+   {
+    "id": "d2",
+    "state": "done",
+    "svc": "search",
+    "ver": "v5.2.3",
+    "who": "grace",
+    "when": "12m",
+    "msg": "Cap query fan-out at 32 shards"
+   },
+   {
+    "id": "d3",
+    "state": "failed",
+    "svc": "notifications",
+    "ver": "v1.9.0",
+    "who": "alan",
+    "when": "40m",
+    "msg": "Move to the new queue client"
+   },
+   {
+    "id": "d4",
+    "state": "done",
+    "svc": "billing",
+    "ver": "v3.0.1",
+    "who": "ada",
+    "when": "2h",
+    "msg": "Fix rounding on prorated plans"
+   },
+   {
+    "id": "d5",
+    "state": "done",
+    "svc": "edge-cache",
+    "ver": "v0.8.0",
+    "who": "katherine",
+    "when": "5h",
+    "msg": "Warm the cache from the CDN logs"
+   }
+  ],
+  "log": [
+   {
+    "t": "11:12",
+    "msg": "<accent>deploy</> api-gateway 38%"
+   }
+  ]
+ },
+ "keys": {
+  "t": {
+   "theme": "next"
+  },
+  "1": {
+   "tab": 0,
+   "of": "views"
+  },
+  "2": {
+   "tab": 1,
+   "of": "views"
+  },
+  "3": {
+   "tab": 2,
+   "of": "views"
+  }
+ },
+ "focus": "svc"
+}

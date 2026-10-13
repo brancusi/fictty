@@ -52,6 +52,8 @@ fictty patch header node.json                             # replace one node by 
 fictty key j x                                            # type keys
 fictty get --state                                        # everything on screen, as JSON
 fictty run --watch my.json                                # hot reload while you edit
+fictty screen --nodes                                     # the shown nodes: kind, id, focus, text, where
+fictty run --window my.json                               # in a native window (macOS, early)
 fictty render examples/tasks.json --size 100x30 --keys j  # no terminal
 fictty read ledger                                        # one store entry: rev, by, value or text
 fictty put ledger rows.json --if-rev 12                   # write it, unless someone wrote since 12
@@ -63,9 +65,10 @@ fictty theme paper                                        # choose a loaded them
 - **Components** (a closed set): layout `col`, `row` (both with a `gap`) and `stack` (children
   over each other); `text`, `big`, `spinner`; `list`, `tree`, `table` (with column `total`s);
   `editor`, `input`, `button`; `tabs`; `sparkline`, `chart`, `bars` (up, or `horizontal`), `gauge`;
-  and the pixel ones below. Every node can have `id`, `size` (`12`, `"30%"`, `"*"`, `"2*"`) with
-  `min` and `max`, `title`, `border`, `pad`, `variant`, `tone`, `style`, `bind`, `keys`, `click`,
-  `when`, and in a stack `float` and `modal`.
+  and the pixel ones below. Every node can have `id`, `size` (`12` cells, `"48px"`, `"30%"`, `"*"`,
+  `"2*"`; a terminal rounds pixels to its cells) with `min` and `max` (cells), `title`, `border`,
+  `pad`, `align`, `variant`, `tone`, `style`, `bind`, `keys`, `click`, `when`, and in a stack
+  `float` and `modal`.
 - **Lists and trees** share their row options: `item` (a template), `row_variant` and `variants`
   (a template per kind of row) with `skip` (rows that can't be selected), `mark` and `lead`,
   `selected` (a style), `lines` (rows of several lines), `keep` (cells the left side keeps before
@@ -83,11 +86,11 @@ fictty theme paper                                        # choose a loaded them
   patch changes the template. A `State` read back from `get --state` leaves the tree out (it's
   worked out, not kept): call `derive()` on it before `focus_order` or `tree()`.
 - **Overlays**: a `stack` draws its children over each other, the last on top; one with
-  `float` (`width`, `height`, `at` an edge or corner, `margin`) sits where it says, and a `modal`
-  one dims what's behind it and keeps the focus: while it shows, a click or the wheel anywhere
-  outside it goes nowhere. Both cover what's under them. **`when`** shows a node only
-  while a condition holds: a bind that's set (`"dialog"`), not set (`"!dialog"`), compared
-  (`"mode=edit"`, `"$screen.width>=120"`), or several joined by ` & `. `$width` and `$height`
+  `float` (`width` and `height` in cells, pixels or `%`, `at` an edge or corner, `margin`) sits
+  where it says, and a `modal` one dims what's behind it and keeps the focus: while it shows, a
+  click or the wheel anywhere outside it goes nowhere. Both cover what's under them. **`when`**
+  shows a node only while a condition holds: a bind that's set (`"dialog"`), not set
+  (`"!dialog"`), compared (`"mode=edit"`, `"$screen.width>=120"`), or several joined by ` & `. `$width` and `$height`
   are the size of the area the node's parent lays it out in (a container query): a pane beside a
   sidebar switches on its own width, not the screen's. A hidden node takes no
   room and no focus. Layers take `when` too. **Toasts** show for a while: the `toast` action,
@@ -195,7 +198,11 @@ a key cycles, `fictty theme <name>` picks one. A push doesn't change them. A the
 `title`, `editor.caret`, `input.placeholder`, `status` and the rest, as style specs like
 `accent+b`) and `variants` (named looks: a style, an edge, a backdrop, a title style). Nodes ask
 for a `variant` and a `tone`, never a colour. A UI's own `theme` map still works, as tokens under
-every theme. `examples/showcase/themes.json` has three: glass, paper and phosphor.
+every theme. `examples/showcase/themes.json` has three: glass, paper and phosphor. In the window, a
+token `edge` sets the border of every node that doesn't name its own: anything but `rounded`
+squares the corners of panels, buttons, fields, tabs, rows and toasts, and `thick` or `double`
+draws them heavier. `examples/window/themes.json` has six more for the window, worn by the
+wringer's nine screens (`examples/window/open.sh`).
 
 ## Embedding fictty in an app
 
@@ -225,7 +232,8 @@ fictty::App::new(ui)
 - **Tests without a terminal**: `App::new(ui).host(h).headless(80, 24)?` gives a screen to send
   `keys(&["j", "x"])`, the mouse (`mouse("press", x, y)`, also `s-press`, `drag`, `release`,
   `move`, `wheel-up`, `wheel-down`), `paste(text)`, `resize(w, h)` and messages to, and to read
-  back as text (`screen()`, `ansi()`) or state (`state()`). Sources are fetched and actions done
+  back as text (`screen()`, `ansi()`), as nodes (`readback()`: each shown node's kind, id, text,
+  focus, selection and rectangle) or state (`state()`). Sources are fetched and actions done
   inline. `App::commands(false)` stops `run` actions and command sources (each fails with
   "commands are off"), so a test never starts a script. See `tests/host.rs`.
 - **Fuzzing** (the `fuzz` feature): `fictty::fuzz::run(make, &mut checks, &config)` plays random

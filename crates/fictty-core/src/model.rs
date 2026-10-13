@@ -132,7 +132,8 @@ pub struct Node {
     /// focused (lists, tables) and can be replaced alone (`patch`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub id: Option<String>,
-    /// Its share of the parent row/col: `12` (cells), `"30%"`, `"*"` (the default) or `"2*"`.
+    /// Its share of the parent row/col: `12` (cells), `"48px"`, `"30%"`, `"*"` (the default) or
+    /// `"2*"`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub size: Option<Size>,
     /// A title draws a border with it.
@@ -197,7 +198,7 @@ pub struct Node {
     pub kind: Kind,
 }
 
-/// Where a floating node sits in its stack: `width` and `height` (cells, `"50%"`; default the
+/// Where a floating node sits in its stack: `width` and `height` (cells, `"50%"`, `"240px"`; default the
 /// whole stack) and `at` (`center`, the default, or `top`, `bottom`, `left`, `right` and the
 /// corners, `top-right`), `margin` cells in from the edge it's at.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
@@ -595,6 +596,38 @@ pub enum Size {
     Spec(String),
 }
 
+/// A size, read: what a `Size` asks of its row or column.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Measure {
+    /// `12` or `"12"`: that many columns or rows.
+    Cells(u16),
+    /// `"48px"`: exact in a window; a terminal rounds it to its cells.
+    Px(f32),
+    /// `"30%"` of the parent.
+    Percent(f32),
+    /// `"*"`, `"2*"`: a share of what's left (anything unreadable is one share).
+    Share(u16),
+}
+
+impl Size {
+    pub fn measure(&self) -> Measure {
+        let s = match self {
+            Size::Cells(n) => return Measure::Cells(*n),
+            Size::Spec(s) => s.trim(),
+        };
+        if let Some(p) = s.strip_suffix('%') {
+            return p.trim().parse().map_or(Measure::Share(1), Measure::Percent);
+        }
+        if let Some(p) = s.strip_suffix("px") {
+            return p.trim().parse().map_or(Measure::Share(1), Measure::Px);
+        }
+        if let Some(w) = s.strip_suffix('*') {
+            return Measure::Share(if w.is_empty() { 1 } else { w.trim().parse().unwrap_or(1) });
+        }
+        s.parse().map_or(Measure::Share(1), Measure::Cells)
+    }
+}
+
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct Style {
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -686,6 +719,79 @@ pub struct LinkSpec {
     pub click: Option<Action>,
     #[serde(default, rename = "s-click", skip_serializing_if = "Option::is_none")]
     pub s_click: Option<Action>,
+}
+
+/// What a character of a Markdown line is, for whatever draws an editor to style it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Md {
+    Text,
+    Heading,
+    /// A list item's marker (`-`, `12.`).
+    Bullet,
+    Quote,
+    /// Inline `code`, its backticks too.
+    Code,
+    /// A task's box (`[x]`).
+    Task,
+    /// The text of a ticked task.
+    Done,
+    /// A link of one of the editor's kinds (`wiki`, `tag`, `url`).
+    Link,
+}
+
+/// The role of each character of a Markdown line, in one pass over it (a long paragraph is one
+/// line). Later rules win: code, a list marker, a task, a quote or heading line, then links of
+/// the kinds given.
+pub fn md_roles(line: &str, links: &[&str]) -> Vec<Md> {
+    let chars: Vec<char> = line.chars().collect();
+    let n = chars.len();
+    let mut out = vec![Md::Text; n];
+    // Inside a pair of backticks (the backticks too): an odd number before, or an opening one
+    // with another after it.
+    let mut ticks = 0;
+    let last_tick = chars.iter().rposition(|c| *c == '`');
+    for (col, c) in chars.iter().enumerate() {
+        let here = *c == '`';
+        if ticks % 2 == 1 || (here && last_tick.is_some_and(|l| l > col)) {
+            out[col] = Md::Code;
+        }
+        ticks += here as usize;
+    }
+    let t = line.trim_start();
+    let indent = line.chars().count() - t.chars().count();
+    let marker = if t.starts_with("- ") || t.starts_with("* ") || t.starts_with("+ ") {
+        Some(1)
+    } else {
+        let digits = t.chars().take_while(char::is_ascii_digit).count();
+        (digits > 0 && t[digits..].starts_with(". ")).then_some(digits + 1)
+    };
+    if let Some(m) = marker {
+        for s in out.iter_mut().skip(indent).take(m) {
+            *s = Md::Bullet;
+        }
+    }
+    // A task: its box, and the rest of a ticked one done.
+    if let Some((b, ticked)) = task_box(line) {
+        for (col, s) in out.iter_mut().enumerate() {
+            if col + 1 >= b && col <= b + 1 {
+                *s = Md::Task;
+            } else if ticked && col > b + 1 {
+                *s = Md::Done;
+            }
+        }
+    }
+    let heading = t.starts_with('#') && !(links.contains(&"tag") && t.chars().nth(1).is_some_and(|c| c.is_alphanumeric()));
+    if heading || t.starts_with("> ") || t == ">" {
+        out.fill(if heading { Md::Heading } else { Md::Quote });
+    }
+    if !links.is_empty() {
+        for (a, b, ..) in links_in(line, links) {
+            for s in out.iter_mut().take(b).skip(a) {
+                *s = Md::Link;
+            }
+        }
+    }
+    out
 }
 
 /// The links in a line, by kind (`wiki`, `tag`, `url`): where each starts and ends (chars) and
@@ -1217,7 +1323,7 @@ fn plain(text: &str, cur: &Option<String>, out: &mut Vec<Seg>) {
 /// A placeholder's runs fitted to `width` cells: cut with an ellipsis, or padded with spaces on
 /// the right (on the left with `right`).
 fn fit(segs: Vec<Seg>, width: usize, right: bool) -> Vec<Seg> {
-    let cells = |t: &str| ratatui::text::Span::raw(t).width();
+    let cells = |t: &str| unicode_width::UnicodeWidthStr::width(t);
     let total: usize = segs.iter().map(|s| cells(&s.text)).sum();
     let style = segs.first().and_then(|s| s.style.clone());
     if total <= width {
@@ -1328,6 +1434,17 @@ pub fn scalar(v: Option<&Value>) -> String {
         Some(Value::Array(a)) => a.iter().map(|x| scalar(Some(x))).collect::<Vec<_>>().join(", "),
         Some(other) => other.to_string(),
     }
+}
+
+
+/// Whether `name` is a colour by itself (not a theme token): a name (`red`, `light-blue`,
+/// `grey`), a palette index (`0`–`255`) or `#rrggbb`.
+pub fn is_colour(name: &str) -> bool {
+    let n = name.to_lowercase().replace([' ', '-', '_'], "").replace("bright", "light").replace("grey", "gray").replace("silver", "gray");
+    let named = ["reset", "black", "red", "green", "yellow", "blue", "magenta", "cyan", "gray", "darkgray", "white", "lightblack", "lightwhite", "lightgray"];
+    let light = ["red", "green", "yellow", "blue", "magenta", "cyan"];
+    let hex = name.len() == 7 && name.starts_with('#') && name[1..].chars().all(|c| c.is_ascii_hexdigit());
+    named.contains(&n.as_str()) || n.strip_prefix("light").is_some_and(|c| light.contains(&c)) || name.parse::<u8>().is_ok() || hex
 }
 
 #[cfg(test)]

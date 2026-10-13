@@ -87,7 +87,7 @@ fn a_failure_shrinks_and_prints_a_scenario() {
 fn every_chapter_of_the_tour() {
     // The tour's chapters together use every component. Their buttons run scripts and the speed
     // chapter streams from awk, so commands are off: a fuzzer never runs anything.
-    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("examples/showcase");
+    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples/showcase");
     let mut keys = Config::default().keys;
     keys.extend(["n", "p", "j", "k", "o", "t", "g", "s-g", "/", "?", "1", "2", "3"].map(String::from));
     let cfg = Config { keys, runs: cfg().runs / 4 + 1, ..cfg() };
@@ -174,3 +174,106 @@ fn a_normalizer_masks_what_differs_between_runs() {
     fuzz::run(&make, &mut [], &cfg).unwrap();
 }
 
+
+/// The same screens drawn by the native window under GPUI's test platform: the mouse goes
+/// through the window's own handlers, and editors and lists learn their sizes from its layout.
+#[cfg(target_os = "macos")]
+mod window {
+    use super::*;
+
+    /// The editing invariants, and what the window lays out nests without overlapping.
+    fn checks() -> Vec<fuzz::Check> {
+        let mut checks = fuzz::editing();
+        checks.push(fuzz::laid_out());
+        checks
+    }
+
+    fn fuzzed(ui: Value, w: u16, h: u16) {
+        let make = move || App::new(serde_json::from_value(ui.clone()).unwrap()).in_window(w, h).unwrap();
+        // No terminal to show the frame: the window is the frame.
+        let cfg = Config { terminal: false, ..cfg() };
+        if let Err(f) = fuzz::run(make, &mut checks(), &cfg) {
+            panic!("{f}");
+        }
+    }
+
+    #[test]
+    fn an_editor_in_the_window() {
+        let text = "# Notes\n\nHello world, a line\n- one\n  - nested\n- [ ] a task\n\n1. first\n2. second\n\nwide 漢字 and 🙂\n";
+        let links = json!([{"kind": "wiki"}, {"kind": "tag"}, {"kind": "url"}]);
+        fuzzed(json!({"root": {"type": "editor", "id": "e", "text": text, "syntax": "markdown", "links": links}, "focus": "e"}), 40, 10);
+    }
+
+    #[test]
+    fn editors_beside_lists_and_inputs_in_the_window() {
+        let ui = json!({
+            "root": {"type": "row", "children": [
+                {"type": "list", "id": "pages", "items": ["alpha", "beta", "gamma", "delta"]},
+                {"type": "col", "children": [
+                    {"type": "input", "id": "title", "text": "a title"},
+                    {"type": "editor", "id": "body", "text": "Some text with [[a link]] and #tag\n- item\n", "links": [{"kind": "wiki", "click": {"put": "opened", "value": "{$match}"}}, {"kind": "tag", "click": {"toast": "#{$match}"}}]},
+                    {"type": "tabs", "id": "t", "tabs": ["one", "two"], "children": [{"type": "text", "text": "first"}, {"type": "text", "text": "second"}]}
+                ]}
+            ]},
+            "focus": "body"
+        });
+        fuzzed(ui, 60, 14);
+    }
+
+    #[test]
+    fn every_chapter_of_the_tour_in_the_window() {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples/showcase");
+        let mut keys = Config::default().keys;
+        keys.extend(["n", "p", "j", "k", "o", "t", "g", "s-g", "/", "?", "1", "2", "3"].map(String::from));
+        let cfg = Config { keys, runs: cfg().runs / 4 + 1, terminal: false, ..cfg() };
+        for n in 1..=10 {
+            let path = std::fs::read_dir(&dir)
+                .unwrap()
+                .filter_map(|e| e.ok().map(|e| e.path()))
+                .find(|p| p.file_name().and_then(|f| f.to_str()).is_some_and(|f| f.starts_with(&format!("tour-{n}-"))))
+                .expect("a chapter");
+            let themes = dir.join("themes.json");
+            let make = || fictty::App::file(&path).themes_file(&themes).unwrap().commands(false).in_window(100, 32).unwrap();
+            if let Err(f) = fuzz::run(make, &mut checks(), &cfg) {
+                panic!("{}: {f}", path.display());
+            }
+        }
+    }
+
+    #[test]
+    fn a_dialog_and_floats_over_a_list_in_the_window() {
+        let ui = json!({
+            "root": {"type": "stack", "id": "s", "children": [
+                {"type": "row", "gap": 1, "children": [
+                    {"type": "list", "id": "files", "items": ["a.txt", "b.txt", "c.txt"], "size": "40%", "min": 12, "max": 30,
+                     "keys": {"d": {"put": "confirm", "value": true}}},
+                    {"type": "editor", "id": "body", "text": "Some text\n- a list\n", "pad": [1, 1], "border": true},
+                    {"type": "text", "id": "detail", "text": "wide detail", "size": "120px", "when": "$width>=50"}
+                ]},
+                {"type": "text", "id": "badge", "text": "3 new", "float": {"width": 10, "height": 1, "at": "top-right", "margin": 1}},
+                {"type": "col", "id": "ask", "title": "Delete?", "modal": true, "when": "confirm", "float": {"width": "60%", "height": 6}, "children": [
+                    {"type": "input", "id": "why", "size": 1},
+                    {"type": "row", "size": 1, "children": [
+                        {"type": "button", "id": "yes", "label": "Delete", "align": "center", "click": {"put": "confirm", "value": false}},
+                        {"type": "button", "id": "no", "label": "Keep", "align": "right", "click": {"put": "confirm", "value": false}}
+                    ]}
+                ]}
+            ]},
+            "store": {"confirm": false}, "focus": "files"
+        });
+        let cfg = Config { terminal: false, keys: [Config::default().keys, vec!["d".into()]].concat(), ..cfg() };
+        let make = move || App::new(serde_json::from_value(ui.clone()).unwrap()).in_window(60, 14).unwrap();
+        if let Err(f) = fuzz::run(make, &mut checks(), &cfg) {
+            panic!("{f}");
+        }
+    }
+
+    #[test]
+    fn a_long_list_and_a_table_in_the_window() {
+        let rows: Vec<Value> = (0..300).map(|i| json!({"name": format!("row {i}"), "n": i})).collect();
+        fuzzed(json!({"root": {"type": "row", "children": [
+            {"type": "list", "id": "l", "bind": "rows", "item": "{name}\t{n}"},
+            {"type": "table", "id": "t", "bind": "rows", "columns": [{"title": "Name", "value": "{name}"}, {"title": "N", "value": "{n}"}]}
+        ]}, "store": {"rows": rows}, "focus": "l"}), 60, 14);
+    }
+}

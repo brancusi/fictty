@@ -1,0 +1,152 @@
+{
+ "root": {
+  "type": "row",
+  "gap": 2,
+  "children": [
+   {
+    "type": "list",
+    "id": "rooms",
+    "size": 30,
+    "title": "MESSAGES",
+    "lines": 2,
+    "bind": "rooms",
+    "item": "<b>{name}</>\t<dim>{when}</>\n<dim>{last}</>"
+   },
+   {
+    "type": "col",
+    "gap": 1,
+    "children": [
+     {
+      "type": "text",
+      "text": "<b>Grace Hopper</>  <pos>\u25cf</> <dim>online</>\t<dim>\u2315  \u22ef</>",
+      "size": 1
+     },
+     {
+      "type": "rule",
+      "size": 1
+     },
+     {
+      "type": "list",
+      "id": "thread",
+      "bind": "msgs",
+      "lines": 2,
+      "row_variant": "side",
+      "variants": {
+       "them": "<dim>{who} \u00b7 {at}</>\n<fg+on-panel> {text} </>",
+       "me": "\t<dim>{at}</>\n\t<bg+on-accent> {text} </>"
+      }
+     },
+     {
+      "type": "text",
+      "text": "<dim>Grace is typing\u2026</>",
+      "size": 1
+     },
+     {
+      "type": "row",
+      "size": 1,
+      "gap": 1,
+      "children": [
+       {
+        "type": "input",
+        "id": "compose",
+        "placeholder": "Message Grace\u2026",
+        "keys": {
+         "enter": {
+          "do": [
+           {
+            "append": "msgs",
+            "value": {
+             "side": "me",
+             "who": "You",
+             "text": "{store.compose.text}",
+             "at": "now"
+            }
+           },
+           {
+            "put": "compose",
+            "value": ""
+           }
+          ]
+         }
+        }
+       },
+       {
+        "type": "button",
+        "id": "send",
+        "label": "Send",
+        "size": 10
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ "store": {
+  "msgs": [
+   {
+    "id": "0",
+    "side": "them",
+    "who": "Grace",
+    "text": "Did the build go out?",
+    "at": "09:12"
+   },
+   {
+    "id": "1",
+    "side": "me",
+    "who": "You",
+    "text": "Yes, v2.14 is live in eu-west.",
+    "at": "09:13"
+   },
+   {
+    "id": "2",
+    "side": "them",
+    "who": "Grace",
+    "text": "Latency looks better already \ud83c\udf89",
+    "at": "09:13"
+   },
+   {
+    "id": "3",
+    "side": "me",
+    "who": "You",
+    "text": "p95 dropped from 140 to 96 ms.",
+    "at": "09:14"
+   },
+   {
+    "id": "4",
+    "side": "them",
+    "who": "Grace",
+    "text": "Ship the US region after lunch?",
+    "at": "09:15"
+   },
+   {
+    "id": "5",
+    "side": "me",
+    "who": "You",
+    "text": "Deal.",
+    "at": "09:15"
+   }
+  ],
+  "rooms": [
+   {
+    "id": "g",
+    "name": "Grace Hopper",
+    "when": "09:15",
+    "last": "Deal."
+   },
+   {
+    "id": "a",
+    "name": "Ada Lovelace",
+    "when": "Mon",
+    "last": "The table on page four\u2026"
+   },
+   {
+    "id": "t",
+    "name": "#launch",
+    "when": "Sun",
+    "last": "Alan: rollout plan attached"
+   }
+  ]
+ },
+ "focus": "compose"
+}

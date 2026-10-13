@@ -2,7 +2,7 @@
 //! Besides the frame it returns the hit regions (what is under each cell, for the mouse), and
 //! it places the UI's layers with caretline-layers over what it drew.
 
-use crate::model::{Float, Kind, LayerSpec, Look, Node, Seg, Size, Style as NodeStyle, ThemeSpec, Variant, fill, lookup, number, scalar, segments};
+use crate::model::{Float, Kind, LayerSpec, Look, Measure, Node, Seg, Size, Style as NodeStyle, ThemeSpec, Variant, fill, lookup, number, scalar, segments};
 use crate::state::{Slot, State, bound, field_view, items, selected, shown, shown_in, sized, split_bind, tab_of, value_of};
 use crate::gfx::{Pic, Placed, Rgb};
 use caretline_layers as cl;
@@ -16,15 +16,11 @@ use ratatui::widgets::canvas::{Canvas, Map, MapResolution, Points};
 use ratatui::widgets::{Axis, Block, BorderType, Chart, Dataset, Gauge, GraphType, LegendPosition, Paragraph, Sparkline, Wrap};
 use serde_json::{Value, json};
 
-/// What a cell belongs to: a node, and maybe one of its rows (or bars, or points) or tabs.
-#[derive(Clone, Debug, PartialEq)]
-pub struct Hit {
-    pub rect: Rect,
-    pub id: String,
-    pub row: Option<usize>,
-    pub tab: Option<usize>,
-    /// The text area of an editor or input: a click there places the caret.
-    pub text: bool,
+pub use crate::engine::Hit;
+
+/// A ratatui rectangle as the engine's.
+fn cells(r: Rect) -> crate::engine::Rect {
+    crate::engine::Rect::new(r.x, r.y, r.width, r.height)
 }
 
 /// The screen's colours: the UI's `theme`, over these defaults.
@@ -47,6 +43,7 @@ struct Cx<'a> {
     active: Option<&'a ThemeSpec>,
     th: Theme,
     hits: Vec<Hit>,
+    rects: Vec<(String, crate::engine::Rect)>,
     anchors: cl::AnchorMap,
     pics: Vec<Placed>,
     scaled: Vec<Scaled>,
@@ -73,6 +70,8 @@ pub struct Scaled {
 #[derive(Default)]
 pub struct Out {
     pub hits: Vec<Hit>,
+    /// Where each node with an id was laid out.
+    pub rects: Vec<(String, crate::engine::Rect)>,
     pub pics: Vec<Placed>,
     pub scaled: Vec<Scaled>,
     /// The cells each editor got: (id, width, height). The runtime tells an editor when its
@@ -126,7 +125,10 @@ impl Cx<'_> {
     }
 
     fn mark(&mut self, id: &str, row: Option<usize>, tab: Option<usize>, rect: Rect) {
-        self.hits.push(Hit { rect, id: id.to_string(), row, tab, text: false });
+        self.hits.push(Hit { rect: cells(rect), id: id.to_string(), row, tab, text: false });
+        if row.is_none() && tab.is_none() {
+            self.rects.push((id.to_string(), cells(rect)));
+        }
         let key = match row {
             Some(r) => cl::AnchorKey::host("row", &format!("{id}#{r}")),
             None if tab.is_some() => return,
@@ -319,7 +321,7 @@ fn whole_wide(buf: &mut Buffer) {
 
 pub fn draw(st: &State, f: &mut Frame) -> Out {
     let act = active(st);
-    let mut cx = Cx { st, active: act, th: theme(st, act), hits: Vec::new(), anchors: cl::AnchorMap::new(), pics: Vec::new(), scaled: Vec::new(), sizes: Vec::new(), wake: None, toasts_placed: false, laid_out: false, areas: Vec::new() };
+    let mut cx = Cx { st, active: act, th: theme(st, act), hits: Vec::new(), rects: Vec::new(), anchors: cl::AnchorMap::new(), pics: Vec::new(), scaled: Vec::new(), sizes: Vec::new(), wake: None, toasts_placed: false, laid_out: false, areas: Vec::new() };
     let mut base = Style::default();
     if let Some(bg) = cx.th.bg {
         base = base.bg(bg);
@@ -343,7 +345,7 @@ pub fn draw(st: &State, f: &mut Frame) -> Out {
     }
     if !bar {
         whole_wide(f.buffer_mut());
-        return Out { hits: cx.hits, pics: cx.pics, scaled: cx.scaled, sizes: cx.sizes, wake: cx.wake, areas: cx.areas };
+        return Out { hits: cx.hits, rects: cx.rects, pics: cx.pics, scaled: cx.scaled, sizes: cx.sizes, wake: cx.wake, areas: cx.areas };
     }
     let line = match st.status.as_ref().or(st.problems.first()) {
         Some(s) => Line::styled(s.clone(), cx.look("status.error", Style::default().fg(cx.th.neg))),
@@ -358,7 +360,7 @@ pub fn draw(st: &State, f: &mut Frame) -> Out {
     f.render_widget(Paragraph::new(line), left);
     f.render_widget(Paragraph::new(Line::styled(meter, Style::default().fg(Color::Yellow))), right);
     whole_wide(f.buffer_mut());
-    Out { hits: cx.hits, pics: cx.pics, scaled: cx.scaled, sizes: cx.sizes, wake: cx.wake, areas: cx.areas }
+    Out { hits: cx.hits, rects: cx.rects, pics: cx.pics, scaled: cx.scaled, sizes: cx.sizes, wake: cx.wake, areas: cx.areas }
 }
 
 /// The toasts, newest at the bottom, in the body's bottom-right corner, a row up from its edge (a
@@ -384,16 +386,11 @@ fn toasts(cx: &mut Cx, buf: &mut Buffer, body: Rect) {
     }
 }
 
-/// How long each spinner frame shows (ms).
-const SPIN_MS: u64 = 80;
-
 /// The spinner's glyph now, and a wake for the next one.
 fn spin(cx: &mut Cx) -> &'static str {
-    const FRAMES: [&str; 10] = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
-    let now = cx.st.now_ms;
-    let next = (now / SPIN_MS + 1) * SPIN_MS;
+    let (glyph, next) = crate::state::spinner(cx.st.now_ms);
     cx.wake = Some(cx.wake.map_or(next, |w| w.min(next)));
-    FRAMES[(now / SPIN_MS % FRAMES.len() as u64) as usize]
+    glyph
 }
 
 /// A toast's style: the theme's part for its tone (`toast.neg`), else `toast`, else the panel.
@@ -405,22 +402,20 @@ fn toast_look(cx: &Cx, tone: Option<&str>) -> Style {
     }
 }
 
-/// A floating node's place in its stack.
-fn float_rect(fl: &Float, area: Rect) -> Rect {
+/// A floating node's place in its stack, with the cell's size in pixels.
+fn float_rect(fl: &Float, area: Rect, (cw, ch): (f32, f32)) -> Rect {
     let m = fl.margin.unwrap_or(0);
-    let dim = |s: Option<&Size>, full: u16| -> u16 {
-        let n = match s {
-            None => full,
-            Some(Size::Cells(n)) => *n,
-            Some(Size::Spec(t)) => match t.trim().strip_suffix('%') {
-                Some(p) => p.trim().parse::<u32>().map_or(full, |p| (full as u32 * p / 100) as u16),
-                None => t.trim().parse().unwrap_or(full),
-            },
+    let dim = |s: Option<&Size>, full: u16, cell: f32| -> u16 {
+        let n = match s.map(Size::measure) {
+            Some(Measure::Cells(n)) => n,
+            Some(Measure::Px(p)) => in_cells(p, cell),
+            Some(Measure::Percent(p)) => (full as f32 * p / 100.0) as u16,
+            None | Some(Measure::Share(_)) => full,
         };
         n.min(full)
     };
-    let w = dim(fl.width.as_ref(), area.width.saturating_sub(2 * m));
-    let h = dim(fl.height.as_ref(), area.height.saturating_sub(2 * m));
+    let w = dim(fl.width.as_ref(), area.width.saturating_sub(2 * m), cw);
+    let h = dim(fl.height.as_ref(), area.height.saturating_sub(2 * m), if ch > 0.0 { ch } else { 16.0 });
     let at = fl.at.as_deref().unwrap_or("center");
     let x = if at.contains("left") {
         area.x + m
@@ -468,60 +463,23 @@ fn md_style(md: &Markdown, line: &str, col: usize, base: Style) -> Style {
     md_styles(md, line, base).get(col).copied().unwrap_or(base)
 }
 
-/// The look of each character of a Markdown line, in one pass over it (a long paragraph is
-/// one line, drawn a cell at a time). Later rules win: code, a list marker, a task, a quote or
-/// heading line, then links.
+/// The look of each character of a Markdown line, by its role (`model::md_roles`).
 fn md_styles(md: &Markdown, line: &str, base: Style) -> Vec<Style> {
-    let chars: Vec<char> = line.chars().collect();
-    let n = chars.len();
-    let mut out = vec![base; n];
-    // Inside a pair of backticks (the backticks too): an odd number before, or an opening one
-    // with another after it.
-    let mut ticks = 0;
-    let last_tick = chars.iter().rposition(|c| *c == '`');
-    for (col, c) in chars.iter().enumerate() {
-        let here = *c == '`';
-        if ticks % 2 == 1 || (here && last_tick.is_some_and(|l| l > col)) {
-            out[col] = md.code;
-        }
-        ticks += here as usize;
-    }
-    let t = line.trim_start();
-    let indent = line.len() - t.len();
-    let marker = if t.starts_with("- ") || t.starts_with("* ") || t.starts_with("+ ") {
-        Some(1)
-    } else {
-        let digits = t.chars().take_while(char::is_ascii_digit).count();
-        (digits > 0 && t[digits..].starts_with(". ")).then_some(digits + 1)
-    };
-    if let Some(m) = marker {
-        for s in out.iter_mut().skip(indent).take(m) {
-            *s = md.bullet;
-        }
-    }
-    // A task: its box, and the rest of a ticked one done.
-    if let Some((b, ticked)) = crate::model::task_box(line) {
-        for (col, s) in out.iter_mut().enumerate() {
-            if col + 1 >= b && col <= b + 1 {
-                *s = md.task;
-            } else if ticked && col > b + 1 {
-                *s = md.done;
-            }
-        }
-    }
-    let heading = t.starts_with('#') && !(md.links.iter().any(|k| k == "tag") && t.chars().nth(1).is_some_and(|c| c.is_alphanumeric()));
-    if heading || t.starts_with("> ") || t == ">" {
-        out.fill(if heading { md.heading } else { md.quote });
-    }
-    if !md.links.is_empty() {
-        let kinds: Vec<&str> = md.links.iter().map(String::as_str).collect();
-        for (a, b, ..) in crate::model::links_in(line, &kinds) {
-            for s in out.iter_mut().take(b).skip(a) {
-                *s = md.link;
-            }
-        }
-    }
-    out
+    use crate::model::Md;
+    let kinds: Vec<&str> = md.links.iter().map(String::as_str).collect();
+    crate::model::md_roles(line, &kinds)
+        .into_iter()
+        .map(|r| match r {
+            Md::Text => base,
+            Md::Heading => md.heading,
+            Md::Bullet => md.bullet,
+            Md::Quote => md.quote,
+            Md::Code => md.code,
+            Md::Task => md.task,
+            Md::Done => md.done,
+            Md::Link => md.link,
+        })
+        .collect()
 }
 
 /// An editor's cells, from caretline's own view of it. Until the runtime has told it its size
@@ -724,7 +682,8 @@ fn node(cx: &mut Cx, n: &Node, f: &mut Frame, area: Rect) {
             }
             let showing: Vec<&Node> = children.iter().filter(|c| shown_in(st, c, Some(here))).collect();
             let along = if matches!(n.kind, Kind::Col { .. }) { inner.height } else { inner.width };
-            let cs: Vec<Constraint> = showing.iter().map(|c| bounded(constraint(c.size.as_ref()), c.min, c.max, along)).collect();
+            let cell = if matches!(n.kind, Kind::Col { .. }) { if st.caps.cell_h > 0.0 { st.caps.cell_h } else { 16.0 } } else { st.caps.cell_w };
+            let cs: Vec<Constraint> = showing.iter().map(|c| bounded(constraint(c.size.as_ref(), cell), c.min, c.max, along)).collect();
             let areas = match n.kind {
                 Kind::Col { .. } => Layout::vertical(cs).spacing(gap.unwrap_or(0)).split(inner),
                 _ => Layout::horizontal(cs).spacing(gap.unwrap_or(0)).split(inner),
@@ -736,7 +695,7 @@ fn node(cx: &mut Cx, n: &Node, f: &mut Frame, area: Rect) {
         }
         Kind::Stack { children } => {
             for c in children.iter().filter(|c| shown(st, c)) {
-                let at = c.float.as_ref().map_or(inner, |fl| float_rect(fl, inner));
+                let at = c.float.as_ref().map_or(inner, |fl| float_rect(fl, inner, (st.caps.cell_w, st.caps.cell_h)));
                 if c.modal {
                     // What's behind a dialog dims, and a click there goes nowhere.
                     let buf = f.buffer_mut();
@@ -746,7 +705,7 @@ fn node(cx: &mut Cx, n: &Node, f: &mut Frame, area: Rect) {
                             cell.modifier.insert(Modifier::DIM);
                         }
                     }
-                    cx.hits.push(Hit { rect: inner, id: String::new(), row: None, tab: None, text: false });
+                    cx.hits.push(Hit { rect: cells(inner), id: String::new(), row: None, tab: None, text: false });
                 }
                 // A floating or modal layer covers what's under it, characters and all.
                 if c.float.is_some() || c.modal {
@@ -893,7 +852,7 @@ fn node(cx: &mut Cx, n: &Node, f: &mut Frame, area: Rect) {
             };
             // An input is one row, in the middle of what it's given.
             let area = if field.line && inner.height > 1 { Rect::new(inner.x, inner.y + (inner.height - 1) / 2, inner.width, 1) } else { inner };
-            cx.hits.push(Hit { rect: area, id: id.clone(), row: None, tab: None, text: true });
+            cx.hits.push(Hit { rect: cells(area), id: id.clone(), row: None, tab: None, text: true });
             editor(f.buffer_mut(), area, doc, view, &looks, field.placeholder, focused);
         }
         Kind::Rule { glyph } => {
@@ -991,7 +950,7 @@ fn node(cx: &mut Cx, n: &Node, f: &mut Frame, area: Rect) {
         }
         Kind::Table { columns, .. } => {
             let rows = items(st, n);
-            let widths: Vec<Constraint> = columns.iter().map(|c| constraint(c.size.as_ref())).collect();
+            let widths: Vec<Constraint> = columns.iter().map(|c| constraint(c.size.as_ref(), st.caps.cell_w)).collect();
             if inner.height == 0 {
                 return;
             }
@@ -1182,7 +1141,7 @@ fn node(cx: &mut Cx, n: &Node, f: &mut Frame, area: Rect) {
                 f.buffer_mut().set_style(r, ts);
                 draw_parts(f.buffer_mut(), Rect { x: r.x + 1, width: w - 1, ..r }, cx.parts(t, v, ts), 0);
                 if !id.is_empty() {
-                    cx.hits.push(Hit { rect: r, id: id.clone(), row: Some(1000 + k), tab: Some(k), text: false });
+                    cx.hits.push(Hit { rect: cells(r), id: id.clone(), row: Some(1000 + k), tab: Some(k), text: false });
                 }
                 if k == shown {
                     active = Some(r);
@@ -1510,21 +1469,19 @@ fn bounded(c: Constraint, min: Option<u16>, max: Option<u16>, along: u16) -> Con
     }
 }
 
-pub fn constraint(s: Option<&Size>) -> Constraint {
-    match s {
+pub fn constraint(s: Option<&Size>, cell: f32) -> Constraint {
+    match s.map(Size::measure) {
         None => Constraint::Fill(1),
-        Some(Size::Cells(n)) => Constraint::Length(*n),
-        Some(Size::Spec(s)) => {
-            let s = s.trim();
-            if let Some(p) = s.strip_suffix('%') {
-                p.parse().map(Constraint::Percentage).unwrap_or(Constraint::Fill(1))
-            } else if let Some(w) = s.strip_suffix('*') {
-                Constraint::Fill(if w.is_empty() { 1 } else { w.parse().unwrap_or(1) })
-            } else {
-                s.parse().map(Constraint::Length).unwrap_or(Constraint::Fill(1))
-            }
-        }
+        Some(Measure::Cells(n)) => Constraint::Length(n),
+        Some(Measure::Px(p)) => Constraint::Length(in_cells(p, cell)),
+        Some(Measure::Percent(p)) => Constraint::Percentage(p.round().clamp(0.0, 100.0) as u16),
+        Some(Measure::Share(w)) => Constraint::Fill(w),
     }
+}
+
+/// Pixels as whole cells of `cell` pixels (a cell of 8 × 16 where the terminal didn't say).
+fn in_cells(p: f32, cell: f32) -> u16 {
+    (p / if cell > 0.0 { cell } else { 8.0 }).round().clamp(0.0, u16::MAX as f32) as u16
 }
 
 // ---- big digits ---------------------------------------------------------------------------

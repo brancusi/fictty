@@ -4,7 +4,7 @@ use serde_json::json;
 use std::path::PathBuf;
 use fictty::{App, runtime};
 
-/// A terminal UI that is one serializable value: run a screen, then push whole UIs into it.
+/// A UI that is one serializable value: run a screen, then push whole UIs into it.
 #[derive(Parser)]
 #[command(name = "fictty")]
 struct Cli {
@@ -33,6 +33,9 @@ enum Cmd {
         /// Load themes from this JSON file (theme specs by name); the first is chosen.
         #[arg(long)]
         themes: Option<PathBuf>,
+        /// In a native window instead of this terminal (macOS; early: a subset of the components).
+        #[arg(long)]
+        window: bool,
     },
     /// Replace the running screen's binary with this one (or --binary), keeping its whole state.
     Upgrade {
@@ -100,8 +103,15 @@ enum Cmd {
         #[arg(long, conflicts_with = "state")]
         stats: bool,
     },
-    /// The running screen's current frame, as text.
-    Screen,
+    /// The running screen's current frame, as text (or, with --nodes, the shown nodes as an
+    /// outline: kind, id, focus, selection, rectangle and the text each shows).
+    Screen {
+        #[arg(long)]
+        nodes: bool,
+        /// The nodes as JSON.
+        #[arg(long, requires = "nodes")]
+        json: bool,
+    },
     /// Move, click or scroll the mouse on the running screen: `move|click|up|down X Y`.
     Mouse { kind: String, x: u16, y: u16 },
     /// Set a terminal up for fictty: `wezterm` installs a module that sends ⌘ keys (⌘Z, ⌘A, ⌘←)
@@ -150,7 +160,7 @@ fn main() -> Result<()> {
     let cli = Cli::parse();
     let socket = cli.socket.unwrap_or_else(runtime::default_socket);
     let reply = match cli.cmd {
-        Cmd::Run { file, watch, restore, store, themes } => {
+        Cmd::Run { file, watch, restore, store, themes, window } => {
             let mut app = match file {
                 Some(f) => App::file(f),
                 None => App::empty(),
@@ -161,6 +171,9 @@ fn main() -> Result<()> {
             }
             if let Some(p) = themes {
                 app = app.themes_file(&p)?;
+            }
+            if window {
+                return run_window(app);
             }
             return app.run();
         }
@@ -221,9 +234,19 @@ fn main() -> Result<()> {
             }
             last
         }
-        Cmd::Screen => {
+        Cmd::Screen { nodes: false, .. } => {
             let r = runtime::send(&socket, json!({"op": "screen"}))?;
             print!("{}", r["screen"].as_str().unwrap_or_default());
+            return Ok(());
+        }
+        Cmd::Screen { nodes: true, json } => {
+            let r = runtime::send(&socket, json!({"op": "readback"}))?;
+            if json {
+                println!("{}", serde_json::to_string_pretty(&r["nodes"])?);
+            } else {
+                let nodes: Vec<fictty::readback::Shown> = serde_json::from_value(r["nodes"].clone())?;
+                print!("{}", fictty::readback::outline(&nodes));
+            }
             return Ok(());
         }
         Cmd::Setup { terminal, print } => {
@@ -251,6 +274,16 @@ fn main() -> Result<()> {
         std::process::exit(1);
     }
     Ok(())
+}
+
+#[cfg(target_os = "macos")]
+fn run_window(app: App) -> Result<()> {
+    fictty::window::run(app)
+}
+
+#[cfg(not(target_os = "macos"))]
+fn run_window(_: App) -> Result<()> {
+    anyhow::bail!("the native window runs on macOS for now")
 }
 
 /// A store write: the JSON in `file` (`-` reads stdin) as the request's `field`.

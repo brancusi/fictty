@@ -25,6 +25,13 @@ writing as fast as before. The plan is [design/native.md](design/native.md); its
 section 0 below and come first. Terminal-only items in the sections after it (OSC 52, terminal
 recordings, cell-level polish) are superseded; the rest carry over.
 
+**13 October 2026: how screens will look.** A wringer of nine designed screens in six themes
+showed where fictty's line is (app screens, yes; no size-to-content, one text size, rows that are
+text, nothing wraps or scrolls but lists). [design/expressive.md](design/expressive.md) is the
+answer, decided with Aram: adopt what GPUI already has (its Taffy layout, text and paint), make
+themes whole styles resolved in the core, add a layout vocabulary, rows as nodes, and drag and
+motion as data. No more terminal work. **Where to start:** section 0, "Next".
+
 ## Done
 
 ### Extraction (2026-10-10)
@@ -148,12 +155,30 @@ run in process, at Headless speed.
 
 The phases of [design/native.md](design/native.md), where each is broken down.
 
-- [ ] Phase 0 · The seam (M): the core as its own crate, the engine on its own thread, readback,
-      the spike's window behind `fictty run --window`
+- [x] Phase 0 · The seam (M): the core as its own crate, the engine on its own thread, readback,
+      the spike's window behind `fictty run --window` (2026-10-11)
 - [ ] Phase 1 · Parity in the window (L): every component, theme and input; the tour and Thought
       Control run in it; the terminal code goes
+  - [x] The window reports its layout to the engine (rectangles, hits, editor and list sizes,
+        wake) and its size; editors draw caretline's frame, with Markdown styles; themes and
+        template markup; lists and tables scroll from the state; ⌘V and hover (2026-10-12)
+  - [x] The window under test: `App::in_window` (GPUI's test platform), every input through it,
+        the fuzz driver over editors, lists, tables and the tour through it; a test workflow
+        on every push (2026-10-12)
+  - [x] Step 1, layout: `px` sizes (`Size::measure`, in the core for both), `min`/`max`, `pad`,
+        `align`, floats, a modal's scrim; the no-overlap property (`fuzz::laid_out`) in the
+        window's fuzzing; ten grid tests moved into the window (2026-10-12)
+  - [x] The layout and style stack decided (2026-10-13): [design/expressive.md](design/expressive.md).
+        The terminal is dropped (no more terminal work), what GPUI has is adopted, themes become
+        whole styles; the wringer (nine screens, six themes) is in `examples/window/` as the test
+        of done
+  - [ ] **Next: step 2a**, style resolution in the core (native.md, "Next, step by step"). Then,
+        in order: text and themes as whole styles (2b–2f, ending in the styling study), the
+        layout vocabulary, lists and rows as nodes, the rest of editors, charts and icons, toasts
+        and layers, embedding and the examples, then the terminal goes. Each step moves its share
+        of the 32 grid tests left into the window
 - [ ] Phase 2 · The agent's portal (M): `watch` and `emit`, drop zones, tabs (`fictty open
-      --tab`), readback with rectangles, screenshots, the command policy
+      --tab`), screenshots, the command policy
 - [ ] Phase 3 · Media (M): images, video, pasted and dropped media, animation
 - [ ] Phase 4 · Typography (M–L): proportional text; caretline measuring through the renderer
 - [ ] Phase 5 · Ship (M): `fictty.app`, signed; `try.sh` opens a window; docs, site, a post;
