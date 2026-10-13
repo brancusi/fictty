@@ -248,7 +248,14 @@ dialog with floats, editors, lists and tables. The test window is a quarter cell
 (a half cell put far edges on a rounding tie). Ten grid tests moved to `tests/window.rs`, plus
 floats, `px`, `pad` and `align`. Not yet done: looking at the tour's chapters in a real window.
 
-Each step builds a slice of parity, moves the grid tests that slice owns onto `App::in_window`
+**The order changed on 13 October** ([expressive.md](expressive.md), decided with Aram): the
+terminal is dropped (no more terminal work; new fields are window-only), themes become whole
+styles with the theme kit pulled forward from phase 4, a layout vocabulary on GPUI's Taffy is a
+step of its own, and rows become nodes. [examples/window/](../../examples/window/README.md) (the
+wringer: nine screens, six themes, `open.sh`) is what each step is measured against. **The next
+step is 2, and it starts with 2a.**
+
+Each step builds a slice, moves the grid tests that slice owns onto `App::in_window`
 (readback, state and the finders, not characters), and ends with the tour's chapters that use it
 looked at in a real window. A step is done when its tests pass in the window, its grid twins are
 deleted, and the window fuzz runs stay clean.
@@ -263,17 +270,55 @@ deleted, and the window fuzz runs stay clean.
    `the_readback_has_each_nodes_rectangle_from_the_grid`,
    `headless_takes_the_mouse_and_resizes_like_a_terminal`,
    `keys_type_into_a_field_a_key_just_showed`.
-2. **Text and themes (M).** Our own ellipsis (measure, then cut with `…`, keeping the right side
-   after a tab), `keep`; `variant`, `tone`, `edge`, `backdrop` (cards: radius, gradient,
-   shadow); the status bar as the UI's (status, problems, hints, `status_bar: false`), with the
-   speed meter only when asked. Tests: `a_cut_line_ends_in_an_ellipsis_and_keeps_its_right_side`,
+2. **Text and themes as whole styles (M–L). Next; start with 2a.** Native.md's text-and-themes work
+   plus expressive.md's "Looks", "Type" and the theme kit, in this order:
+   - **2a. Style resolution in the core.** A pure function in `fictty-core` (a new `style.rs`):
+     for each shown node, its theme part plus the state suffixes that hold (`.hover`, `.focused`,
+     `.active`, `.selected`, `.disabled`, `.blur`, read from `State`, which already has hover),
+     then its variant, then its own `style`, with tokens and scale names filled in. The readback
+     carries it (`fictty screen --nodes --style`, and the JSON); unknown parts, tokens, scale
+     entries, roles, variants and `row_variant`s become `problems`. Tested in the core, no
+     window.
+   - **2b. Parts as whole styles.** A part stays a short ink (`"accent+b"`) or becomes an object:
+     `fg`, `bg` (a colour or `{"from", "to", "angle"}`), `type`, `pad`, `radius`,
+     `border` (`width`, `color`, `style`), `shadow`, `ring`, `shape`, `opacity`, `cursor`. The
+     theme gains scales (`space`, `radius`, `depth`, `type`; `motion` reserved for phase 3) and
+     `fonts` (names, or font files loaded with GPUI's `add_fonts`). Variants become whole styles
+     too (they style, never arrange).
+   - **2c. The window draws the resolved style.** `look.rs` becomes the mapping from it onto GPUI
+     styles, for panels, buttons, inputs, tabs, rows, toasts. The `edge` token (13 October,
+     window only: square corners unless `rounded`, `thick`/`double` heavier) folds into it.
+   - **2d. Type.** Type roles (`"type": "display"` on a node, `<display>…</>` in markup, `scale`
+     as a shorthand); `wrap` and `lines` on text; our own ellipsis (measure, then cut with `…`,
+     keeping the right side after a tab; GPUI's `text_ellipsis` breaks under taffy's measuring)
+     and `keep`; tabular numbers where a part asks.
+   - **2e. The rest of native step 2.** `tone`, `backdrop` (cards: radius, gradient, shadow); the
+     status bar as the UI's (status, problems, hints, `status_bar: false`), the speed meter only
+     when asked.
+   - **2f. The styling study.** Rewrite the wringer's six themes as whole styles and push them
+     (examples/window/README.md, "Pushing the styling"): which subtle things change a screen's
+     character most. Findings and before/after screenshots go in a short write-up beside
+     expressive.md.
+   Tests: `a_cut_line_ends_in_an_ellipsis_and_keeps_its_right_side`,
    `a_cut_meta_ends_in_an_ellipsis_too`, `keep_holds_room_for_the_text_before_the_meta`,
    `templates_fit_fields_escape_brackets_and_take_tabs_from_values`,
    `a_markup_tag_can_name_a_theme_part`, `tab_titles_are_templates_with_a_lead_and_a_trail`,
    `tabs_start_where_they_say_and_choosing_one_moves_the_focus_into_it`, and view.rs's
    `a_variant_and_pad_come_from_the_theme_and_the_node`.
-3. **Lists, trees, tables (M).** A tree's indent, fold glyphs and clicks on them; `mark`/`lead`;
-   row variants; skip rows; filters; heat colours; column widths and alignment; footers and
+   Done when the six themes are whole styles and three of them make `mail`, `settings` and
+   `landing` look like three different apps, in screenshots.
+3. **The layout vocabulary (M).** New (expressive.md, "Layout"): `size: "fit"`, `margin`,
+   four-sided `pad` and `min`/`max` in any unit, `self`, `aspect`; on containers `justify`,
+   `items`, `wrap`, `gap` as `[x, y]`; `grid` with `cols` and `span`; float `x`/`y` from data;
+   `$index` and `$count` in `each`; `scroll: true` with its offset in `State` (the wheel, page
+   keys, focus scrolled into view, the offset in the readback). Each maps onto GPUI's Taffy
+   style; a test per field in `tests/window.rs`. Done when `settings`, `landing` and `calendar`
+   are rebuilt in `screens.py` without their tricks.
+4. **Lists, trees, tables, and rows as nodes (L).** Row templates as nodes (expressive.md,
+   "Content"): a list, table or tree's `row` is a node template filled from `$item`, virtualised,
+   its height the template's `size` or `fit`; clicks on a row's own buttons reach them. Done when
+   `chat` and `kanban` are rebuilt with real bubbles and cards. Then the rest: a tree's indent,
+   fold glyphs and clicks on them; `mark`/`lead`; row variants; skip rows; filters; heat colours; column widths and alignment; footers and
    totals; scrollbars. Tests: `a_tree_shows_nested_rows_and_folds_them`,
    `a_tree_row_is_addressable_in_the_store`, `folds_survive_an_update_from_outside`,
    `a_filter_narrows_a_list_and_store_actions_still_find_the_row`,
@@ -282,28 +327,28 @@ deleted, and the window fuzz runs stay clean.
    `a_tree_takes_a_mark_and_a_leaf_glyph_like_a_list`,
    `the_wheel_scrolls_a_list_and_leaves_the_selection`, and view.rs's
    `a_table_totals_its_columns`.
-4. **Editors, the rest (S).** Prove in the window what's drawn: links (style and click), task
+5. **Editors, the rest (S).** Prove in the window what's drawn: links (style and click), task
    boxes (click toggles), read-only, `accept: number`; then IME as `Msg::Compose` in `State`,
    shown by the view. Tests: `a_readonly_editor_scrolls_but_never_changes`,
    `a_key_at_the_end_of_a_long_paragraph_stays_quick`, and the cell-addressed ones that only
    worked through the grid's sizes: `an_editor_ticks_markdown_tasks`,
    `links_in_an_editor_act_on_a_click_and_a_key`, `a_wiki_links_brackets_only_place_the_caret`,
    editing.rs's `the_mouse_places_extends_and_selects_words_and_lines`.
-5. **Charts and big type (M).** `sparkline`, `chart`, `bars`, `gauge`, `plot` (and its map and
-   dots), `big`, drawn with `canvas` from the same data; hits on bars and points. Tests: view.rs's
+6. **Charts, big type and icons (M).** `icon` (a bundled open set, Lucide, ISC) joins.
+   `sparkline`, `chart`, `bars`, `gauge`, `plot` (and its map and dots), `big`, drawn with `canvas` from the same data; hits on bars and points. Tests: view.rs's
    `big_digits_are_three_rows` and `bars_across_label_bar_and_value`, rewritten on readback,
    plus a no-panic fuzz over the speed and gallery chapters.
-6. **Toasts, layers and the clock (M).** A `toasts` node's placement and covering; layers placed
-   with `anchored`: callouts, arrows, rings, spotlights as a scrim with soft holes, pulses on the
-   logical clock; the hover tip. Tests: `toasts_go_when_their_time_is_up`,
+7. **Toasts, layers and the clock (M).** `enter`/`leave` motion for floats, layers and toasts
+   joins. A `toasts` node's placement and covering; layers placed with `anchored`: callouts,
+   arrows, rings, spotlights as a scrim with soft holes, pulses on the logical clock; the hover tip. Tests: `toasts_go_when_their_time_is_up`,
    `a_spinner_turns_with_the_clock`, `a_layer_shows_while_its_when_holds`,
    `a_modal_layer_covers_what_is_under_it`, `a_lasting_write_goes_on_the_screens_clock`,
    `toasts_go_where_a_toasts_node_is`, `a_toasts_node_covers_what_is_under_it_while_one_shows`.
-7. **Embedding and the examples (M).** host.rs's seven grid tests on `in_window` (the shape
-   Thought Control's tests have); every example and tour chapter looked at in a real window,
-   with screenshots; `examples/stress/play.sh` against a window on screen for frame times beside
+8. **Embedding and the examples (M).** The wringer's nine screens in screenshots beside the
+   tour. host.rs's seven grid tests on `in_window` (the shape Thought Control's tests have);
+   every example and tour chapter looked at in a real window, with screenshots; `examples/stress/play.sh` against a window on screen for frame times beside
    the spike's; Thought Control's screens in the window, with Aram.
-8. **The terminal goes (S–M).** ratatui, crossterm, vt100, `sim`, `Grid`, `gfx.rs` sending,
+9. **The terminal goes (S–M).** ratatui, crossterm, vt100, `sim`, `Grid`, `gfx.rs` sending,
    `setup`, `render --ansi`; `App::headless` becomes the window under test (or frameless
    readback where GPUI can't build); the fuzz driver drops "the terminal shows the frame".
 

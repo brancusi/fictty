@@ -1,0 +1,278 @@
+{
+ "root": {
+  "type": "stack",
+  "children": [
+   {
+    "type": "row",
+    "gap": 3,
+    "children": [
+     {
+      "type": "list",
+      "id": "nav",
+      "size": 22,
+      "title": "SETTINGS",
+      "items": [
+       "General",
+       "Appearance",
+       "Notifications",
+       "Billing",
+       "Danger zone"
+      ]
+     },
+     {
+      "type": "col",
+      "gap": 1,
+      "children": [
+       {
+        "type": "text",
+        "text": "<b>Profile</>\n<dim>How you appear to your team.</>",
+        "size": 2
+       },
+       {
+        "type": "row",
+        "size": 1,
+        "gap": 2,
+        "children": [
+         {
+          "type": "text",
+          "text": "<dim>Display name</>",
+          "size": 18,
+          "align": "right"
+         },
+         {
+          "type": "input",
+          "id": "name",
+          "text": "Ada Lovelace"
+         }
+        ]
+       },
+       {
+        "type": "row",
+        "size": 1,
+        "gap": 2,
+        "children": [
+         {
+          "type": "text",
+          "text": "<dim>Email</>",
+          "size": 18,
+          "align": "right"
+         },
+         {
+          "type": "input",
+          "id": "email",
+          "text": "ada@example.com"
+         }
+        ]
+       },
+       {
+        "type": "row",
+        "size": 1,
+        "gap": 2,
+        "children": [
+         {
+          "type": "text",
+          "text": "<dim>Seats</>",
+          "size": 18,
+          "align": "right"
+         },
+         {
+          "type": "input",
+          "id": "seats",
+          "text": "12",
+          "accept": "number",
+          "size": 10
+         }
+        ]
+       },
+       {
+        "type": "text",
+        "text": "<b>Preferences</>",
+        "size": 1
+       },
+       {
+        "type": "list",
+        "id": "prefs",
+        "size": 4,
+        "bind": "prefs",
+        "item": "{on|true=<accent>[\u25a0]</>;*=<dim>[ ]</>}  {label}\t<dim>{hint}</>",
+        "keys": {
+         "space": {
+          "toggle": "on"
+         },
+         "enter": {
+          "toggle": "on"
+         }
+        },
+        "click": {
+         "toggle": "on"
+        }
+       },
+       {
+        "type": "text",
+        "text": "<b>Density</>   <dim>(a radio group: tabs as a segmented control)</>",
+        "size": 1
+       },
+       {
+        "type": "tabs",
+        "id": "density",
+        "size": 1,
+        "tabs": [
+         "Compact",
+         "Comfortable",
+         "Spacious"
+        ],
+        "children": [
+         {
+          "type": "text",
+          "text": ""
+         },
+         {
+          "type": "text",
+          "text": ""
+         },
+         {
+          "type": "text",
+          "text": ""
+         }
+        ]
+       },
+       {
+        "type": "text",
+        "text": "<b>Volume</>  {vol}%   <dim>(a slider: \u2190/\u2192 can't add 5 without the host)</>",
+        "bind": "ui",
+        "size": 1
+       },
+       {
+        "type": "gauge",
+        "id": "vol",
+        "size": 1,
+        "bind": "ui",
+        "value": "{vol}",
+        "max": 100
+       },
+       {
+        "type": "text",
+        "text": "<b>Region</>",
+        "size": 1
+       },
+       {
+        "type": "button",
+        "id": "region",
+        "label": "{region}  \u25be",
+        "bind": "ui",
+        "size": 1,
+        "click": {
+         "put": "picking",
+         "value": true
+        }
+       },
+       {
+        "type": "text",
+        "text": ""
+       },
+       {
+        "type": "row",
+        "size": 1,
+        "gap": 2,
+        "children": [
+         {
+          "type": "text",
+          "text": ""
+         },
+         {
+          "type": "button",
+          "id": "cancel",
+          "label": "Cancel",
+          "size": 12
+         },
+         {
+          "type": "button",
+          "id": "save",
+          "label": "Save changes",
+          "size": 18,
+          "click": {
+           "toast": "Saved",
+           "tone": "pos"
+          }
+         }
+        ]
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "type": "list",
+    "id": "regions",
+    "modal": true,
+    "when": "picking",
+    "border": true,
+    "items": [
+     "Europe (Frankfurt)",
+     "US East (Virginia)",
+     "Asia (Singapore)"
+    ],
+    "float": {
+     "width": 30,
+     "height": 5,
+     "at": "center"
+    },
+    "keys": {
+     "enter": {
+      "do": [
+       {
+        "put": "ui.region",
+        "value": "{.}"
+       },
+       {
+        "put": "picking",
+        "value": false
+       },
+       {
+        "focus": "region"
+       }
+      ]
+     },
+     "esc": {
+      "put": "picking",
+      "value": false
+     }
+    }
+   }
+  ]
+ },
+ "store": {
+  "ui": {
+   "vol": 70,
+   "region": "Europe (Frankfurt)"
+  },
+  "picking": false,
+  "prefs": [
+   {
+    "id": "a",
+    "label": "Email me a weekly digest",
+    "hint": "Mondays",
+    "on": true
+   },
+   {
+    "id": "b",
+    "label": "Desktop notifications",
+    "hint": "when mentioned",
+    "on": false
+   },
+   {
+    "id": "c",
+    "label": "Show avatars",
+    "hint": "",
+    "on": true
+   },
+   {
+    "id": "d",
+    "label": "Reduce motion",
+    "hint": "accessibility",
+    "on": false
+   }
+  ]
+ },
+ "focus": "name"
+}

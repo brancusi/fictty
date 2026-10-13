@@ -1,0 +1,201 @@
+{
+ "root": {
+  "type": "col",
+  "gap": 1,
+  "children": [
+   {
+    "type": "text",
+    "text": "<b>October 2026</>  <dim>Week 42</>\t<dim>\u2039 Today \u203a   Day  Week  Month</>",
+    "size": 1
+   },
+   {
+    "type": "row",
+    "children": [
+     {
+      "type": "text",
+      "text": "\n<dim>09:00</>\n\n<dim>10:00</>\n\n<dim>11:00</>\n\n<dim>12:00</>\n\n<dim>13:00</>\n\n<dim>14:00</>\n\n<dim>15:00</>\n\n<dim>16:00</>\n\n<dim>17:00</>",
+      "size": 7
+     },
+     {
+      "type": "col",
+      "title": "MON 12",
+      "border": true,
+      "children": [
+       {
+        "type": "text",
+        "text": "",
+        "size": 2
+       },
+       {
+        "type": "text",
+        "text": "<b>Standup</>\n<dim>10:00</>",
+        "size": 4,
+        "variant": "card",
+        "border": true,
+        "pad": [
+         1,
+         0
+        ]
+       },
+       {
+        "type": "text",
+        "text": "",
+        "size": 2
+       },
+       {
+        "type": "text",
+        "text": "<b>Design review</>\n<dim>13:00</>",
+        "size": 6,
+        "variant": "card",
+        "border": true,
+        "pad": [
+         1,
+         0
+        ]
+       },
+       {
+        "type": "text",
+        "text": ""
+       }
+      ]
+     },
+     {
+      "type": "col",
+      "title": "TUE 13",
+      "border": true,
+      "children": [
+       {
+        "type": "text",
+        "text": "<b>1:1 Grace</>\n<dim>09:00</>",
+        "size": 2,
+        "variant": "card",
+        "border": true,
+        "pad": [
+         1,
+         0
+        ]
+       },
+       {
+        "type": "text",
+        "text": "",
+        "size": 8
+       },
+       {
+        "type": "text",
+        "text": "<b>Lunch</>\n<dim>14:00</>",
+        "size": 2,
+        "variant": "card",
+        "border": true,
+        "pad": [
+         1,
+         0
+        ]
+       },
+       {
+        "type": "text",
+        "text": ""
+       }
+      ]
+     },
+     {
+      "type": "col",
+      "title": "WED 14",
+      "border": true,
+      "children": [
+       {
+        "type": "text",
+        "text": "",
+        "size": 4
+       },
+       {
+        "type": "text",
+        "text": "<b>Focus: themes</>\n<dim>11:00</>",
+        "size": 8,
+        "variant": "card",
+        "border": true,
+        "pad": [
+         1,
+         0
+        ]
+       },
+       {
+        "type": "text",
+        "text": ""
+       }
+      ]
+     },
+     {
+      "type": "col",
+      "title": "THU 15",
+      "border": true,
+      "children": [
+       {
+        "type": "text",
+        "text": "",
+        "size": 2
+       },
+       {
+        "type": "text",
+        "text": "<b>Hiring</>\n<dim>10:00</>",
+        "size": 2,
+        "variant": "card",
+        "border": true,
+        "pad": [
+         1,
+         0
+        ]
+       },
+       {
+        "type": "text",
+        "text": "",
+        "size": 8
+       },
+       {
+        "type": "text",
+        "text": "<b>Demo prep</>\n<dim>15:00</>",
+        "size": 4,
+        "variant": "card",
+        "border": true,
+        "pad": [
+         1,
+         0
+        ]
+       },
+       {
+        "type": "text",
+        "text": ""
+       }
+      ]
+     },
+     {
+      "type": "col",
+      "title": "FRI 16",
+      "border": true,
+      "children": [
+       {
+        "type": "text",
+        "text": "",
+        "size": 6
+       },
+       {
+        "type": "text",
+        "text": "<b>Ship v0.3</>\n<dim>12:00</>",
+        "size": 4,
+        "variant": "card",
+        "border": true,
+        "pad": [
+         1,
+         0
+        ]
+       },
+       {
+        "type": "text",
+        "text": ""
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ }
+}

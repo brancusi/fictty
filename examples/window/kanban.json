@@ -1,0 +1,109 @@
+{
+ "root": {
+  "type": "col",
+  "gap": 1,
+  "children": [
+   {
+    "type": "text",
+    "text": "<b>Phase 1 \u00b7 the window</>   <dim>12 cards \u00b7 3 people</>\t<dim>+ New card   \u2315 Filter</>",
+    "size": 1
+   },
+   {
+    "type": "each",
+    "id": "board",
+    "bind": "cols",
+    "row": true,
+    "gap": 2,
+    "template": {
+     "type": "list",
+     "id": "col-{$item.id}",
+     "title": "{$item.title} \u00b7 {$item.n}",
+     "bind": "cols",
+     "lines": 3,
+     "item": "<b>{t}</>\n<violet>#{tag}</>  <dim>{size}</>\n",
+     "empty": "drop cards here"
+    }
+   }
+  ]
+ },
+ "store": {
+  "cols": [
+   {
+    "id": "todo",
+    "title": "TO DO",
+    "n": 3,
+    "cards": [
+     {
+      "id": "todo0",
+      "t": "Ellipsis for cut lines",
+      "tag": "window",
+      "size": "S"
+     },
+     {
+      "id": "todo1",
+      "t": "Cards: radius, gradient",
+      "tag": "themes",
+      "size": "M"
+     },
+     {
+      "id": "todo2",
+      "t": "IME composition",
+      "tag": "input",
+      "size": "S"
+     }
+    ]
+   },
+   {
+    "id": "doing",
+    "title": "IN PROGRESS",
+    "n": 2,
+    "cards": [
+     {
+      "id": "doing0",
+      "t": "Parts as styles",
+      "tag": "themes",
+      "size": "L"
+     },
+     {
+      "id": "doing1",
+      "t": "Charts on canvas",
+      "tag": "charts",
+      "size": "M"
+     }
+    ]
+   },
+   {
+    "id": "review",
+    "title": "REVIEW",
+    "n": 1,
+    "cards": [
+     {
+      "id": "review0",
+      "t": "Layout parity",
+      "tag": "window",
+      "size": "M"
+     }
+    ]
+   },
+   {
+    "id": "done",
+    "title": "DONE",
+    "n": 2,
+    "cards": [
+     {
+      "id": "done0",
+      "t": "Window under test",
+      "tag": "tests",
+      "size": "M"
+     },
+     {
+      "id": "done1",
+      "t": "Fuzz through the window",
+      "tag": "tests",
+      "size": "S"
+     }
+    ]
+   }
+  ]
+ }
+}

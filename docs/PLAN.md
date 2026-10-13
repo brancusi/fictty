@@ -25,6 +25,13 @@ writing as fast as before. The plan is [design/native.md](design/native.md); its
 section 0 below and come first. Terminal-only items in the sections after it (OSC 52, terminal
 recordings, cell-level polish) are superseded; the rest carry over.
 
+**13 October 2026: how screens will look.** A wringer of nine designed screens in six themes
+showed where fictty's line is (app screens, yes; no size-to-content, one text size, rows that are
+text, nothing wraps or scrolls but lists). [design/expressive.md](design/expressive.md) is the
+answer, decided with Aram: adopt what GPUI already has (its Taffy layout, text and paint), make
+themes whole styles resolved in the core, add a layout vocabulary, rows as nodes, and drag and
+motion as data. No more terminal work. **Where to start:** section 0, "Next".
+
 ## Done
 
 ### Extraction (2026-10-10)
@@ -161,9 +168,15 @@ The phases of [design/native.md](design/native.md), where each is broken down.
   - [x] Step 1, layout: `px` sizes (`Size::measure`, in the core for both), `min`/`max`, `pad`,
         `align`, floats, a modal's scrim; the no-overlap property (`fuzz::laid_out`) in the
         window's fuzzing; ten grid tests moved into the window (2026-10-12)
-  - [ ] Next, in order (native.md, "Next, step by step"): text and themes, lists and trees, the
-        rest of editors, charts, toasts and layers, embedding and the examples, then the terminal
-        goes. Each step moves its share of the 32 grid tests left into the window
+  - [x] The layout and style stack decided (2026-10-13): [design/expressive.md](design/expressive.md).
+        The terminal is dropped (no more terminal work), what GPUI has is adopted, themes become
+        whole styles; the wringer (nine screens, six themes) is in `examples/window/` as the test
+        of done
+  - [ ] **Next: step 2a**, style resolution in the core (native.md, "Next, step by step"). Then,
+        in order: text and themes as whole styles (2b–2f, ending in the styling study), the
+        layout vocabulary, lists and rows as nodes, the rest of editors, charts and icons, toasts
+        and layers, embedding and the examples, then the terminal goes. Each step moves its share
+        of the 32 grid tests left into the window
 - [ ] Phase 2 · The agent's portal (M): `watch` and `emit`, drop zones, tabs (`fictty open
       --tab`), screenshots, the command policy
 - [ ] Phase 3 · Media (M): images, video, pasted and dropped media, animation

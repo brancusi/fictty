@@ -4,6 +4,12 @@ Guidance for agents (and people) working on fictty. Read [README.md](README.md) 
 [docs/PLAN.md](docs/PLAN.md) for what's next, and
 [docs/design/architecture.md](docs/design/architecture.md) for the rules behind the code.
 
+**Where to start (since 13 October 2026):** fictty is becoming a native window and the terminal is
+dropped: don't extend the terminal's grid view (`view.rs`), `sim` or anything terminal-only. The
+work list is "Next, step by step" in [docs/design/native.md](docs/design/native.md) (the step
+marked Next), shaped by [docs/design/expressive.md](docs/design/expressive.md) (the layout and
+style stack) and measured against the wringer in [examples/window/](examples/window/README.md).
+
 ## How we write code here
 
 These come first; every review checks them.
@@ -67,7 +73,8 @@ embedding apps depend on `fictty` alone.
   over editors and every chapter of the tour, in the terminal's grid and in the window;
   `FUZZ_RUNS=2000` in a release build to go deeper), `sim.rs` (the binary in a pty)
 - `examples/`: UIs and their feeds. `showcase/` is the demo the one-liners run (the tour's chapters
-  are written by `tour.py`; `autopilot.sh` is its agent); `stress/` and
+  are written by `tour.py`; `autopilot.sh` is its agent); `window/` is the wringer (nine screens
+  and six themes for the window, `open.sh`, the test of done for expressive.md); `stress/` and
   `finance/` are standalone; `thc/` and `pixels/` need Thought Control installed (they move to
   that repo, see the plan)
 - `docs/`: the guide, the plan, design proposals, the identity explorations, the blog
