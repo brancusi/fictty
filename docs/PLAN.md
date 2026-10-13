@@ -194,8 +194,7 @@ The phases of [design/native.md](design/native.md), where each is broken down.
         `"status_bar": "speed"` for the meter); the demo's typo beat (2026-10-13)
   - [x] Step 2f, the styling study ([design/styling-study.md](design/styling-study.md)): the six
         themes as whole styles (`examples/window/themes.py`), one vocabulary of roles, scales and
-        variants, the screens and the demo naming roles (2026-10-13). Its screenshots are still to
-        add
+        variants, the screens and the demo naming roles, before and after screenshots (2026-10-13)
   - [x] Daybook (`examples/journal/`), a journal written as data after Thought Control's, its
         flows tested in the window (`tests/journal.rs`) and fuzzed. It found and fixed: ⌃/⌥/⌘
         keys an editor doesn't use reach the UI's keys; action templates read sources;
@@ -203,10 +202,10 @@ The phases of [design/native.md](design/native.md), where each is broken down.
         click on a task's box keeps the caret; `required` inputs (2026-10-13). Still open, in its
         README: a task action to bind (⌃T is wired in), proportional editors (phase 4), a map's
         catch-all reading its value
-  - [ ] **Next: step 3**, the layout vocabulary (native.md, "Next, step by step"). Then: the
-        layout vocabulary, lists and rows as nodes, the rest of editors, charts and icons, toasts
-        and layers, embedding and the examples, then the terminal goes. Each step moves its share
-        of the 32 grid tests left into the window
+  - [ ] **Next: step 3**, the layout vocabulary, planned in
+        [design/layout-step.md](design/layout-step.md). Then: lists and rows as nodes, the rest of
+        editors, charts and icons, toasts and layers, embedding and the examples, then the terminal
+        goes. Each step moves its share of the 32 grid tests left into the window
 - [ ] Phase 2 · The agent's portal (M): `watch` and `emit`, drop zones, tabs (`fictty open
       --tab`), screenshots, the command policy
 - [ ] Phase 3 · Media (M): images, video, pasted and dropped media, animation

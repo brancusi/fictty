@@ -254,7 +254,7 @@ styles with the theme kit pulled forward from phase 4, a layout vocabulary on GP
 step of its own, and rows become nodes. [examples/window/](../../examples/window/README.md) (the
 wringer: nine screens, six themes, `open.sh`) is what each step is measured against, with the
 public demo ([demo.md](demo.md), `examples/demo/`): each step lands with the demo showing it. **The next
-step is 2, and it starts with 2a.**
+step is 3**, planned in [layout-step.md](layout-step.md).
 
 Step 2a landed on 13 October: `crates/fictty-core/src/style.rs` resolves each shown node's
 style: its part (its `type`; containers have none, which also keeps a layout `row` apart from a
@@ -359,6 +359,15 @@ node's `align`, and a bordered button's face fills its row. The screens and the 
 digits). Type moved a screen's character most, then edges and depth, then how the selection and
 focus look; paper, brutal and glass make the landing and mail three different apps.
 
+Step 2 merged on 13 October with the study's screenshots, the demo's fixes and Daybook
+(`examples/journal/`, a journal written as data, used to find what daily use needs: ⌃/⌥/⌘ keys
+an editor doesn't use reach the UI's keys, action templates read sources, `toggle` of a store
+entry, `required` inputs, a box click that keeps the caret). **Step 3 is next:**
+[layout-step.md](layout-step.md) says where it starts, what to settle first (one meaning for a
+single `pad`, one length type, where a scroll offset lives), the order (3a units and the box,
+3b fit and alignment, 3c wrap and grid, 3d scroll, 3e data placement, 3f rebuilding without
+tricks) and when it's done.
+
 Each step builds a slice, moves the grid tests that slice owns onto `App::in_window`
 (readback, state and the finders, not characters), and ends with the tour's chapters that use it
 looked at in a real window. A step is done when its tests pass in the window, its grid twins are
@@ -374,7 +383,7 @@ deleted, and the window fuzz runs stay clean.
    `the_readback_has_each_nodes_rectangle_from_the_grid`,
    `headless_takes_the_mouse_and_resizes_like_a_terminal`,
    `keys_type_into_a_field_a_key_just_showed`.
-2. **Text and themes as whole styles (M–L). Done but for the study's screenshots.** Native.md's text-and-themes work
+2. **Text and themes as whole styles (M–L). Done.** Native.md's text-and-themes work
    plus expressive.md's "Looks", "Type" and the theme kit, in this order:
    - **2a. Style resolution in the core.** A pure function in `fictty-core` (a new `style.rs`):
      for each shown node, its theme part plus the state suffixes that hold (`.hover`, `.focused`,
@@ -411,13 +420,13 @@ deleted, and the window fuzz runs stay clean.
    `a_variant_and_pad_come_from_the_theme_and_the_node`.
    Done when the six themes are whole styles and three of them make `mail`, `settings` and
    `landing` look like three different apps, in screenshots.
-3. **The layout vocabulary (M).** New (expressive.md, "Layout"): `size: "fit"`, `margin`,
-   four-sided `pad` and `min`/`max` in any unit, `self`, `aspect`; on containers `justify`,
-   `items`, `wrap`, `gap` as `[x, y]`; `grid` with `cols` and `span`; float `x`/`y` from data;
-   `$index` and `$count` in `each`; `scroll: true` with its offset in `State` (the wheel, page
-   keys, focus scrolled into view, the offset in the readback). Each maps onto GPUI's Taffy
-   style; a test per field in `tests/window.rs`. Done when `settings`, `landing` and `calendar`
-   are rebuilt in `screens.py` without their tricks.
+3. **The layout vocabulary (M). Next; the plan is [layout-step.md](layout-step.md).** New
+   (expressive.md, "Layout"): `size: "fit"`, `margin`, four-sided `pad` and `min`/`max` in any unit,
+   `self`, `aspect`; on containers `justify`, `items`, `wrap`, `gap` as `[x, y]`; `grid` with `cols`
+   and `span`; float `x`/`y` from data; `$index` and `$count` in `each`; `scroll: true` with its
+   offset in `State` (the wheel, page keys, focus scrolled into view, the offset in the readback).
+   Each maps onto GPUI's Taffy style; a test per field in `tests/window.rs`. Done when `settings`,
+   `landing` and `calendar` are rebuilt in `screens.py` without their tricks.
 4. **Lists, trees, tables, and rows as nodes (L).** Row templates as nodes (expressive.md,
    "Content"): a list, table or tree's `row` is a node template filled from `$item`, virtualised,
    its height the template's `size` or `fit`; clicks on a row's own buttons reach them. Done when

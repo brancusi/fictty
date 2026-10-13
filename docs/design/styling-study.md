@@ -51,6 +51,17 @@ The bar was three themes that make `mail`, `settings` and `landing` look like th
 apps: **paper** (editorial), **brutal** (poster) and **glass** (a SaaS console) clear it on the
 landing page and mail; on settings the difference is real but quieter, for the reason in 3.
 
+## Screenshots
+
+Landing and mail in paper, brutal and glass, the three themes that clear the bar:
+
+![Landing and mail in paper, brutal and glass](styling-study/three-apps.jpg)
+
+Each screen before the study (the old themes, colour only, and the landing hero in block
+digits) and after, in all six themes: [landing](styling-study/landing-before-after.jpg),
+[mail](styling-study/mail-before-after.jpg), [settings](styling-study/settings-before-after.jpg).
+Taken in the window on 13 October 2026.
+
 ## What the window couldn't do yet
 
 - **Letter spacing.** `tracking` resolves and reads back, but GPUI 0.2.2 has no letter spacing,

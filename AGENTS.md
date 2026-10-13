@@ -6,9 +6,10 @@ Guidance for agents (and people) working on fictty. Read [README.md](README.md) 
 
 **Where to start (since 13 October 2026):** fictty is becoming a native window and the terminal is
 dropped: don't extend the terminal's grid view (`view.rs`), `sim` or anything terminal-only. The
-work list is "Next, step by step" in [docs/design/native.md](docs/design/native.md) (the step
-marked Next), shaped by [docs/design/expressive.md](docs/design/expressive.md) (the layout and
-style stack) and measured against the wringer in [examples/window/](examples/window/README.md).
+work list is "Next, step by step" in [docs/design/native.md](docs/design/native.md) (the step marked
+Next; step 3's plan is [docs/design/layout-step.md](docs/design/layout-step.md)), shaped by
+[docs/design/expressive.md](docs/design/expressive.md) (the layout and style stack) and measured
+against the wringer in [examples/window/](examples/window/README.md).
 
 ## How we write code here
 
