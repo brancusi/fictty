@@ -104,7 +104,7 @@ impl<'a> Look<'a> {
     /// `fallback` when the theme doesn't say.
     pub fn part(&self, part: &str, fallback: Ink) -> Ink {
         match self.th.active.and_then(|t| t.parts.get(part)) {
-            Some(spec) => self.spec(spec, Ink::default()),
+            Some(spec) => self.spec(&spec.spec(), Ink::default()),
             None => fallback,
         }
     }
@@ -114,7 +114,7 @@ impl<'a> Look<'a> {
         let Some(s) = s else { return Ink::default() };
         Ink {
             fg: s.fg.as_deref().and_then(|c| self.color(c)),
-            bg: s.bg.as_deref().and_then(|c| self.color(c)),
+            bg: s.bg.as_ref().and_then(|c| self.color(c.colour())),
             bold: s.bold,
             dim: s.dim,
             italic: s.italic,

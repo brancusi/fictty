@@ -275,6 +275,22 @@ window tells the engine only a row's hover, so `.hover` holds for a button only 
 and `tabs.active` (the shown tab) reads as `tabs` in the `active` state, which 2b should settle
 (a `tab` part with `.selected`).
 
+Step 2b landed on 13 October: a part is a short ink or a whole style (`model::Part`), and a
+node's and a variant's `style` is the same whole style (`model::Style`: `fg`, `bg` as a colour or
+a gradient, the ink modifiers, `type`, `pad`, `radius`, `border`, `shadow`, `ring`, `shape`,
+`opacity`, `cursor`). Each layer lays over the last (`Style::over`). The theme has scales
+(`space`, `radius`, `depth`, `type`), `fonts`, and `motion` (read and kept for phase 3). The
+resolved style fills every name in: pad as cells or pixels, radius in pixels, shadows and ring
+with colours, the type role with its font. A part's border draws even where the node has none
+of its own (a button's). Problems name unknown scale entries, roles, shapes, cursors, border
+styles, opacities out of range and fields no style has (kept, not dropped, so a typo is never
+silent); a malformed part, length or background fails to load with what was expected. Variants
+are whole styles through their `style` (their `edge`, `border`, `backdrop` and `title` stay as
+they were). A style's single `pad` length pads every side, where a node's `pad: 1` pads only the
+sides: the layout step settles node pads with four-sided `pad`. Fonts are names in the core;
+the window loads font files in 2d. Not done yet: the window draws only colours from all this
+(2c).
+
 Each step builds a slice, moves the grid tests that slice owns onto `App::in_window`
 (readback, state and the finders, not characters), and ends with the tour's chapters that use it
 looked at in a real window. A step is done when its tests pass in the window, its grid twins are
@@ -290,7 +306,7 @@ deleted, and the window fuzz runs stay clean.
    `the_readback_has_each_nodes_rectangle_from_the_grid`,
    `headless_takes_the_mouse_and_resizes_like_a_terminal`,
    `keys_type_into_a_field_a_key_just_showed`.
-2. **Text and themes as whole styles (M–L). Next: 2b.** Native.md's text-and-themes work
+2. **Text and themes as whole styles (M–L). Next: 2c.** Native.md's text-and-themes work
    plus expressive.md's "Looks", "Type" and the theme kit, in this order:
    - **2a. Style resolution in the core.** A pure function in `fictty-core` (a new `style.rs`):
      for each shown node, its theme part plus the state suffixes that hold (`.hover`, `.focused`,

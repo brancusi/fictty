@@ -205,6 +205,34 @@ squares the corners of panels, buttons, fields, tabs, rows and toasts, and `thic
 draws them heavier. `examples/window/themes.json` has six more for the window, worn by the
 wringer's nine screens (`examples/window/open.sh`).
 
+A part is a short ink (`"accent+b"`) or a whole style, an object; so is a node's own `style` and a
+variant's `style`:
+
+```json
+"space":  {"s2": "8px", "s3": "14px"},
+"radius": {"r2": 6},
+"depth":  {"e1": [{"y": 1, "blur": 2, "color": "black", "alpha": 0.3}]},
+"type":   {"label": {"font": "ui", "size": 13, "weight": 600, "tracking": 0.2}},
+"fonts":  {"ui": "Inter"},
+"parts": {
+  "button":         {"fg": "fg", "bg": "panel", "type": "label", "pad": ["s3", "s2"], "radius": "r2",
+                     "border": {"color": "border"}, "shadow": "e1", "cursor": "pointer"},
+  "button.focused": {"bg": {"from": "accent", "to": "glow", "angle": 160}, "ring": {"width": 2, "offset": 2}},
+  "tabs":           {"shape": "pill"}
+}
+```
+
+A style's fields: `fg`; `bg` (a colour or a gradient `{"from", "to", "angle"}`); `bold`, `dim`,
+`italic`, `underline`, `strike`, `reverse`; `type` (a role from the theme's `type`); `pad` (one
+length for every side, or `[x, y]`: cells, `"8px"` or a `space` name); `radius` (pixels or a
+`radius` name); `border` (`width`, `color`, `style`: `solid`, `dashed`, `double`); `shadow` (a
+`depth` name, or `none`); `ring` (`width`, `offset`, `color`); `shape` (tabs `underline`, `pill`,
+`segment`, `plain`; a scrollbar `thin`, `overlay`, `none`; an edge `rounded`, `square`, `double`,
+`thick`); `opacity`; `cursor` (`default`, `pointer`, `text`, `grab`). A style never arranges: no
+size, gap or position. The scales let a theme change its whole feel in a few lines; `fonts`
+names families or font files that type roles use. The window draws these from step 2c of the
+plan on; until then they resolve and read back, and the window draws their colours.
+
 A node's style is worked out in one place, and nothing else applies: its part (the component's
 `type`, so `button`; containers have none), with the parts for the states that hold layered over
 it, then its variant, then its `tone`, then its own `style`. States are suffixes, layered in this
@@ -214,10 +242,12 @@ Today `hover`, `focused` and `blur` (focusable, without the focus) hold for a no
 with the state that says so. Its border and title take `border` and `title` with the same states.
 `fictty screen --nodes --style` (or `render --nodes --style`) prints it under each node, with
 tokens as colours (`┊ button.focused · #0f1418+on-#5fd1c6+b`); the JSON has it as `style`.
-Wrong names are `problems`, on the status line and in the reply to a push: a part no component
-has (`button.focsed`; a name outside the components' families, like `link`, is the theme's own,
-for markup), a word in a spec that means nothing, a colour that's no token, a row variant a list
-skips but doesn't have.
+Each part, the variant and the node's own style lay over the last: what one says replaces, the
+rest stays. Wrong names are `problems`, on the status line and in the reply to a push: a part no
+component has (`button.focsed`; a name outside the components' families, like `link`, is the
+theme's own, for markup), a word in a spec that means nothing, a colour that's no token, a
+`space`, `radius`, `depth` or `type` name the theme doesn't have, a shape or cursor that isn't
+one, a field no style has (`colour`), a row variant a list skips but doesn't have.
 
 ## Embedding fictty in an app
 

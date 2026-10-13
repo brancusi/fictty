@@ -95,7 +95,7 @@ impl Cx<'_> {
     /// `fallback` when the theme doesn't say.
     fn look(&self, part: &str, fallback: Style) -> Style {
         match self.active.and_then(|t| t.parts.get(part)) {
-            Some(spec) => self.spec(spec, Style::default()),
+            Some(spec) => self.spec(&spec.spec(), Style::default()),
             None => fallback,
         }
     }
@@ -106,7 +106,7 @@ impl Cx<'_> {
         if let Some(c) = s.fg.as_deref().and_then(|c| self.color(c)) {
             out = out.fg(c);
         }
-        if let Some(c) = s.bg.as_deref().and_then(|c| self.color(c)) {
+        if let Some(c) = s.bg.as_ref().and_then(|c| self.color(c.colour())) {
             out = out.bg(c);
         }
         for (on, m) in [(s.bold, Modifier::BOLD), (s.dim, Modifier::DIM), (s.italic, Modifier::ITALIC)] {
@@ -196,7 +196,7 @@ impl Cx<'_> {
                     Some(c) => self.color(c).map_or(st, |c| st.bg(c)),
                     None => match (self.color(t), self.active.and_then(|a| a.parts.get(t))) {
                         (Some(c), _) => st.fg(c),
-                        (None, Some(part)) if depth < 4 => self.spec_at(part, st, depth + 1),
+                        (None, Some(part)) if depth < 4 => self.spec_at(&part.spec(), st, depth + 1),
                         _ => st,
                     },
                 },
@@ -397,7 +397,7 @@ fn spin(cx: &mut Cx) -> &'static str {
 fn toast_look(cx: &Cx, tone: Option<&str>) -> Style {
     let base = cx.look("toast", Style::default().bg(cx.th.panel).fg(cx.th.fg.unwrap_or(Color::White)));
     match tone.and_then(|t| cx.active?.parts.get(&format!("toast.{t}"))) {
-        Some(spec) => cx.spec(spec, base),
+        Some(spec) => cx.spec(&spec.spec(), base),
         None => base,
     }
 }

@@ -179,8 +179,12 @@ The phases of [design/native.md](design/native.md), where each is broken down.
   - [x] The public demo decided and started (2026-10-13): one app an agent builds live in the
         window ([design/demo.md](design/demo.md), `examples/demo/`). It grows with each step
         and is part of each step's test of done, beside the wringer
-  - [ ] **Next: step 2b**, parts as whole styles (native.md, "Next, step by step"). Then,
-        in order: the rest of text and themes (2c–2f, ending in the styling study), the
+  - [x] Step 2b, parts as whole styles: a part is an ink or a whole style (fg, bg or a
+        gradient, type, pad, radius, border, shadow, ring, shape, opacity, cursor), as are a
+        node's and a variant's `style`; the theme's scales (`space`, `radius`, `depth`, `type`)
+        and `fonts`; problems for wrong names and fields (2026-10-13)
+  - [ ] **Next: step 2c**, the window draws the resolved style (native.md, "Next, step by
+        step"). Then, in order: the rest of text and themes (2d–2f, ending in the styling study), the
         layout vocabulary, lists and rows as nodes, the rest of editors, charts and icons, toasts
         and layers, embedding and the examples, then the terminal goes. Each step moves its share
         of the 32 grid tests left into the window
