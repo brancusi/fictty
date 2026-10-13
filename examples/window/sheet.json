@@ -5,7 +5,7 @@
   "children": [
    {
     "type": "text",
-    "text": "<b>Q-by-Q pipeline</>  <dim>14 reps \u00b7 $k</>\t<dim>Sorted by name \u25b2</>",
+    "text": "<heading>Q-by-Q pipeline</>  <dim>14 reps \u00b7 $k</>\t<dim>Sorted by name \u25b2</>",
     "size": 1
    },
    {

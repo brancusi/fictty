@@ -42,7 +42,7 @@ def toast(text, tone="accent"):
 # The app, as data. Each beat pushes or patches more of it.
 
 HEADER = {"type": "text", "size": 1, "bind": "shop",
-          "text": "<accent+b>◆ KESTREL CYCLES</>   <dim>workshop · {open|true=<pos>● open</>;*=closed}</>\t<dim>t theme · tab move · q quit</>"}
+          "text": "<heading+accent>◆ KESTREL CYCLES</>   <dim>workshop · {open|true=<pos>● open</>;*=closed}</>\t<dim>t theme · tab move · q quit</>"}
 
 LOGPANE = {"type": "list", "id": "log", "size": 46, "title": "AGENT", "bind": "agent_log", "lines": 2,
            "empty": "waiting for the agent…", "item": "<accent>{t}</>  {msg}\n<dim>  $ {cmd}</>"}
@@ -86,12 +86,12 @@ STOCK = {"type": "col", "gap": 1, "children": [
 ]}
 
 FLOOR = {"type": "col", "gap": 1, "children": [
-    {"type": "row", "size": 4, "gap": 2, "children": [
+    {"type": "row", "size": "120px", "gap": 2, "children": [
         {"type": "text", "id": f"stat{k}", "title": t, "bind": "floor", "variant": "card", "pad": [1, 0], "text": s} for k, (t, s) in enumerate([
-            ("TODAY", "<b>£{takings}</>\n{±dtakings}% <dim>vs last Tuesday</>"),
-            ("ON THE STANDS", "<b>{stands}</> <dim>of 4</>\n<dim>{waiting} waiting</>"),
-            ("AVERAGE JOB", "<b>{avg}</> <dim>min</>\n{±davg} min <dim>vs last week</>"),
-            ("WALK-INS", "<b>{walkins}</>\n<dim>since 9:00</>"),
+            ("TODAY", "<stat>£{takings}</>\n{±dtakings}% <dim>vs last Tuesday</>"),
+            ("ON THE STANDS", "<stat>{stands}</> <dim>of 4</>\n<dim>{waiting} waiting</>"),
+            ("AVERAGE JOB", "<stat>{avg}</> <dim>min</>\n{±davg} min <dim>vs last week</>"),
+            ("WALK-INS", "<stat>{walkins}</>\n<dim>since 9:00</>"),
         ])
     ]},
     {"type": "list", "id": "floorlog", "title": "THE FLOOR, LIVE", "bind": "floorlog", "item": "<dim>{t}</>  {msg}"},

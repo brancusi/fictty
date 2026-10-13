@@ -675,3 +675,27 @@ fn a_live_screen_runs_its_engine_on_its_own_thread() {
     }
     drop(live);
 }
+
+/// Every example screen, under every theme meant for it, names nothing its theme lacks: type
+/// roles, variants, tokens, parts.
+#[test]
+fn every_example_screen_wears_every_theme_without_problems() {
+    let root = concat!(env!("CARGO_MANIFEST_DIR"), "/../../examples/");
+    for (themes, dirs) in [("window/themes.json", &["window", "demo"][..]), ("showcase/themes.json", &["showcase"][..])] {
+        let all = fictty::engine::load_themes(std::path::Path::new(&format!("{root}{themes}"))).unwrap();
+        for dir in dirs {
+            for f in std::fs::read_dir(format!("{root}{dir}")).unwrap() {
+                let p = f.unwrap().path();
+                if p.extension().is_none_or(|e| e != "json") || p.ends_with("themes.json") {
+                    continue;
+                }
+                let ui: fictty::model::Ui = serde_json::from_str(&std::fs::read_to_string(&p).unwrap()).unwrap_or_else(|e| panic!("{}: {e}", p.display()));
+                for t in all.keys() {
+                    let mut s = App::new(ui.clone()).commands(false).themes(all.clone()).theme(t.clone()).headless(160, 40).unwrap();
+                    let problems = &s.state().problems;
+                    assert!(problems.is_empty(), "{} in {t}: {problems:?}", p.display());
+                }
+            }
+        }
+    }
+}

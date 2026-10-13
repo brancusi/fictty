@@ -17,8 +17,8 @@ use std::collections::BTreeMap;
 pub const STATES: [&str; 6] = ["hover", "focused", "active", "selected", "disabled", "blur"];
 
 /// The parts the runtime draws inside a node, besides each component's own (its `type`).
-const INNER: [&str; 28] = [
-    "panel", "border", "title", "row", "empty", "status", "status.error", "toast", "table.header", "table.total", "tabs.active", "tabs.idle",
+const INNER: [&str; 29] = [
+    "screen", "panel", "border", "title", "row", "empty", "status", "status.error", "toast", "table.header", "table.total", "tabs.active", "tabs.idle",
     "tabs.underline", "editor.caret", "editor.selection", "input.placeholder", "md.heading", "md.bullet", "md.quote", "md.code",
     "md.task", "md.done", "md.link", "scrollbar", "scrollbar.thumb", "tree.guide", "bars.label", "spinner",
 ];

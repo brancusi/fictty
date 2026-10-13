@@ -14,11 +14,11 @@ save("settings", {
   {"type": "row", "gap": 3, "children": [
    {"type": "list", "id": "nav", "size": 22, "title": "SETTINGS", "items": ["General", "Appearance", "Notifications", "Billing", "Danger zone"]},
    {"type": "col", "gap": 1, "children": [
-    T("<b>Profile</>\n<dim>How you appear to your team.</>", size=2),
+    T("<heading>Profile</>\n<dim>How you appear to your team.</>", size=2),
     field("Display name", {"type": "input", "id": "name", "text": "Ada Lovelace"}),
     field("Email", {"type": "input", "id": "email", "text": "ada@example.com"}),
     field("Seats", {"type": "input", "id": "seats", "text": "12", "accept": "number", "size": 10}),
-    T("<b>Preferences</>", size=1),
+    T("<heading>Preferences</>", size=1),
     {"type": "list", "id": "prefs", "size": 4, "bind": "prefs",
      "item": "{on|true=<accent>[■]</>;*=<dim>[ ]</>}  {label}\t<dim>{hint}</>", "keys": {"space": {"toggle": "on"}, "enter": {"toggle": "on"}}, "click": {"toggle": "on"}},
     T("<b>Density</>   <dim>(a radio group: tabs as a segmented control)</>", size=1),
@@ -47,7 +47,7 @@ save("chat", {
  "root": {"type": "row", "gap": 2, "children": [
   {"type": "list", "id": "rooms", "size": 30, "title": "MESSAGES", "lines": 2, "bind": "rooms", "item": "<b>{name}</>\t<dim>{when}</>\n<dim>{last}</>"},
   {"type": "col", "gap": 1, "children": [
-   T("<b>Grace Hopper</>  <pos>●</> <dim>online</>\t<dim>⌕  ⋯</>", size=1),
+   T("<heading>Grace Hopper</>  <pos>●</> <dim>online</>\t<dim>⌕  ⋯</>", size=1),
    {"type": "rule", "size": 1},
    {"type": "list", "id": "thread", "bind": "msgs", "lines": 2, "row_variant": "side",
     "variants": {"them": "<dim>{who} · {at}</>\n<fg+on-panel> {text} </>", "me": "\t<dim>{at}</>\n\t<bg+on-accent> {text} </>"}},
@@ -69,7 +69,7 @@ cols = [{"id": k, "title": t, "n": len(cards[k]), "cards": [{"id": f"{k}{i}", "t
         for k, t in [("todo", "TO DO"), ("doing", "IN PROGRESS"), ("review", "REVIEW"), ("done", "DONE")]]
 save("kanban", {
  "root": {"type": "col", "gap": 1, "children": [
-  T("<b>Phase 1 · the window</>   <dim>12 cards · 3 people</>\t<dim>+ New card   ⌕ Filter</>", size=1),
+  T("<heading>Phase 1 · the window</>   <dim>12 cards · 3 people</>\t<dim>+ New card   ⌕ Filter</>", size=1),
   {"type": "each", "id": "board", "bind": "cols", "row": True, "gap": 2, "template":
    {"type": "list", "id": "col-{$item.id}", "title": "{$item.title} · {$item.n}", "bind": "cols", "lines": 3,
     "item": "<b>{t}</>\n<violet>#{tag}</>  <dim>{size}</>\n", "empty": "drop cards here"}}
@@ -93,12 +93,12 @@ save("player", {
  "focus": "queue"})
 
 # 5 · Landing page: hero, CTA, a feature grid, pricing.
-def feat(t, d): return {"type": "text", "variant": "card", "border": True, "pad": [1, 0], "text": f"<accent+b>{t}</>\n{d}"}
-def price(n, p, items, hi=False): return {"type": "col", "border": True, "title": n, "pad": [1, 0], "variant": "hero" if hi else "card", "children": [T(f"<b>{p}</>  <dim>/ month</>", size=1), T("\n".join("✓ " + i for i in items)), {"type": "button", "id": f"buy-{n}", "label": "Choose " + n, "size": 1, "align": "center"}]}
+def feat(t, d): return {"type": "text", "variant": "card", "border": True, "pad": [1, 0], "text": f"<heading+accent>{t}</>\n{d}"}
+def price(n, p, items, hi=False): return {"type": "col", "border": True, "title": n, "pad": [1, 0], "variant": "hero" if hi else "card", "children": [T(f"<stat>{p}</>  <dim>/ month</>", size="40px"), T("\n".join("✓ " + i for i in items)), {"type": "button", "id": f"buy-{n}", "label": "Choose " + n, "size": 1, "align": "center"}]}
 save("landing", {
  "root": {"type": "col", "gap": 1, "children": [
-  T("<b>◆ fictty</>\t<dim>Docs   Blog   Pricing</>   <accent+b>Get started</>", size=1),
-  {"type": "big", "id": "hero", "size": 4, "text": "UI AS DATA", "align": "center"},
+  T("<heading>◆ fictty</>\t<dim>Docs   Blog   Pricing</>   <accent+b>Get started</>", size=1),
+  T("<display>UI as data</>", id="hero", size="84px", align="center"),
   T("<dim>A screen is one serializable value. Push it from anywhere; agents can read it back.</>", size=1, align="center"),
   {"type": "row", "size": 1, "children": [T(""), {"type": "button", "id": "cta", "label": "Try it in one line", "size": 24}, {"type": "button", "id": "cta2", "label": "Read the docs", "size": 18}, T("")]},
   {"type": "row", "size": 5, "gap": 2, "children": [feat("One value", "The whole screen is JSON you can push, patch and diff."), feat("Agent-native", "Read the screen back as text or nodes."), feat("Fast", "Thousands of updates a second, drawn at 60 fps.")]},
@@ -119,7 +119,7 @@ def day(i):
     return {"type": "col", "title": days[i], "border": True, "children": kids}
 save("calendar", {
  "root": {"type": "col", "gap": 1, "children": [
-  T("<b>October 2026</>  <dim>Week 42</>\t<dim>‹ Today ›   Day  Week  Month</>", size=1),
+  T("<heading>October 2026</>  <dim>Week 42</>\t<dim>‹ Today ›   Day  Week  Month</>", size=1),
   {"type": "row", "children": [T("\n" + "\n\n".join(f"<dim>{h}</>" for h in hours), size=7)] + [day(i) for i in range(5)]}
  ]}})
 
@@ -130,7 +130,7 @@ rows = [{"id": str(i), "rep": n, "q1": random.randint(20, 90), "q2": random.rand
         for i, n in enumerate(["Ada", "Alan", "Barbara", "Claude", "Dennis", "Edsger", "Frances", "Grace", "Hedy", "John", "Ken", "Linus", "Margaret", "Radia"])]
 save("sheet", {
  "root": {"type": "col", "gap": 1, "children": [
-  T("<b>Q-by-Q pipeline</>  <dim>14 reps · $k</>\t<dim>Sorted by name ▲</>", size=1),
+  T("<heading>Q-by-Q pipeline</>  <dim>14 reps · $k</>\t<dim>Sorted by name ▲</>", size=1),
   {"type": "table", "id": "t", "bind": "rows", "columns": [
     {"title": "Rep ▲", "value": "<b>{rep}</>"},
     {"title": "Q1", "value": "{q1}", "align": "right", "heat": {"value": "q1", "min": 20, "max": 90}, "total": "q1"},

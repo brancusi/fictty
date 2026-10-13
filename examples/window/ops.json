@@ -7,7 +7,7 @@
     "type": "text",
     "size": 1,
     "bind": "stats",
-    "text": "<accent+b>\u25b2 FICTTY//OPS</>   <dim>PROD \u00b7 EU-WEST \u00b7 {clock}</>\t{status|ok=<pos>\u25cf ALL SYSTEMS NOMINAL</>;*=<rose+b>\u25a0 1 INCIDENT OPEN</>}"
+    "text": "<heading+accent>\u25b2 FICTTY//OPS</>   <dim>PROD \u00b7 EU-WEST \u00b7 {clock}</>\t{status|ok=<pos>\u25cf ALL SYSTEMS NOMINAL</>;*=<rose+b>\u25a0 1 INCIDENT OPEN</>}"
    },
    {
     "type": "row",
@@ -23,7 +23,7 @@
        1,
        0
       ],
-      "text": "<b>{rps}</> <dim>req/s</>\n{\u00b1drps}% <dim>vs last hour</>"
+      "text": "<stat>{rps}</> <dim>req/s</>\n{\u00b1drps}% <dim>vs last hour</>"
      },
      {
       "type": "text",
@@ -34,7 +34,7 @@
        1,
        0
       ],
-      "text": "<b>{p95}</> <dim>ms</>\n{\u00b1dp95} ms <dim>vs last hour</>"
+      "text": "<stat>{p95}</> <dim>ms</>\n{\u00b1dp95} ms <dim>vs last hour</>"
      },
      {
       "type": "text",
@@ -45,7 +45,7 @@
        1,
        0
       ],
-      "text": "<b>{errs}%</>\n{\u00b1derr} <dim>points</>"
+      "text": "<stat>{errs}%</>\n{\u00b1derr} <dim>points</>"
      },
      {
       "type": "text",
@@ -56,7 +56,7 @@
        1,
        0
       ],
-      "text": "<b>{deploys}</>\n<dim>1 running \u00b7 1 failed</>"
+      "text": "<stat>{deploys}</>\n<dim>1 running \u00b7 1 failed</>"
      }
     ]
    },

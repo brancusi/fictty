@@ -406,7 +406,8 @@ impl Portal {
                     let under = id.clone();
                     measure(&self.laid, move |l, b| l.hits.push((b, hit(under, None, None, false))))
                 });
-                lk.boxed(div().id(SharedString::from(format!("btn-{key}"))).relative().flex_none(), &rs, c, (0., 0.))
+                // As tall as its row, the label in the middle, so a border stays inside the row.
+                lk.boxed(div().id(SharedString::from(format!("btn-{key}"))).relative().flex_none().h_full().flex().items_center(), &rs, c, (0., 0.))
                     .children(face)
                     .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, _, cx| this.send(Msg::Click { id: target.clone(), row: None, tab: None }, cx)))
                     .child(label)
@@ -789,6 +790,9 @@ impl Portal {
             .absolute()
             .size_0()
         };
+        // The `screen` part is the window's own: a theme's body type (its font for everything),
+        // over the theme's colours.
+        let screen = style::inner(st, "screen", &[]);
         let frame = div()
             .id("portal")
             .track_focus(&self.focus)
@@ -811,6 +815,7 @@ impl Portal {
             .text_color(lk.fg)
             .text_size(px(TYPE))
             .line_height(px(ROW))
+            .map(|d| text::typed(lk.boxed(d, &screen, (self.cell.w, self.cell.h), (0., 0.)), screen.role.as_ref(), &lk.fonts()))
             // A cell's margin, so the body starts on the cell grid: a cell's middle never falls on
             // the edge between two rows.
             .child(div().flex().flex_1().min_h(px(0.)).px(px(self.cell.w)).py(px(self.cell.h)).child(body))

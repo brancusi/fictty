@@ -223,7 +223,14 @@ pub fn line(tx: &Tx, template: &str, v: &Value, base: Ink, wrap: bool) -> AnyEle
             // The left side, then the fill and what follows it, then the right side.
             let l = fit_in(&left, left_room - aw, lw, window);
             let lw = width(&l, window);
-            placed.push((shape(&l, window), 0.));
+            // A line alone on its row takes the node's `align`.
+            let alone = right.text.is_empty() && after.text.is_empty() && filler.is_none();
+            let x = match style.text_align {
+                gpui::TextAlign::Center if alone => ((room - lw) / 2.).max(0.),
+                gpui::TextAlign::Right if alone => (room - lw).max(0.),
+                _ => 0.,
+            };
+            placed.push((shape(&l, window), x));
             if let Some(f) = &filler {
                 let fw = width(f, window).max(1.);
                 let n = ((left_room - lw - aw) / fw).floor().max(0.) as usize;

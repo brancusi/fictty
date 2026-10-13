@@ -3,7 +3,7 @@
     "type": "col",
     "gap": 1,
     "children": [
-      {"type": "text", "size": 1, "text": "<accent+b>◆ fictty</>   <dim>a window an agent fills</>\t<dim>t theme · q quit</>"},
+      {"type": "text", "size": 1, "text": "<heading+accent>◆ fictty</>   <dim>a window an agent fills</>\t<dim>t theme · q quit</>"},
       {"type": "row", "gap": 2, "children": [
         {"type": "text", "id": "stage", "pad": [2, 1], "align": "center",
          "text": "\n\n\n<b>Nothing here yet.</>\n\n<dim>An agent is about to build an app in this window,\none command at a time. Every step is a command you could\ntype yourself, and its log is on the right.</>"},

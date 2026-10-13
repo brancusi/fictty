@@ -202,8 +202,12 @@ for a `variant` and a `tone`, never a colour. A UI's own `theme` map still works
 every theme. `examples/showcase/themes.json` has three: glass, paper and phosphor. In the window, a
 token `edge` sets the border of every node that doesn't name its own: anything but `rounded`
 squares the corners of panels, buttons, fields, tabs, rows and toasts, and `thick` or `double`
-draws them heavier. `examples/window/themes.json` has six more for the window, worn by the
-wringer's nine screens (`examples/window/open.sh`).
+draws them heavier. `examples/window/themes.json` has six more for the window, written by
+`themes.py` and worn by the wringer's nine screens and the demo (`examples/window/open.sh`). They
+share one vocabulary, so a screen can name it and wear any of them: type roles `display` and
+`stat` (sized in pixels), `heading`, `label`, `body`, `caption`, `num`, `mono`; scales `s1`–`s6`,
+`r1`–`r3`, `e1`–`e2`; variants `card`, `quiet`, `hero`, `alert`, `bare`. The `screen` part is the
+window's own (`{"type": "body"}` gives everything the theme's body font).
 
 A part is a short ink (`"accent+b"`) or a whole style, an object; so is a node's own `style` and a
 variant's `style`:

@@ -192,7 +192,11 @@ The phases of [design/native.md](design/native.md), where each is broken down.
   - [x] Step 2e, cards and the status bar: backdrops resolve into cards (fill or gradient,
         border, corners, shadow or glow); the status line is the UI's (status, problems, hints;
         `"status_bar": "speed"` for the meter); the demo's typo beat (2026-10-13)
-  - [ ] **Next: step 2f**, the styling study (native.md, "Next, step by step"). Then: the
+  - [x] Step 2f, the styling study ([design/styling-study.md](design/styling-study.md)): the six
+        themes as whole styles (`examples/window/themes.py`), one vocabulary of roles, scales and
+        variants, the screens and the demo naming roles (2026-10-13). Its screenshots are still to
+        add
+  - [ ] **Next: step 3**, the layout vocabulary (native.md, "Next, step by step"). Then: the
         layout vocabulary, lists and rows as nodes, the rest of editors, charts and icons, toasts
         and layers, embedding and the examples, then the terminal goes. Each step moves its share
         of the 32 grid tests left into the window

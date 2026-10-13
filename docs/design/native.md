@@ -350,6 +350,15 @@ card's shadow stops where its row does: a row of cards takes `pad` for room. The
 beat: the agent patches a card with a misspelled variant, reads the problem back from `get
 --state` (it shows on the status bar too), and fixes it.
 
+Step 2f landed on 13 October: [styling-study.md](styling-study.md). The six themes are whole
+styles written by `examples/window/themes.py`, sharing type roles, scales, variants and tokens
+so any screen wears any theme (a test checks every example screen under every theme for
+problems). A `screen` part carries a theme's body type to all text, one-line text takes its
+node's `align`, and a bordered button's face fills its row. The screens and the demo name roles
+(`heading`, `label`, `stat`, `display`; the landing's hero is a `display` line, not block
+digits). Type moved a screen's character most, then edges and depth, then how the selection and
+focus look; paper, brutal and glass make the landing and mail three different apps.
+
 Each step builds a slice, moves the grid tests that slice owns onto `App::in_window`
 (readback, state and the finders, not characters), and ends with the tour's chapters that use it
 looked at in a real window. A step is done when its tests pass in the window, its grid twins are
@@ -365,7 +374,7 @@ deleted, and the window fuzz runs stay clean.
    `the_readback_has_each_nodes_rectangle_from_the_grid`,
    `headless_takes_the_mouse_and_resizes_like_a_terminal`,
    `keys_type_into_a_field_a_key_just_showed`.
-2. **Text and themes as whole styles (M–L). Next: 2f.** Native.md's text-and-themes work
+2. **Text and themes as whole styles (M–L). Done but for the study's screenshots.** Native.md's text-and-themes work
    plus expressive.md's "Looks", "Type" and the theme kit, in this order:
    - **2a. Style resolution in the core.** A pure function in `fictty-core` (a new `style.rs`):
      for each shown node, its theme part plus the state suffixes that hold (`.hover`, `.focused`,
