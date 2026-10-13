@@ -111,6 +111,10 @@ enum Cmd {
         /// The nodes as JSON.
         #[arg(long, requires = "nodes")]
         json: bool,
+        /// Each node's style under the active theme too: its part and the states that hold, its
+        /// ink, border, title, edge and backdrop, with tokens filled in.
+        #[arg(long, requires = "nodes")]
+        style: bool,
     },
     /// Move, click or scroll the mouse on the running screen: `move|click|up|down X Y`.
     Mouse { kind: String, x: u16, y: u16 },
@@ -153,6 +157,12 @@ enum Cmd {
         themes: Option<PathBuf>,
         #[arg(long)]
         theme: Option<String>,
+        /// The shown nodes as an outline instead of the frame (as `screen --nodes`).
+        #[arg(long)]
+        nodes: bool,
+        /// With --nodes, each node's resolved style too (as `screen --nodes --style`).
+        #[arg(long, requires = "nodes")]
+        style: bool,
     },
 }
 
@@ -181,7 +191,7 @@ fn main() -> Result<()> {
             let bin = binary.or_else(|| std::env::current_exe().ok()).map(|p| p.display().to_string());
             runtime::send(&socket, json!({"op": "upgrade", "binary": bin}))?
         }
-        Cmd::Render { file, size, keys, ansi, store, themes, theme } => {
+        Cmd::Render { file, size, keys, ansi, store, themes, theme, nodes, style } => {
             let (w, h) = size.split_once('x').ok_or_else(|| anyhow::anyhow!("--size is WxH"))?;
             let mut app = App::new(runtime::load(&file)?);
             if let Some(p) = store {
@@ -196,7 +206,12 @@ fn main() -> Result<()> {
             let mut screen = app.headless(w.parse()?, h.parse()?)?;
             let keys: Vec<&str> = keys.iter().map(String::as_str).collect();
             screen.keys(&keys);
-            print!("{}", if ansi { screen.ansi() } else { screen.screen() });
+            print!("{}", match (nodes, style) {
+                (true, true) => fictty::readback::outline_styled(&screen.readback()),
+                (true, false) => fictty::readback::outline(&screen.readback()),
+                _ if ansi => screen.ansi(),
+                _ => screen.screen(),
+            });
             return Ok(());
         }
         Cmd::Push { file } => runtime::send(&socket, json!({"op": "push", "ui": runtime::load(&file)?}))?,
@@ -239,13 +254,18 @@ fn main() -> Result<()> {
             print!("{}", r["screen"].as_str().unwrap_or_default());
             return Ok(());
         }
-        Cmd::Screen { nodes: true, json } => {
-            let r = runtime::send(&socket, json!({"op": "readback"}))?;
+        Cmd::Screen { nodes: true, json, style } => {
+            let mut r = runtime::send(&socket, json!({"op": "readback"}))?;
             if json {
+                if !style {
+                    for n in r["nodes"].as_array_mut().into_iter().flatten() {
+                        n.as_object_mut().map(|o| o.remove("style"));
+                    }
+                }
                 println!("{}", serde_json::to_string_pretty(&r["nodes"])?);
             } else {
                 let nodes: Vec<fictty::readback::Shown> = serde_json::from_value(r["nodes"].clone())?;
-                print!("{}", fictty::readback::outline(&nodes));
+                print!("{}", if style { fictty::readback::outline_styled(&nodes) } else { fictty::readback::outline(&nodes) });
             }
             return Ok(());
         }

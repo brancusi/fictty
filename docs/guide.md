@@ -53,6 +53,7 @@ fictty key j x                                            # type keys
 fictty get --state                                        # everything on screen, as JSON
 fictty run --watch my.json                                # hot reload while you edit
 fictty screen --nodes                                     # the shown nodes: kind, id, focus, text, where
+fictty screen --nodes --style                             # and each one's style under the theme
 fictty run --window my.json                               # in a native window (macOS, early)
 fictty render examples/tasks.json --size 100x30 --keys j  # no terminal
 fictty read ledger                                        # one store entry: rev, by, value or text
@@ -203,6 +204,20 @@ token `edge` sets the border of every node that doesn't name its own: anything b
 squares the corners of panels, buttons, fields, tabs, rows and toasts, and `thick` or `double`
 draws them heavier. `examples/window/themes.json` has six more for the window, worn by the
 wringer's nine screens (`examples/window/open.sh`).
+
+A node's style is worked out in one place, and nothing else applies: its part (the component's
+`type`, so `button`; containers have none), with the parts for the states that hold layered over
+it, then its variant, then its `tone`, then its own `style`. States are suffixes, layered in this
+order, every combination fewer before more: `.hover`, `.focused`, `.active`, `.selected`,
+`.disabled`, `.blur` (`row.selected.blur` is `row`, `row.selected`, `row.blur`, then itself).
+Today `hover`, `focused` and `blur` (focusable, without the focus) hold for a node; the rest come
+with the state that says so. Its border and title take `border` and `title` with the same states.
+`fictty screen --nodes --style` (or `render --nodes --style`) prints it under each node, with
+tokens as colours (`┊ button.focused · #0f1418+on-#5fd1c6+b`); the JSON has it as `style`.
+Wrong names are `problems`, on the status line and in the reply to a push: a part no component
+has (`button.focsed`; a name outside the components' families, like `link`, is the theme's own,
+for markup), a word in a spec that means nothing, a colour that's no token, a row variant a list
+skips but doesn't have.
 
 ## Embedding fictty in an app
 

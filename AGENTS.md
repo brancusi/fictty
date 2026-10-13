@@ -47,6 +47,8 @@ embedding apps depend on `fictty` alone.
   whatever draws, on its own thread with `spawn`), `Inbox` and `Input`, `Headless` (driven
   inline, drawn by a `Frame` if given one); `Rect`, `Hit`, `Drawn`
 - `crates/fictty-core/src/readback.rs`: the screen as an agent reads it, node by node
+- `crates/fictty-core/src/style.rs`: each shown node's style under the active theme (part and
+  states, variant, tone, own style; tokens as colours), and what's wrong with the theme
 - `crates/fictty-core/src/lists.rs`: Markdown lists as text: renumbering, styles by depth (pure,
   text to edits)
 - `crates/fictty-core/src/fuzz.rs`: the fuzz driver (the `fuzz` feature): generated acts on

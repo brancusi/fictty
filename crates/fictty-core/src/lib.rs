@@ -8,6 +8,7 @@
 //! - `readback`: the screen as an agent reads it, node by node.
 //! - `host`: what an app that embeds fictty provides (sources and actions in process).
 //! - `lists`: Markdown lists as text.
+//! - `style`: each shown node's style, resolved from the active theme.
 
 pub mod engine;
 #[cfg(feature = "fuzz")]
@@ -18,6 +19,7 @@ pub mod model;
 pub mod readback;
 pub mod state;
 pub mod store;
+pub mod style;
 
 pub use engine::{App, Headless, Live};
 pub use host::{Host, NoHost, Notifier};

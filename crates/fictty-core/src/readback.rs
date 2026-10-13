@@ -5,6 +5,7 @@
 use crate::engine::Rect;
 use crate::model::{Kind, Node, fill, scalar, segments, shows};
 use crate::state::{self, State};
+use crate::style::{self, Resolved};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -33,6 +34,13 @@ pub struct Shown {
     /// Where the last frame laid it out (nodes with an id).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rect: Option<Rect>,
+    /// Its style under the active theme (see `style::resolve`).
+    #[serde(default, skip_serializing_if = "plain")]
+    pub style: Resolved,
+}
+
+fn plain(r: &Resolved) -> bool {
+    *r == Resolved::default()
 }
 
 /// The shown nodes of `st`, in order, with the rectangles the last frame laid them out in.
@@ -79,6 +87,7 @@ fn shown(st: &State, n: &Node, depth: usize, rects: &[(String, Rect)]) -> Shown 
         rows: None,
         selected: None,
         rect: id.as_deref().and_then(|i| rects.iter().find(|(r, _)| r == i)).map(|(_, r)| *r),
+        style: style::resolve(st, n),
         id,
     };
     match &n.kind {
@@ -129,6 +138,16 @@ fn shown(st: &State, n: &Node, depth: usize, rects: &[(String, Rect)]) -> Shown 
 /// The readback as an outline, a line per node, indented by depth:
 /// `button save (focus) [3,10 8×1]: Save`.
 pub fn outline(shown: &[Shown]) -> String {
+    outline_with(shown, false)
+}
+
+/// The outline with each node's resolved style on a line under it:
+/// `  ┊ button.focused · #0f1418+on-#5fd1c6+b`.
+pub fn outline_styled(shown: &[Shown]) -> String {
+    outline_with(shown, true)
+}
+
+fn outline_with(shown: &[Shown], styled: bool) -> String {
     let mut out = String::new();
     for s in shown {
         let mut line = format!("{}{}", "  ".repeat(s.depth), s.kind);
@@ -156,6 +175,10 @@ pub fn outline(shown: &[Shown]) -> String {
         }
         out.push_str(&line);
         out.push('\n');
+        let style = s.style.line();
+        if styled && !style.is_empty() {
+            out.push_str(&format!("{}  ┊ {style}\n", "  ".repeat(s.depth)));
+        }
     }
     out
 }
@@ -183,5 +206,22 @@ mod tests {
         let nodes = s.readback();
         assert_eq!(nodes[2].selected, Some(1));
         assert_eq!(nodes[2].rect, None);
+    }
+
+    #[test]
+    fn the_readback_carries_each_nodes_style() {
+        let ui = serde_json::from_value(json!({
+            "root": {"type": "col", "children": [
+                {"type": "button", "id": "go", "label": "Go"},
+                {"type": "text", "title": "Note", "tone": "pos", "text": "saved"}
+            ]}
+        }))
+        .unwrap();
+        let mut s = App::new(ui).headless(40, 10).unwrap();
+        assert_eq!(s.readback()[1].style.ink.bg.as_deref(), Some("#5fd1c6"), "a focused button, on the accent");
+        assert_eq!(
+            crate::readback::outline_styled(&s.readback()),
+            "col\n  button go (focus): Go\n    ┊ button.focused · #0f1418+on-#5fd1c6+b\n  text \"Note\": saved\n    ┊ text · #8bd49c · border #2a353d · title #e3eaee\n"
+        );
     }
 }

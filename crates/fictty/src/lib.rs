@@ -13,7 +13,7 @@
 //! - `host`: what an app that embeds fictty provides (sources and actions in process).
 //! - `gfx`: pictures (cards, plots, images) placed with the kitty graphics protocol.
 
-pub use fictty_core::{engine, host, lists, model, readback, state, store};
+pub use fictty_core::{engine, host, lists, model, readback, state, store, style};
 #[cfg(feature = "fuzz")]
 pub use fictty_core::fuzz;
 

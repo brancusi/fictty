@@ -255,6 +255,25 @@ step of its own, and rows become nodes. [examples/window/](../../examples/window
 wringer: nine screens, six themes, `open.sh`) is what each step is measured against. **The next
 step is 2, and it starts with 2a.**
 
+Step 2a landed on 13 October: `crates/fictty-core/src/style.rs` resolves each shown node's
+style: its part (its `type`; containers have none, which also keeps a layout `row` apart from a
+list's `row` part), with the parts of the states that hold layered over it (every combination,
+fewer before more, so `row.selected.blur` is `row`, `row.selected`, `row.blur`, itself), then its
+variant, its `tone` and its own `style`, with tokens filled in as `#rrggbb`. Its border, title,
+edge (only where it draws a border or a face) and backdrop resolve with it. The defaults the
+window and the grid used as fallbacks (`button`, `title`, `border` and their `.focused`) are
+default parts under every theme. `hover`, `focused` and `blur` hold for a node today; `active`,
+`selected` and `disabled` are named but wait for the state that says so (a press, a node's
+`disabled`). The window's `look.rs` reads colours and specs through the core's `Theme`, so there
+is one resolver; it draws from `Resolved` in 2c. The readback carries it (`screen --nodes
+--style`, `render --nodes --style`, `style` in the JSON). Theme problems: parts no component has
+(a name outside the components' families is the theme's own, for markup), spec words that mean
+nothing, colours that aren't tokens, `skip`s that aren't row variants; scale entries and roles
+join in 2b and 2d. Every example screen in every theme comes back clean. Open for 2b: the
+window tells the engine only a row's hover, so `.hover` holds for a button only once 2c sends it;
+and `tabs.active` (the shown tab) reads as `tabs` in the `active` state, which 2b should settle
+(a `tab` part with `.selected`).
+
 Each step builds a slice, moves the grid tests that slice owns onto `App::in_window`
 (readback, state and the finders, not characters), and ends with the tour's chapters that use it
 looked at in a real window. A step is done when its tests pass in the window, its grid twins are
@@ -270,7 +289,7 @@ deleted, and the window fuzz runs stay clean.
    `the_readback_has_each_nodes_rectangle_from_the_grid`,
    `headless_takes_the_mouse_and_resizes_like_a_terminal`,
    `keys_type_into_a_field_a_key_just_showed`.
-2. **Text and themes as whole styles (M–L). Next; start with 2a.** Native.md's text-and-themes work
+2. **Text and themes as whole styles (M–L). Next: 2b.** Native.md's text-and-themes work
    plus expressive.md's "Looks", "Type" and the theme kit, in this order:
    - **2a. Style resolution in the core.** A pure function in `fictty-core` (a new `style.rs`):
      for each shown node, its theme part plus the state suffixes that hold (`.hover`, `.focused`,

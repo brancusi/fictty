@@ -172,8 +172,12 @@ The phases of [design/native.md](design/native.md), where each is broken down.
         The terminal is dropped (no more terminal work), what GPUI has is adopted, themes become
         whole styles; the wringer (nine screens, six themes) is in `examples/window/` as the test
         of done
-  - [ ] **Next: step 2a**, style resolution in the core (native.md, "Next, step by step"). Then,
-        in order: text and themes as whole styles (2b–2f, ending in the styling study), the
+  - [x] Step 2a, style resolution in the core: `style.rs` resolves each shown node's style
+        (its part with the parts of its states layered over it, its variant, its tone, its own
+        style; tokens as colours), the readback carries it (`screen --nodes --style`, `render
+        --nodes --style`), and wrong names in a theme are `problems` (2026-10-13)
+  - [ ] **Next: step 2b**, parts as whole styles (native.md, "Next, step by step"). Then,
+        in order: the rest of text and themes (2c–2f, ending in the styling study), the
         layout vocabulary, lists and rows as nodes, the rest of editors, charts and icons, toasts
         and layers, embedding and the examples, then the terminal goes. Each step moves its share
         of the 32 grid tests left into the window

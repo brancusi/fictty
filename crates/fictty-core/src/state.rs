@@ -2587,6 +2587,7 @@ pub fn problems(st: &State) -> Vec<String> {
             out.push(format!("sparkline {name}: {bind} should be a list of numbers (or set `field`)"));
         }
     }
+    out.extend(crate::style::problems(st, &all));
     out
 }
 
