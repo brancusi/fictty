@@ -801,6 +801,9 @@ fn apply(st: &mut State, msg: Msg) -> Vec<Effect> {
             if let Some(r) = selected {
                 local.selected = r;
                 local.top = None;
+                // The row it was on is forgotten, or the selection would follow it back there;
+                // the new row's key is remembered after.
+                local.key = None;
             }
             if let Some(t) = tab {
                 local.tab = t;
@@ -3162,6 +3165,16 @@ mod tests {
         assert_eq!(selected(&st, "side"), 1);
         update(&mut st, Msg::Set { id: "nope".into(), selected: Some(1), tab: None, key: None });
         assert_eq!(st.status.as_deref(), Some("set: no node with id \"nope\""));
+    }
+
+    #[test]
+    fn set_moves_a_selection_off_a_row_it_remembers_by_key() {
+        let mut st = State::default();
+        update(&mut st, Msg::Push { ui: ui(json!({"root": {"type": "list", "id": "l", "bind": "rows", "item": "{id}"},
+            "store": {"rows": [{"id": "a"}, {"id": "b"}, {"id": "c"}]}})) });
+        assert_eq!(st.local["l"].key.as_deref(), Some("a"));
+        update(&mut st, Msg::Set { id: "l".into(), selected: Some(2), tab: None, key: None });
+        assert_eq!((selected(&st, "l"), st.local["l"].key.as_deref()), (2, Some("c")), "on c, and remembered there");
     }
 
     #[test]
