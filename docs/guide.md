@@ -85,7 +85,14 @@ fictty theme paper                                        # choose a loaded them
   `tree` nests rows under each row's `nest` (default `children`), folds with ←/→ and space, keeps
   its folds by key, and gives templates `{$depth}`, `{$kids}` and `{$open}`; its `leaf` is the
   glyph for rows with nothing under them. A shown row carries `$ptr`, where it sits in the bound
-  entry, so store actions reach it through a filter or deep in a tree.
+  entry, so store actions reach it through a filter or deep in a tree. **`"multi": true`** (a
+  list, tree or table) lets the person pick several rows: ⌘-click (⌥-click in a terminal) picks
+  one in or out, ⇧-click picks the range from the row last clicked, ⇧↑/⇧↓ (`J`/`K`) grow it,
+  ⌘A (⌥A) takes every row, Esc and any plain move or click go back to one. The selected row is
+  still the one `@id` reads; every picked row is drawn `row.selected` and the selected one also
+  `row.active`. `$picked.<id>` is `{"count", "keys", "rows"}`, `toggle` and `remove` act on every
+  picked row (all take the selected row's new value), and the readback shows `(picked 3)`
+  (`"picked"` in the JSON). `fictty mouse s-click X Y` and `d-click` press with ⇧ or ⌘.
 - **Repeating**: `{"type": "each", "bind": "open", "template": {…}}` draws the template once per
   item of the bound array, top to bottom (`"row": true` side by side). In the template,
   `{$item}` and `{$item.path}` are filled from the item (`"id": "panel-{$item.id}"`,
@@ -113,7 +120,7 @@ fictty theme paper                                        # choose a loaded them
   narrows the JSON, `every` re-fetches. A push fetches the sources that are new or changed; one
   that's the same keeps its value, stream and timer (`refresh` fetches them all). Built
   in: `$stats`, `$caps`, `$theme`, `$screen` (the terminal's `width` and `height`), `$keys` (a
-  chord's keys so far), `$store` (every entry, by revision) and `$log` (what agents did over the
+  chord's keys so far), `$picked` (each `multi` node's picked rows), `$store` (every entry, by revision) and `$log` (what agents did over the
   socket, newest first, at the local clock time; a write that was refused shows as `refused`,
   with why). `$self` says where the screen runs: `bin`, `socket`, `dir` (its UI's folder), `cli`
   (a command line that reaches this screen from any terminal) and `env` (a line that sets a

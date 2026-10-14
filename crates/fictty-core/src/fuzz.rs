@@ -334,7 +334,11 @@ pub fn generate(cfg: &Config, seed: u64, size: (u16, u16)) -> Vec<Act> {
         if roll < cfg.mouse {
             match r.below(6) {
                 0 => out.extend([Act::Mouse("press".into(), x, y), Act::Mouse("release".into(), x, y)]),
-                1 => out.extend([Act::Mouse("s-press".into(), x, y), Act::Mouse("release".into(), x, y)]),
+                1 => {
+                    // ⇧ or ⌘ held: extending a caret, picking rows of a `multi` list.
+                    let kind = if r.below(2) == 0 { "s-press" } else { "d-press" };
+                    out.extend([Act::Mouse(kind.into(), x, y), Act::Mouse("release".into(), x, y)]);
+                }
                 2 => {
                     // A double or triple click.
                     for _ in 0..2 + r.below(2) {
@@ -770,6 +774,7 @@ mod tests {
             focus: false,
             rows: None,
             selected: None,
+            picked: vec![],
             rect: r.map(|(x, y, w, h)| Rect::new(x, y, w, h)),
             style: Default::default(),
             cut: false,

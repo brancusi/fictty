@@ -141,6 +141,66 @@ fn an_image_follows_the_row_its_src_is_filled_from() {
     assert!(node(&mut s, "pic").rect.is_some_and(|r| r.width > 30), "it fills the rest of the row");
 }
 
+/// The picked rows of `id`, by index, as the readback has them (empty while one row is).
+fn picked(s: &mut fictty::Headless, id: &str) -> Vec<usize> {
+    node(s, id).picked
+}
+
+#[test]
+fn a_multi_list_picks_with_command_shift_and_the_keys() {
+    let items: Vec<Value> = (0..8).map(|i| json!({"id": format!("r{i}"), "name": format!("row {i}")})).collect();
+    let ui = json!({"root": {"type": "col", "children": [
+        {"type": "list", "id": "l", "multi": true, "item": "{name}", "items": items},
+        {"type": "text", "id": "n", "bind": "$picked.l", "size": 1, "text": "{count} picked"}
+    ]}});
+    let mut s = window(ui, 60, 16);
+    let l = node(&mut s, "l").rect.unwrap();
+    let press = |s: &mut fictty::Headless, kind: &str, row: u16| {
+        s.mouse(kind, l.x + 2, l.y + row).mouse("release", l.x + 2, l.y + row);
+    };
+    press(&mut s, "press", 1);
+    assert_eq!(picked(&mut s, "l"), Vec::<usize>::new(), "a click is one row");
+    press(&mut s, "d-press", 3);
+    press(&mut s, "d-press", 5);
+    assert_eq!(picked(&mut s, "l"), vec![1, 3, 5]);
+    assert_eq!(node(&mut s, "n").text, "3 picked");
+    assert_eq!(s.state().local["l"].selected, 5, "the row last picked is the one the keys move");
+    press(&mut s, "d-press", 3);
+    assert_eq!(picked(&mut s, "l"), vec![1, 5], "⌘ again picks it out");
+    // ⇧ picks from the anchor (the row last ⌘-pressed, 3) to the row pressed.
+    press(&mut s, "s-press", 6);
+    assert_eq!(picked(&mut s, "l"), vec![3, 4, 5, 6]);
+    s.keys(&["s-up", "s-up"]);
+    assert_eq!(picked(&mut s, "l"), vec![3, 4]);
+    s.keys(&["esc"]);
+    assert_eq!(picked(&mut s, "l"), Vec::<usize>::new(), "Esc goes back to one row");
+    assert_eq!(s.state().local["l"].selected, 4);
+    s.keys(&["d-a"]);
+    assert_eq!(picked(&mut s, "l").len(), 8);
+    s.keys(&["j"]);
+    assert_eq!(picked(&mut s, "l"), Vec::<usize>::new(), "a plain move is one row again");
+    // Every picked row is drawn selected; the lead is also active.
+    press(&mut s, "press", 0);
+    press(&mut s, "s-press", 2);
+    let st = s.state();
+    let tree = st.ui.root.clone();
+    let n = tree.find("l").unwrap();
+    let states = |k| fictty::style::row_states(st, n, k);
+    assert!(states(0).contains(&"selected") && states(1).contains(&"selected") && !states(3).contains(&"selected"));
+    assert!(states(2).contains(&"active") && !states(0).contains(&"active"));
+}
+
+#[test]
+fn a_press_on_a_list_that_isnt_multi_with_a_modifier_is_a_click() {
+    let ui = json!({"root": {"type": "list", "id": "l", "items": rows(6)}});
+    let mut s = window(ui, 40, 12);
+    let l = node(&mut s, "l").rect.unwrap();
+    s.mouse("d-press", l.x + 2, l.y + 2).mouse("release", l.x + 2, l.y + 2);
+    s.mouse("s-press", l.x + 2, l.y + 4).mouse("release", l.x + 2, l.y + 4);
+    assert_eq!(s.state().local["l"].selected, 4);
+    assert!(picked(&mut s, "l").is_empty());
+}
+
 #[test]
 fn a_press_in_an_editor_places_the_caret_and_a_drag_selects() {
     let ui = json!({"root": {"type": "editor", "id": "e", "text": "alpha beta gamma\nsecond line"}});

@@ -31,6 +31,9 @@ pub struct Shown {
     pub rows: Option<usize>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub selected: Option<usize>,
+    /// A `multi` list's picked rows, by index, while more than one is.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub picked: Vec<usize>,
     /// Where the last frame laid it out (nodes with an id).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rect: Option<Rect>,
@@ -93,6 +96,7 @@ fn shown(st: &State, n: &Node, depth: usize, (rects, cut): Frame) -> Shown {
         focus: id.is_some() && id == st.focus,
         rows: None,
         selected: None,
+        picked: s_picked(st, n),
         rect: id.as_deref().and_then(|i| rects.iter().find(|(r, _)| r == i)).map(|(_, r)| *r),
         style: style::resolve(st, n),
         cut: id.as_deref().is_some_and(|i| cut.iter().any(|c| c == i)),
@@ -147,6 +151,13 @@ fn shown(st: &State, n: &Node, depth: usize, (rects, cut): Frame) -> Shown {
 }
 
 /// The readback as an outline, a line per node, indented by depth:
+/// A `multi` node's picked rows while it has more than one.
+fn s_picked(st: &State, n: &Node) -> Vec<usize> {
+    let Some(id) = n.id.as_deref().filter(|_| n.multi) else { return vec![] };
+    let p = state::picked(st, id);
+    if p.len() > 1 { p } else { vec![] }
+}
+
 /// `button save (focus) [3,10 8×1]: Save`.
 pub fn outline(shown: &[Shown]) -> String {
     outline_with(shown, false)
@@ -179,6 +190,9 @@ fn outline_with(shown: &[Shown], styled: bool) -> String {
             (Some(k), Some(n)) => line.push_str(&format!(" ({}/{n})", k + 1)),
             (None, Some(n)) => line.push_str(&format!(" (0/{n})")),
             _ => {}
+        }
+        if !s.picked.is_empty() {
+            line.push_str(&format!(" (picked {})", s.picked.len()));
         }
         if let Some(r) = s.rect {
             line.push_str(&format!(" [{},{} {}×{}]", r.x, r.y, r.width, r.height));

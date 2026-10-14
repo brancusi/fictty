@@ -252,12 +252,14 @@ impl Sim {
         self
     }
 
-    /// The mouse at a cell, as an SGR report: `press`, `s-press`, `drag`, `release`, `move`,
+    /// The mouse at a cell, as an SGR report: `press`, `s-press`, `d-press` (sent with ⌥, the
+    /// terminal's stand-in for ⌘, which a mouse report can't carry), `drag`, `release`, `move`,
     /// `wheel-up`, `wheel-down`.
     pub fn mouse(&mut self, kind: &str, x: u16, y: u16) -> &mut Sim {
         let (b, end) = match kind {
             "press" => (0, 'M'),
             "s-press" => (4, 'M'),
+            "d-press" | "a-press" => (8, 'M'),
             "drag" => (32, 'M'),
             "release" => (0, 'm'),
             "wheel-up" => (64, 'M'),

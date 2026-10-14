@@ -114,12 +114,12 @@ impl Windowed {
         let at = self.at(x, y);
         let left = MouseButton::Left;
         match kind {
-            Pointer::Press { shift } => {
+            Pointer::Press { shift, toggle } => {
                 // A press with the button still down from the last one lets go of it first.
                 if self.held {
                     self.cx.simulate_mouse_up(at, left, Modifiers::none());
                 }
-                let mods = if shift { Modifiers::shift() } else { Modifiers::none() };
+                let mods = Modifiers { shift, platform: toggle, ..Modifiers::none() };
                 self.cx.simulate_mouse_down(at, left, mods);
                 self.held = true;
             }

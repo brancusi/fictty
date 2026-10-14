@@ -305,6 +305,13 @@ pub struct Local {
     /// How many rows it showed in the last frame (the view reports it), for the wheel.
     #[serde(default, skip_serializing_if = "is_zero")]
     pub rows: u16,
+    /// A `multi` node's picked rows, by key, in the order they were picked; empty while only
+    /// the selected row is.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub picked: Vec<String>,
+    /// Where a range of picked rows starts (a row's key): the row last clicked or ⌘-clicked.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub anchor: Option<String>,
     /// A row asked for by key (`Set { key }`, the `select` action) that isn't there yet: it's
     /// selected when it comes.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -359,6 +366,9 @@ pub enum Msg {
     Stats { stats: Stats },
     /// A click on a node (a row of it, or a tab title).
     Click { id: String, row: Option<usize>, tab: Option<usize> },
+    /// A click on a row with a modifier held: ⌘ (or ⌥) picks it in or out, ⇧ picks the range
+    /// from the anchor. On a node that isn't `multi` it's a click.
+    Pick { id: String, row: usize, how: Pick },
     /// The mouse moved over a node (a row of it), or off everything.
     Hover { hover: Option<Hover> },
     /// The wheel over a node: rows to move (negative is up).
@@ -467,6 +477,14 @@ pub enum Effect {
     Read(String),
 }
 
+/// How a modified click picks rows.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Pick {
+    Toggle,
+    Range,
+}
+
 pub fn update(st: &mut State, msg: Msg) -> Vec<Effect> {
     let checks = matches!(msg, Msg::Push { .. } | Msg::Patch { .. } | Msg::Data { .. } | Msg::Write { .. } | Msg::Theme { .. } | Msg::Key { .. } | Msg::Font { .. });
     let writes = st.store_writes;
@@ -478,7 +496,7 @@ pub fn update(st: &mut State, msg: Msg) -> Vec<Effect> {
     };
     // Messages from the person or an agent move selections on purpose: note the rows they're
     // on now, before re-deriving rows makes a selection follow its old row instead.
-    let moves = matches!(msg, Msg::Key { .. } | Msg::Click { .. } | Msg::Set { .. } | Msg::Scroll { .. });
+    let moves = matches!(msg, Msg::Key { .. } | Msg::Click { .. } | Msg::Pick { .. } | Msg::Set { .. } | Msg::Scroll { .. });
     let was = st.focus.clone();
     let fx = apply(st, msg);
     // A tick that took a lasting write away changed the store like any write.
@@ -502,6 +520,12 @@ pub fn update(st: &mut State, msg: Msg) -> Vec<Effect> {
     }
     // A selection, a write or a new row can point an editor at an entry it hasn't shown yet.
     fields(st);
+    if !quiet {
+        let value = picked_summary(st);
+        if st.data.get("$picked").is_none_or(|s| !matches!(s, Slot::Ready { value: v } if *v == value)) {
+            st.data.insert("$picked".into(), Slot::Ready { value });
+        }
+    }
     if st.focus != was && was.is_some() {
         st.prev_focus = was;
     }
@@ -609,7 +633,19 @@ fn apply(st: &mut State, msg: Msg) -> Vec<Effect> {
             fx.extend(release(st));
             fx
         }
-        Msg::Click { id, .. } | Msg::Point { id, .. } | Msg::Scroll { id, .. } if !reachable(st, &id) => vec![],
+        Msg::Click { id, .. } | Msg::Pick { id, .. } | Msg::Point { id, .. } | Msg::Scroll { id, .. } if !reachable(st, &id) => vec![],
+        Msg::Pick { id, row, how } => {
+            if !tree!(st).find(&id).is_some_and(|n| n.multi) {
+                return apply(st, Msg::Click { id, row: Some(row), tab: None });
+            }
+            let click = tree!(st).find(&id).and_then(|n| n.click.clone());
+            st.focus = Some(id.clone());
+            pick(st, &id, row, how);
+            match click {
+                Some(a) => act(st, a),
+                None => vec![],
+            }
+        }
         Msg::Click { id, row, tab } => {
             let Some(n) = tree!(st).find(&id) else { return vec![] };
             // A node with no click of its own (a picture or a text in a clickable row) passes it
@@ -624,9 +660,12 @@ fn apply(st: &mut State, msg: Msg) -> Vec<Effect> {
             if n.focusable() {
                 st.focus = Some(id.clone());
             }
+            let anchor = row.and_then(|r| items(st, n).get(r).and_then(|v| key_of(n, v)));
             let local = st.local.entry(id.clone()).or_default();
             if let Some(r) = row {
                 local.selected = r;
+                local.picked.clear();
+                local.anchor = anchor;
             }
             if let Some(t) = tab {
                 local.tab = t;
@@ -1763,6 +1802,18 @@ fn resolve(st: &State, key: &str) -> Option<Action> {
     if key == "esc" && focused.is_some_and(|n| n.field().is_some()) {
         return Some(Action::Named("leave".into()));
     }
+    // A list that picks several rows: ⇧ with a move extends the range, ⌘A (⌥A) takes them all,
+    // and Esc goes back to the selected row alone.
+    if let Some(n) = focused.filter(|n| n.multi) {
+        let picking = n.id.as_deref().and_then(|id| st.local.get(id)).is_some_and(|l| !l.picked.is_empty());
+        match key {
+            "s-down" | "J" => return Some(Action::Named("extend_down".into())),
+            "s-up" | "K" => return Some(Action::Named("extend_up".into())),
+            "d-a" | "a-a" => return Some(Action::Named("pick_all".into())),
+            "esc" if picking => return Some(Action::Named("unpick".into())),
+            _ => {}
+        }
+    }
     // A tree folds where a list would switch tabs.
     if focused.is_some_and(|n| matches!(n.kind, Kind::Tree { .. })) {
         match key {
@@ -1924,25 +1975,33 @@ fn act(st: &mut State, a: Action) -> Vec<Effect> {
             vec![]
         }
         Action::Remove { remove, matching: None } => {
-            let target = row_target(st).filter(|(key, _)| *key == remove);
-            let Some((key, ptr)) = target else {
+            let target = row_targets(st).filter(|(key, _)| *key == remove);
+            let Some((key, mut ptrs)) = target else {
                 st.status = Some(format!("remove: the focused list doesn't show a row of {remove}"));
                 return vec![];
             };
-            let (parent, last) = ptr.rsplit_once('/').unwrap_or(("", ""));
-            let removed = match st.store.get_mut(&key).map(|e| &mut e.body) {
-                Some(Body::Value { value }) => match (value.pointer_mut(parent), last.parse::<usize>()) {
-                    (Some(Value::Array(a)), Ok(i)) if i < a.len() => {
-                        a.remove(i);
-                        true
-                    }
+            // Every picked row, the last first, so the indexes of the rest hold.
+            let at = |p: &String| p.rsplit_once('/').and_then(|(_, i)| i.parse::<usize>().ok()).unwrap_or(0);
+            ptrs.sort_by_key(|p| std::cmp::Reverse(at(p)));
+            for ptr in &ptrs {
+                let (parent, last) = ptr.rsplit_once('/').unwrap_or(("", ""));
+                let removed = match st.store.get_mut(&key).map(|e| &mut e.body) {
+                    Some(Body::Value { value }) => match (value.pointer_mut(parent), last.parse::<usize>()) {
+                        (Some(Value::Array(a)), Ok(i)) if i < a.len() => {
+                            a.remove(i);
+                            true
+                        }
+                        _ => false,
+                    },
                     _ => false,
-                },
-                _ => false,
-            };
-            if !removed {
-                st.status = Some(format!("remove: no row at {ptr} in {key}"));
-                return vec![];
+                };
+                if !removed {
+                    st.status = Some(format!("remove: no row at {ptr} in {key}"));
+                    return vec![];
+                }
+            }
+            if let Some(l) = st.focus.clone().and_then(|f| st.local.get_mut(&f)) {
+                l.picked.clear();
             }
             wrote(st, &key, "person");
             settle(st);
@@ -1980,30 +2039,31 @@ fn act(st: &mut State, a: Action) -> Vec<Effect> {
             vec![]
         }
         Action::Toggle { toggle } => {
-            let Some((key, ptr)) = row_target(st) else {
+            let Some((key, ptrs)) = row_targets(st) else {
                 st.status = Some(format!("toggle: the focused list doesn't show a store entry, so {toggle} can't change"));
                 return vec![];
             };
-            let field = format!("{ptr}/{}", toggle.replace('.', "/"));
+            let rel = toggle.replace('.', "/");
+            // Every picked row takes the selected row's new value, so a mixed set all flips one way.
+            let to = match st.store.get(&key).map(|e| &e.body) {
+                Some(Body::Value { value }) => !value.pointer(&format!("{}/{rel}", ptrs[0])).and_then(Value::as_bool).unwrap_or(false),
+                _ => true,
+            };
             let flipped = match st.store.get_mut(&key).map(|e| &mut e.body) {
-                Some(Body::Value { value }) => match value.pointer_mut(&field) {
-                    Some(Value::Bool(b)) => {
-                        *b = !*b;
-                        true
-                    }
-                    Some(v @ Value::Null) => {
-                        *v = Value::Bool(true);
+                Some(Body::Value { value }) => ptrs.iter().all(|ptr| match value.pointer_mut(&format!("{ptr}/{rel}")) {
+                    Some(v @ (Value::Bool(_) | Value::Null)) => {
+                        *v = Value::Bool(to);
                         true
                     }
                     Some(_) => false,
-                    None => match value.pointer_mut(&ptr) {
+                    None => match value.pointer_mut(ptr) {
                         Some(Value::Object(m)) => {
-                            m.insert(toggle.clone(), Value::Bool(true));
+                            m.insert(toggle.clone(), Value::Bool(to));
                             true
                         }
                         _ => false,
                     },
-                },
+                }),
                 _ => false,
             };
             if !flipped {
@@ -2029,6 +2089,15 @@ fn act(st: &mut State, a: Action) -> Vec<Effect> {
             "leave" => leave(st),
             "focus_next" => cycle(st, 1),
             "focus_prev" => cycle(st, -1),
+            "extend_down" => extend(st, 1),
+            "extend_up" => extend(st, -1),
+            "pick_all" => pick_all(st),
+            "unpick" => {
+                if let Some(l) = st.focus.clone().and_then(|f| st.local.get_mut(&f)) {
+                    l.picked.clear();
+                }
+                vec![]
+            }
             other => {
                 st.status = Some(format!("unknown action {other:?}"));
                 vec![]
@@ -2079,7 +2148,9 @@ fn fold(st: &mut State, how: Fold) -> Vec<Effect> {
 
 /// The focused list's (or tree's) selected row as a place in the store: the entry its bind names,
 /// and a JSON Pointer to the row in that entry's value. None unless the node shows a store entry.
-fn row_target(st: &State) -> Option<(String, String)> {
+/// The store entry the focused list shows and where its picked rows sit in it (JSON pointers),
+/// the selected row first: the rows a store action on a row changes.
+fn row_targets(st: &State) -> Option<(String, Vec<String>)> {
     let id = st.focus.as_ref()?;
     let n = tree!(st).find(id)?;
     let bind = n.bind.as_deref().filter(|b| !b.starts_with('@'))?;
@@ -2087,14 +2158,109 @@ fn row_target(st: &State) -> Option<(String, String)> {
     if !matches!(st.store.get(key)?.body, Body::Value { .. }) {
         return None;
     }
-    let at = selected(st, id);
-    let row = items(st, n).get(at)?;
-    let inner = match row.get("$ptr").and_then(Value::as_str) {
-        Some(p) => p.to_string(),
-        None => format!("/{at}"),
-    };
+    let rows = items(st, n);
+    let lead = selected(st, id);
     let prefix: String = if path.is_empty() { String::new() } else { path.split('.').map(|p| format!("/{p}")).collect() };
-    Some((key.to_string(), format!("{prefix}{inner}")))
+    let ptr = |at: usize| -> Option<String> {
+        let inner = match rows.get(at)?.get("$ptr").and_then(Value::as_str) {
+            Some(p) => p.to_string(),
+            None => format!("/{at}"),
+        };
+        Some(format!("{prefix}{inner}"))
+    };
+    let mut ptrs = vec![ptr(lead)?];
+    ptrs.extend(picked(st, id).into_iter().filter(|r| *r != lead).filter_map(ptr));
+    Some((key.to_string(), ptrs))
+}
+
+/// Row `k` of node `n`'s key (its `key` field, default `id`).
+pub fn row_key(st: &State, n: &Node, k: usize) -> Option<String> {
+    key_of(n, items(st, n).get(k)?)
+}
+
+/// The rows of `id` that are picked, by index, in order: the picked keys still there, or the
+/// selected row alone.
+pub fn picked(st: &State, id: &str) -> Vec<usize> {
+    let sel = selected(st, id);
+    let Some(n) = tree!(st).find(id) else { return vec![sel] };
+    let Some(keys) = st.local.get(id).map(|l| &l.picked).filter(|k| n.multi && !k.is_empty()) else { return vec![sel] };
+    let out: Vec<usize> = items(st, n).iter().enumerate().filter(|(_, r)| key_of(n, r).is_some_and(|k| keys.contains(&k))).map(|(i, _)| i).collect();
+    if out.is_empty() { vec![sel] } else { out }
+}
+
+/// Pick row `row` of `id` in or out (`Toggle`), or the range from the anchor to it (`Range`).
+/// The row becomes the selected one; a row picked out hands that to the nearest still picked.
+fn pick(st: &mut State, id: &str, row: usize, how: Pick) {
+    let Some(n) = tree!(st).find(id) else { return };
+    let keys: Vec<Option<String>> = items(st, n).iter().map(|r| key_of(n, r)).collect();
+    let Some(Some(key)) = keys.get(row).cloned() else { return };
+    let now = picked(st, id);
+    let lead = selected(st, id);
+    let anchor = st.local.get(id).and_then(|l| l.anchor.clone()).or_else(|| keys.get(lead).cloned().flatten());
+    let (set, to): (Vec<usize>, usize) = match how {
+        Pick::Toggle if now.contains(&row) && now.len() > 1 => {
+            let rest: Vec<usize> = now.into_iter().filter(|r| *r != row).collect();
+            let near = *rest.iter().min_by_key(|r| r.abs_diff(row)).expect("one is left");
+            (rest, near)
+        }
+        Pick::Toggle if now.contains(&row) => (now, row),
+        Pick::Toggle => {
+            let mut set = now;
+            set.push(row);
+            set.sort_unstable();
+            (set, row)
+        }
+        Pick::Range => {
+            let from = anchor.as_ref().and_then(|a| keys.iter().position(|k| k.as_ref() == Some(a))).unwrap_or(lead);
+            ((from.min(row)..=from.max(row)).collect(), row)
+        }
+    };
+    let local = st.local.entry(id.to_string()).or_default();
+    local.picked = if set.len() > 1 { set.iter().filter_map(|r| keys.get(*r).cloned().flatten()).collect() } else { vec![] };
+    local.anchor = if how == Pick::Toggle { Some(key) } else { anchor };
+    local.selected = to;
+    local.key = keys.get(to).cloned().flatten();
+    if let Some(top) = local.top
+        && !(top..top + local.rows as usize).contains(&to)
+    {
+        local.top = None;
+    }
+}
+
+/// ⇧↓ and ⇧↑ on a `multi` list: the range from the anchor grows or shrinks by a row.
+fn extend(st: &mut State, dir: isize) -> Vec<Effect> {
+    let Some(id) = st.focus.clone() else { return vec![] };
+    let Some(n) = tree!(st).find(&id) else { return vec![] };
+    let len = items(st, n).len();
+    let at = selected(st, &id);
+    let Some(to) = at.checked_add_signed(dir).filter(|t| *t < len) else { return vec![] };
+    pick(st, &id, to, Pick::Range);
+    vec![]
+}
+
+/// ⌘A on a `multi` list: every row, the selected one staying where it is.
+fn pick_all(st: &mut State) -> Vec<Effect> {
+    let Some(id) = st.focus.clone() else { return vec![] };
+    let Some(n) = tree!(st).find(&id) else { return vec![] };
+    let keys: Vec<String> = items(st, n).iter().filter(|r| !n.skips(r)).filter_map(|r| key_of(n, r)).collect();
+    let local = st.local.entry(id).or_default();
+    local.picked = if keys.len() > 1 { keys } else { vec![] };
+    vec![]
+}
+
+/// `$picked`: each `multi` node's picked rows, `{"count", "keys", "rows"}`, by node id.
+fn picked_summary(st: &State) -> Value {
+    let mut all = Vec::new();
+    tree!(st).walk(&mut all);
+    let mut out = serde_json::Map::new();
+    for n in all.into_iter().filter(|n| n.multi) {
+        let Some(id) = n.id.as_deref() else { continue };
+        let rows = items(st, n);
+        let at: Vec<&Value> = picked(st, id).into_iter().filter_map(|r| rows.get(r)).collect();
+        let keys: Vec<Value> = at.iter().filter_map(|r| key_of(n, r)).map(Value::String).collect();
+        out.insert(id.to_string(), serde_json::json!({"count": at.len(), "keys": keys, "rows": at}));
+    }
+    Value::Object(out)
 }
 
 /// The text a filter reads: a text entry's contents, or a bound string.
@@ -2308,6 +2474,8 @@ fn step(st: &mut State, f: impl Fn(usize, usize) -> usize) -> Vec<Effect> {
     let local = st.local.entry(id).or_default();
     local.selected = to;
     local.key = key;
+    local.picked.clear();
+    local.anchor = None;
     // A view the wheel moved stays put while the selection is in it, and follows it again
     // once it leaves.
     if let Some(top) = local.top
@@ -3404,6 +3572,36 @@ mod tests {
         assert!(st.toasts.is_empty());
         update(&mut st, Msg::Click { id: "q".into(), row: None, tab: None });
         assert_eq!(st.focus.as_deref(), Some("q"));
+    }
+
+    #[test]
+    fn toggle_and_remove_act_on_every_picked_row() {
+        let mut st = State::default();
+        let rows: Vec<Value> = (0..5).map(|i| json!({"id": format!("r{i}"), "ok": i == 1})).collect();
+        let ui = ui(json!({"root": {"type": "list", "id": "l", "multi": true, "bind": "rows",
+            "keys": {"x": {"toggle": "ok"}, "d": {"remove": "rows"}}}, "store": {"rows": rows}, "focus": "l"}));
+        update(&mut st, Msg::Push { ui });
+        update(&mut st, Msg::Click { id: "l".into(), row: Some(0), tab: None });
+        update(&mut st, Msg::Pick { id: "l".into(), row: 2, how: Pick::Range });
+        assert_eq!(picked(&st, "l"), vec![0, 1, 2]);
+        let oks = |st: &State| match &st.store["rows"].body {
+            Body::Value { value } => value.as_array().unwrap().iter().map(|r| r["ok"].as_bool().unwrap_or(false)).collect::<Vec<_>>(),
+            _ => vec![],
+        };
+        // The selected row (2) was false, so every picked row becomes true, the one that was too.
+        keys(&mut st, &["x"]);
+        assert_eq!(oks(&st), vec![true, true, true, false, false]);
+        keys(&mut st, &["x"]);
+        assert_eq!(oks(&st), vec![false, false, false, false, false]);
+        keys(&mut st, &["d"]);
+        let ids = match &st.store["rows"].body {
+            Body::Value { value } => value.as_array().unwrap().iter().map(|r| r["id"].as_str().unwrap().to_string()).collect::<Vec<_>>(),
+            _ => vec![],
+        };
+        assert_eq!(ids, vec!["r3", "r4"]);
+        assert_eq!(picked(&st, "l").len(), 1, "what's left is one row again");
+        let Some(Slot::Ready { value }) = st.data.get("$picked") else { panic!("no $picked") };
+        assert_eq!(value["l"]["count"], 1);
     }
 
     #[test]

@@ -148,8 +148,9 @@ pub struct Drawn {
 /// The mouse, as whatever draws reports it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Pointer {
-    /// The left button down, with Shift or not.
-    Press { shift: bool },
+    /// The left button down, with Shift or not, and with ⌘ (⌥ in a terminal) or not: a press
+    /// on a row with either picks rows (`Msg::Pick`).
+    Press { shift: bool, toggle: bool },
     /// Moved with the button held.
     Drag,
     Release,
@@ -159,12 +160,13 @@ pub enum Pointer {
 }
 
 impl Pointer {
-    /// A pointer by the names `Headless::mouse` takes: `press`, `s-press`, `drag`, `release`,
-    /// `move`, `wheel-up`, `wheel-down`.
+    /// A pointer by the names `Headless::mouse` takes: `press`, `s-press`, `d-press` (⌘),
+    /// `drag`, `release`, `move`, `wheel-up`, `wheel-down`.
     pub fn named(kind: &str) -> Pointer {
         match kind {
-            "press" => Pointer::Press { shift: false },
-            "s-press" => Pointer::Press { shift: true },
+            "press" => Pointer::Press { shift: false, toggle: false },
+            "s-press" => Pointer::Press { shift: true, toggle: false },
+            "d-press" | "a-press" => Pointer::Press { shift: false, toggle: true },
             "drag" => Pointer::Drag,
             "release" => Pointer::Release,
             "wheel-up" => Pointer::WheelUp,
@@ -173,10 +175,13 @@ impl Pointer {
         }
     }
 
-    /// A pointer by the socket's names: `click`, `up`, `down`, `move`.
+    /// A pointer by the socket's names: `click` (`s-click` with ⇧, `d-click` with ⌘), `up`,
+    /// `down`, `move`.
     fn requested(kind: &str) -> Pointer {
         match kind {
-            "click" => Pointer::Press { shift: false },
+            "click" => Pointer::Press { shift: false, toggle: false },
+            "s-click" => Pointer::Press { shift: true, toggle: false },
+            "d-click" | "a-click" => Pointer::Press { shift: false, toggle: true },
             "up" => Pointer::WheelUp,
             "down" => Pointer::WheelDown,
             _ => Pointer::Move,
@@ -269,11 +274,15 @@ fn pointer(kind: Pointer, x: u16, y: u16, hits: &[Hit], st: &State, drag: &mut O
             *drag = None;
             None
         }
-        Pointer::Press { shift } => {
+        Pointer::Press { shift, toggle } => {
             let h = at(false)?;
             if h.text {
                 *drag = Some((h.id.clone(), h.rect));
                 return Some(Msg::Point { id: h.id.clone(), col: x - h.rect.x, row: y - h.rect.y, extend: shift });
+            }
+            if let Some(row) = h.row.filter(|r| *r < 1000 && (shift || toggle)) {
+                let how = if toggle { crate::state::Pick::Toggle } else { crate::state::Pick::Range };
+                return Some(Msg::Pick { id: h.id.clone(), row, how });
             }
             Some(Msg::Click { id: h.id.clone(), row: h.row.filter(|r| *r < 1000), tab: h.tab })
         }

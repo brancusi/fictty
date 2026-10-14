@@ -267,7 +267,7 @@ impl App {
 /// A terminal's mouse event as the engine's pointer.
 fn pointer(kind: MouseEventKind, mods: KeyModifiers) -> Option<Pointer> {
     Some(match kind {
-        MouseEventKind::Down(MouseButton::Left) => Pointer::Press { shift: mods.contains(KeyModifiers::SHIFT) },
+        MouseEventKind::Down(MouseButton::Left) => Pointer::Press { shift: mods.contains(KeyModifiers::SHIFT), toggle: mods.contains(KeyModifiers::ALT) },
         MouseEventKind::Drag(MouseButton::Left) => Pointer::Drag,
         MouseEventKind::Up(MouseButton::Left) => Pointer::Release,
         MouseEventKind::ScrollUp => Pointer::WheelUp,

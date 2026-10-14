@@ -116,7 +116,8 @@ enum Cmd {
         #[arg(long, requires = "nodes")]
         style: bool,
     },
-    /// Move, click or scroll the mouse on the running screen: `move|click|up|down X Y`.
+    /// Move, click or scroll the mouse on the running screen: `move|click|up|down X Y`;
+    /// `s-click` and `d-click` click with ⇧ or ⌘ held (picking rows of a `multi` list).
     Mouse { kind: String, x: u16, y: u16 },
     /// Set a terminal up for fictty: `wezterm` installs a module that sends ⌘ keys (⌘Z, ⌘A, ⌘←)
     /// to fictty screens, which WezTerm doesn't do by itself. Ghostty and kitty need nothing.

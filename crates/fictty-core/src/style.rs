@@ -655,12 +655,20 @@ pub fn row_states(st: &State, n: &Node, k: usize) -> Vec<&'static str> {
     let Some(id) = n.id.as_deref() else { return vec![] };
     let focused = st.focus.as_deref() == Some(id);
     let hover = st.hover.as_ref().is_some_and(|h| h.id == id && h.row == Some(k));
-    let selected = state::selected(st, id) == k;
+    let lead = state::selected(st, id) == k;
+    // Picked rows of a `multi` list are all selected; the one the keys move is also active.
+    let picks = st.local.get(id).map(|l| &l.picked).filter(|p| n.multi && !p.is_empty());
+    let picking = picks.is_some();
+    let selected = match picks {
+        Some(p) => state::row_key(st, n, k).is_some_and(|key| p.contains(&key)),
+        None => lead,
+    };
     STATES
         .into_iter()
         .filter(|s| match *s {
             "hover" => hover,
-            "focused" => focused && selected,
+            "focused" => focused && lead,
+            "active" => picking && lead,
             "selected" => selected,
             "blur" => !focused,
             _ => false,

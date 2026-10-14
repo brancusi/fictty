@@ -332,6 +332,10 @@ pub struct Node {
     /// What a click does (after focusing the node and selecting the clicked row).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub click: Option<Action>,
+    /// A list, tree or table whose rows can be picked several at a time: ⌘-click (⌥-click in a
+    /// terminal) picks one in or out, ⇧-click and ⇧↑/↓ a range, ⌘A all of them.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub multi: bool,
     /// A pixel panel behind the node (rounded, shadowed), where the terminal draws images; a plain
     /// border where it doesn't.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -408,6 +412,7 @@ impl Default for Node {
             align: None,
             tip: None,
             click: None,
+            multi: false,
             backdrop: None,
             scale: None,
             variant: None,

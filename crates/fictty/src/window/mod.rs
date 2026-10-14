@@ -297,6 +297,17 @@ fn sized(el: gpui::Stateful<gpui::Div>, n: &Node, along_row: bool, cell: Cell, t
     el
 }
 
+/// A press on row `k` of `id`: ⌘ (or ⌥) picks it in or out, ⇧ picks the range to it, and
+/// otherwise it's a click that selects it.
+fn row_press(id: &str, k: usize, e: &MouseDownEvent) -> Msg {
+    let m = &e.modifiers;
+    match (m.platform || m.alt, m.shift) {
+        (true, _) => Msg::Pick { id: id.to_string(), row: k, how: state::Pick::Toggle },
+        (false, true) => Msg::Pick { id: id.to_string(), row: k, how: state::Pick::Range },
+        _ => Msg::Click { id: id.to_string(), row: Some(k), tab: None },
+    }
+}
+
 /// Four sides in pixels, `[top, right, bottom, left]`: across in cells' widths, down in their
 /// heights. A length that isn't one is nothing (and a problem).
 fn sides(th: &style::Theme, l: Option<&Lens>, cell: Cell) -> [f32; 4] {
@@ -451,9 +462,9 @@ impl Portal {
                         let under = id.clone();
                         lk.boxed(div().id(k).relative().flex().flex_row().h(px(cell.h)), &style::inner(st, "row", &style::row_states(st, n, k)), c, [0.; 4])
                             .child(measure(&self.laid, move |l, b| l.hits.push((b, hit(under, Some(k), None, false)))))
-                            .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, _, cx| {
+                            .on_mouse_down(MouseButton::Left, cx.listener(move |this, e: &MouseDownEvent, _, cx| {
                         cx.stop_propagation();
-                        this.send(Msg::Click { id: target.clone(), row: Some(k), tab: None }, cx)
+                        this.send(row_press(&target, k, e), cx)
                     }))
                             .children(columns.iter().map(|c| div().flex_1().min_w_0().child(text::line(&tx, &c.value, r, Ink::default(), false))))
                             .into_any_element()
@@ -618,9 +629,9 @@ impl Portal {
                     .flex_col()
                     .justify_center()
                     .overflow_hidden()
-                    .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, _, cx| {
+                    .on_mouse_down(MouseButton::Left, cx.listener(move |this, e: &MouseDownEvent, _, cx| {
                         cx.stop_propagation();
-                        this.send(Msg::Click { id: target.clone(), row: Some(k), tab: None }, cx)
+                        this.send(row_press(&target, k, e), cx)
                     }))
                     .child(text)
                     .into_any_element()
