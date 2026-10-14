@@ -612,7 +612,15 @@ fn apply(st: &mut State, msg: Msg) -> Vec<Effect> {
         Msg::Click { id, .. } | Msg::Point { id, .. } | Msg::Scroll { id, .. } if !reachable(st, &id) => vec![],
         Msg::Click { id, row, tab } => {
             let Some(n) = tree!(st).find(&id) else { return vec![] };
-            let click = n.click.clone();
+            // A node with no click of its own (a picture or a text in a clickable row) passes it
+            // to the nearest one around it that has one.
+            let click = match &n.click {
+                Some(c) => Some(c.clone()),
+                None if row.is_none() && tab.is_none() && !n.focusable() => {
+                    tree!(st).path_to(&id).into_iter().rev().find_map(|a| a.click.clone())
+                }
+                None => None,
+            };
             if n.focusable() {
                 st.focus = Some(id.clone());
             }
@@ -3388,6 +3396,22 @@ mod tests {
         assert!(st.toasts.is_empty());
         update(&mut st, Msg::Click { id: "q".into(), row: None, tab: None });
         assert_eq!(st.focus.as_deref(), Some("q"));
+    }
+
+    #[test]
+    fn a_click_on_a_node_without_one_runs_the_nearest_around_it() {
+        let mut st = State::default();
+        let ui = ui(json!({"root": {"type": "col", "children": [
+            {"type": "row", "id": "card", "click": {"put": "picked", "value": "card"}, "children": [
+                {"type": "image", "id": "pic", "src": "a.png"},
+                {"type": "text", "id": "own", "text": "x", "click": {"put": "picked", "value": "own"}}
+            ]}
+        ]}}));
+        update(&mut st, Msg::Push { ui });
+        update(&mut st, Msg::Click { id: "pic".into(), row: None, tab: None });
+        assert_eq!(st.store.get("picked").map(|e| &e.body), Some(&Body::Value { value: json!("card") }));
+        update(&mut st, Msg::Click { id: "own".into(), row: None, tab: None });
+        assert_eq!(st.store.get("picked").map(|e| &e.body), Some(&Body::Value { value: json!("own") }), "its own click wins");
     }
 
     #[test]

@@ -108,6 +108,26 @@ fn a_press_on_a_row_selects_it_and_a_tab_switches() {
 }
 
 #[test]
+fn a_press_on_a_picture_runs_the_click_of_the_card_around_it() {
+    let ui = json!({"root": {"type": "col", "children": [
+        {"type": "row", "id": "card", "size": 6, "click": {"put": "picked", "value": "card"}, "children": [
+            {"type": "image", "id": "pic", "size": 10, "src": "nothing.png"},
+            {"type": "text", "id": "name", "text": "a name"}
+        ]},
+        {"type": "list", "id": "l", "click": {"put": "picked", "value": "list"}, "items": rows(3)}
+    ]}});
+    let mut s = window(ui, 60, 16);
+    let p = node(&mut s, "pic").rect.unwrap();
+    s.mouse("press", p.x + 1, p.y + 1).mouse("release", p.x + 1, p.y + 1);
+    assert_eq!(s.state().store["picked"].read()["value"], "card");
+    // A row takes its own press, once: the list's click runs after it selects, not the card's.
+    let l = node(&mut s, "l").rect.unwrap();
+    s.mouse("press", l.x + 2, l.y + 1).mouse("release", l.x + 2, l.y + 1);
+    assert_eq!(s.state().local["l"].selected, 1);
+    assert_eq!(s.state().store["picked"].read()["value"], "list");
+}
+
+#[test]
 fn a_press_in_an_editor_places_the_caret_and_a_drag_selects() {
     let ui = json!({"root": {"type": "editor", "id": "e", "text": "alpha beta gamma\nsecond line"}});
     let mut s = window(ui, 60, 8);

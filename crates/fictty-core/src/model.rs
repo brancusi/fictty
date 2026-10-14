@@ -1524,6 +1524,22 @@ impl Node {
         all.into_iter().find(|n| n.id.as_deref() == Some(id))
     }
 
+    /// The nodes from this one down to the node with this id, both included; empty when there
+    /// is none.
+    pub fn path_to(&self, id: &str) -> Vec<&Node> {
+        if self.id.as_deref() == Some(id) {
+            return vec![self];
+        }
+        for c in self.children() {
+            let mut p = c.path_to(id);
+            if !p.is_empty() {
+                p.insert(0, self);
+                return p;
+            }
+        }
+        vec![]
+    }
+
     /// Replace the node with this id; false when there is none.
     pub fn replace(&mut self, id: &str, with: &Node) -> bool {
         if self.id.as_deref() == Some(id) {

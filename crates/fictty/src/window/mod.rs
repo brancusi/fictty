@@ -429,7 +429,10 @@ impl Portal {
                 // As tall as its row, the label in the middle, so a border stays inside the row.
                 lk.boxed(div().id(SharedString::from(format!("btn-{key}"))).relative().flex_none().h_full().flex().items_center(), &rs, c, [0.; 4])
                     .children(face)
-                    .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, _, cx| this.send(Msg::Click { id: target.clone(), row: None, tab: None }, cx)))
+                    .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, _, cx| {
+                        cx.stop_propagation();
+                        this.send(Msg::Click { id: target.clone(), row: None, tab: None }, cx)
+                    }))
                     .child(label)
                     .into_any_element()
             }
@@ -448,7 +451,10 @@ impl Portal {
                         let under = id.clone();
                         lk.boxed(div().id(k).relative().flex().flex_row().h(px(cell.h)), &style::inner(st, "row", &style::row_states(st, n, k)), c, [0.; 4])
                             .child(measure(&self.laid, move |l, b| l.hits.push((b, hit(under, Some(k), None, false)))))
-                            .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, _, cx| this.send(Msg::Click { id: target.clone(), row: Some(k), tab: None }, cx)))
+                            .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, _, cx| {
+                        cx.stop_propagation();
+                        this.send(Msg::Click { id: target.clone(), row: Some(k), tab: None }, cx)
+                    }))
                             .children(columns.iter().map(|c| div().flex_1().min_w_0().child(text::line(&tx, &c.value, r, Ink::default(), false))))
                             .into_any_element()
                     })
@@ -504,7 +510,10 @@ impl Portal {
                     lk.boxed(div().id(SharedString::from(format!("tab-{key}-{k}"))).relative(), if k == at { &active } else { &idle }, c, [0.; 4])
                         .when_some(underline.filter(|_| k == at), |d, u| d.border_b_2().border_color(u))
                         .child(measure(&self.laid, move |l, b| l.hits.push((b, hit(under, None, Some(k), false)))))
-                        .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, _, cx| this.send(Msg::Click { id: target.clone(), row: None, tab: Some(k) }, cx)))
+                        .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, _, cx| {
+                        cx.stop_propagation();
+                        this.send(Msg::Click { id: target.clone(), row: None, tab: Some(k) }, cx)
+                    }))
                         .child(text::plain(t, v))
                 }));
                 let shown = child.map(|c| self.node(st, lk, &c, false, &format!("{key}.{at}"), cx)).unwrap_or_else(|| div().into_any_element());
@@ -521,6 +530,18 @@ impl Portal {
             _ => div().text_color(lk.dim).child(format!("[{}]", n.kind_name())).into_any_element(),
         };
         el = el.child(body);
+        // A press on a node with an id that nothing inside it took (its rows, tabs, text and
+        // buttons take their own): the core passes it on to the nearest `click`.
+        if !id.is_empty() {
+            let target = id.clone();
+            el = el.on_mouse_down(
+                MouseButton::Left,
+                cx.listener(move |this, _, _, cx| {
+                    cx.stop_propagation();
+                    this.send(Msg::Click { id: target.clone(), row: None, tab: None }, cx)
+                }),
+            );
+        }
         el.into_any_element()
     }
 
@@ -580,7 +601,10 @@ impl Portal {
                     .flex_col()
                     .justify_center()
                     .overflow_hidden()
-                    .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, _, cx| this.send(Msg::Click { id: target.clone(), row: Some(k), tab: None }, cx)))
+                    .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, _, cx| {
+                        cx.stop_propagation();
+                        this.send(Msg::Click { id: target.clone(), row: Some(k), tab: None }, cx)
+                    }))
                     .child(text)
                     .into_any_element()
             })
@@ -713,6 +737,7 @@ impl Portal {
                 MouseButton::Left,
                 cx.listener(move |this, e: &MouseDownEvent, _, cx| {
                     let Some((col, row)) = this.in_text(&press, e.position) else { return };
+                    cx.stop_propagation();
                     this.drag = Some(press.clone());
                     this.send(Msg::Point { id: press.clone(), col, row, extend: e.modifiers.shift }, cx);
                 }),
