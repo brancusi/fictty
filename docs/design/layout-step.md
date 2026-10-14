@@ -48,6 +48,25 @@ Written on 14 October 2026 for whoever picks this up next.
 | push storm 60/s | 60 | 0.17–0.22 | 0.4–0.6 |
 | push storm flat out | 106–120 | 0.11–0.14 | 0.3 |
 
+**After 3a** (14 October 2026, 762caf3, same machine), two runs each in one session, 3a then
+the baseline rebuilt from adae188:
+
+| scenario | 3a fps | 3a build ms | adae188 fps | adae188 build ms |
+|---|---|---|---|---|
+| ticker | 120 | 0.18–0.20 | 60–62 | 0.14–0.16 |
+| plasma | 120 | 0.05–0.06 | 60–61 | 0.02 |
+| biglist | 20 | 0.15–0.16 | 20 | 0.08–0.09 |
+| patch storm 1000/s | 60–120 | 0.19 | 60 | 0.14–0.18 |
+| push storm 60/s | 58–60 | 0.26–0.29 | 38–50 | 0.18–0.21 |
+| push storm flat out | 60–122 | 0.26–0.31 | 58–60 | 0.12–0.15 |
+
+The window's numbers say 3a builds slower, but the two ran at different refresh rates (120 Hz
+then 60), and plasma, three nodes, moved as much as biglist did, which isn't a per-node cost.
+A headless A/B in the window's test platform (release, 400 frames each of plasma, the 50k-row
+list and 96 padded cards, update and frame and readback) put both builds within 2% of each other,
+twice. So no regression is shown; measure again in the window at one refresh rate before step
+3 is called done.
+
 ## Where we start
 
 What layout the window has today (step 1, `crates/fictty/src/window/mod.rs`, `sized`):
