@@ -129,7 +129,7 @@ fn shown(st: &State, n: &Node, depth: usize, (rects, cut): Frame) -> Shown {
                 s.selected = Some(at);
                 s.text = match (&rows.item, &rows.row, items.get(at)) {
                     (Some(t), _, Some(r)) => lines(t, r),
-                    (None, Some(row), Some(r)) => row_text(row, r),
+                    (None, Some(row), Some(r)) => row_text(st, row, r),
                     (None, _, r) => scalar(r),
                     _ => String::new(),
                 };
@@ -159,11 +159,12 @@ fn shown(st: &State, n: &Node, depth: usize, (rects, cut): Frame) -> Shown {
 }
 
 /// The readback as an outline, a line per node, indented by depth:
-/// What a row drawn from a node template shows: its texts, labels and pictures' files, in order.
-fn row_text(template: &Node, row: &Value) -> String {
+/// What a row drawn from a node template shows: its texts, labels and pictures' files, in order,
+/// leaving out what a `when` hides.
+fn row_text(st: &State, template: &Node, row: &Value) -> String {
     let n = crate::model::row_instance(template, row);
     let mut all = Vec::new();
-    n.walk(&mut all);
+    n.walk_shown(&|n| state::tab_of(st, n), &|n| state::shown(st, n), &mut all);
     let parts: Vec<String> = all
         .into_iter()
         .filter_map(|n| match &n.kind {

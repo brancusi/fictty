@@ -2174,6 +2174,24 @@ fn act(st: &mut State, a: Action) -> Vec<Effect> {
             vec![]
         }
         // `store.zen`: a true-or-false store entry (or a path into one), not a row's field.
+        // `store.flag/{id}`: an entry of each picked row of the focused list, named from it, all
+        // taking the selected row's new value.
+        Action::Toggle { toggle } if toggle.starts_with("store.") && toggle.contains('{') => {
+            let template = &toggle["store.".len()..];
+            let Some(id) = st.focus.clone() else { return vec![] };
+            let Some(n) = tree!(st).find(&id) else { return vec![] };
+            let rows = items(st, n);
+            let keys: Vec<String> = picked(st, &id).into_iter().filter_map(|r| rows.get(r)).map(|r| crate::model::fill(template, r)).collect();
+            let lead = rows.get(selected(st, &id)).map(|r| crate::model::fill(template, r));
+            let Some(lead) = lead else { return vec![] };
+            let on = |st: &State, k: &str| matches!(st.store.get(k).map(|e| &e.body), Some(Body::Value { value: Value::Bool(true) }));
+            let to = !on(st, &lead);
+            for k in keys {
+                let _ = write_entry(st, &k, Write::Put { value: Value::Bool(to) }, None, "person");
+            }
+            settle(st);
+            vec![]
+        }
         Action::Toggle { toggle } if toggle.starts_with("store.") => {
             let path = &toggle["store.".len()..];
             let (key, inner) = split_bind(path);
@@ -2443,7 +2461,9 @@ fn picked_summary(st: &State) -> Value {
         let rows = items(st, n);
         let at: Vec<&Value> = picked(st, id).into_iter().filter_map(|r| rows.get(r)).collect();
         let keys: Vec<Value> = at.iter().filter_map(|r| key_of(n, r)).map(Value::String).collect();
-        out.insert(id.to_string(), serde_json::json!({"count": at.len(), "keys": keys, "rows": at}));
+        // Where the selected row is among them all, for "6 of 47".
+        let index = if rows.is_empty() { 0 } else { selected(st, id) + 1 };
+        out.insert(id.to_string(), serde_json::json!({"count": at.len(), "keys": keys, "rows": at, "index": index, "total": rows.len()}));
     }
     Value::Object(out)
 }
@@ -3805,6 +3825,27 @@ mod tests {
         assert_eq!(picked(&st, "l").len(), 1, "what's left is one row again");
         let Some(Slot::Ready { value }) = st.data.get("$picked") else { panic!("no $picked") };
         assert_eq!(value["l"]["count"], 1);
+    }
+
+    #[test]
+    fn a_toggle_of_a_store_entry_named_from_the_row_flips_one_per_picked_row() {
+        let mut st = State::default();
+        let rows: Vec<Value> = (0..4).map(|i| json!({"id": format!("r{i}")})).collect();
+        let ui = ui(json!({"root": {"type": "list", "id": "l", "multi": true, "items": rows,
+            "keys": {"x": {"toggle": "store.remove/{id}"}}}, "focus": "l"}));
+        update(&mut st, Msg::Push { ui });
+        keys(&mut st, &["x"]);
+        assert_eq!(st.store["remove/r0"].body, Body::Value { value: json!(true) });
+        update(&mut st, Msg::Pick { id: "l".into(), row: 2, how: Pick::Range });
+        keys(&mut st, &["x"]);
+        let flags: Vec<Value> = (0..4).map(|i| match st.store.get(&format!("remove/r{i}")).map(|e| &e.body) {
+            Some(Body::Value { value }) => value.clone(),
+            _ => Value::Null,
+        }).collect();
+        // The selected row (2) wasn't flagged, so all three picked are now.
+        assert_eq!(flags, vec![json!(true), json!(true), json!(true), Value::Null]);
+        let Some(Slot::Ready { value }) = st.data.get("$picked") else { panic!("no $picked") };
+        assert_eq!((value["l"]["index"].clone(), value["l"]["total"].clone()), (json!(3), json!(4)));
     }
 
     #[test]

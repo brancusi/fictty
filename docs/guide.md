@@ -91,7 +91,8 @@ fictty theme paper                                        # choose a loaded them
   one in or out, ⇧-click picks the range from the row last clicked, ⇧↑/⇧↓ (`J`/`K`) grow it,
   ⌘A (⌥A) takes every row, Esc and any plain move or click go back to one. The selected row is
   still the one `@id` reads; every picked row is drawn `row.selected` and the selected one also
-  `row.active`. `$picked.<id>` is `{"count", "keys", "rows"}`, `toggle` and `remove` act on every
+  `row.active`. `$picked.<id>` is `{"count", "keys", "rows", "index", "total"}` (`index` the selected
+  row's place from 1, `total` the rows: `"{index} of {total}"`), `toggle` and `remove` act on every
   picked row (all take the selected row's new value), and the readback shows `(picked 3)`
   (`"picked"` in the JSON). `fictty mouse s-click X Y` and `d-click` press with ⇧ or ⌘.
   An **editor over picked rows** (`"bind": "@files", "doc": "date/{id}"`, `files` multi) edits
@@ -156,7 +157,9 @@ fictty theme paper                                        # choose a loaded them
   the terminal's OSC 52), `{"toast": "Saved", "tone": "pos"}`, `{"host": "name", "args": {…}}`,
   and store actions: `append`, `put`, `remove` (the selected row, or with `where` every row that
   matches), `toggle` (a true/false field of the selected row: a checkbox; `"store.zen"` flips a store
-  entry instead), `do`. An action's templates read the selected row's fields, `{store.key}` and
+  entry instead, and `"store.remove/{id}"` an entry named from each picked row, all taking the
+  selected row's new value, so a flag lives per row the way an editor's `doc` does; a row
+  template shows it with `"when": "remove/{$item.id}"`), `do`. An action's templates read the selected row's fields, `{store.key}` and
   the UI's sources by name (`{today.id}`). A node's `click`
   runs an action too, after the click selects the row; a `button` runs its click on Enter and
   Space. A focused node's keys win over the UI's, which win over the defaults; a binding of
