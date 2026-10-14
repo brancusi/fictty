@@ -814,7 +814,14 @@ impl Portal {
             .size_full()
             // A column in, so the text sits on the cell grid wherever the editor does.
             .px(px(cell.w))
+            // The grid's own face, size, line and weight, whatever type role the screen or a
+            // part around it sets: caretline places the caret, selections and clicks on that
+            // grid, so text drawn any other size would part from them. (Proportional editors
+            // are phase 4 in native.md.)
             .font_family(MONO)
+            .text_size(px(TYPE))
+            .line_height(px(ROW))
+            .font_weight(gpui::FontWeight::NORMAL)
             .when(single, |d| d.justify_center())
             // A press in the text puts the caret there (twice a word, three times the line) and
             // starts a drag; the wheel scrolls it. The same messages a terminal's mouse makes.
