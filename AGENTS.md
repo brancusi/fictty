@@ -122,6 +122,17 @@ mise exec -- cargo clippy --all-targets
   tell the person it's open and ask them to bring it to the front to look.
 - Performance claims need a release build and numbers: `examples/stress/play.sh` against a running
   screen prints fps, draw time and messages a second. Measure before and after.
+- **What CI taught us** (it was red from 12 to 13 October):
+  - CI has no terminal and no `TERM`, so nothing a test runs may ask the real terminal for its
+    size. ratatui's `Terminal::resize` does, which is why the fuzz's emulator is rebuilt at
+    the new size instead. Reproduce locally with `env -u TERM cargo test`.
+  - Debug builds on CI's runners are slow. The fuzz gives them four times the release time
+    budget, and `FUZZ_BUDGET_MS` overrides it.
+  - A test that compares a screen running on the wall clock with one on a test clock must not
+    let timing decide what an input means. Multi-clicks did: the pty test now waits half a
+    second before every press, on both screens.
+  - Clippy on Linux differs from macOS's on libc signatures (`openpty`). Read the Linux job
+    too, not only macOS's.
 - Don't launch terminal applications (Ghostty, iTerm, WezTerm) from an agent session to test;
   use `render`, the native window (above), or ask the person to run the screen in a terminal and
   drive it over the socket.

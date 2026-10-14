@@ -32,6 +32,10 @@ answer, decided with Aram: adopt what GPUI already has (its Taffy layout, text a
 themes whole styles resolved in the core, add a layout vocabulary, rows as nodes, and drag and
 motion as data. No more terminal work. **Where to start:** section 0, "Next".
 
+**14 October 2026:** step 2, the Kestrel demo and Daybook are on `main`, and CI is green. Step 3
+starts from "Start here" in [design/layout-step.md](design/layout-step.md): three decisions for
+Aram, then 3a's commits, against a measured baseline.
+
 ## Done
 
 ### Extraction (2026-10-10)
@@ -202,6 +206,9 @@ The phases of [design/native.md](design/native.md), where each is broken down.
         click on a task's box keeps the caret; `required` inputs (2026-10-13). Still open, in its
         README: a task action to bind (⌃T is wired in), proportional editors (phase 4), a map's
         catch-all reading its value
+  - [x] CI green on macOS and Linux again (2026-10-13): the fuzz's emulator rebuilt on a
+        resize (no terminal on CI), `openpty` on Linux, a debug time budget for the fuzz, and
+        the pty test's presses spaced apart. AGENTS.md has the lessons
   - [ ] **Next: step 3**, the layout vocabulary, planned in
         [design/layout-step.md](design/layout-step.md). Then: lists and rows as nodes, the rest of
         editors, charts and icons, toasts and layers, embedding and the examples, then the terminal
