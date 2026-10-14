@@ -87,7 +87,9 @@ An editor bound to a multi-selection (`"bind": "@files"`, `"doc": "date/{id}"`, 
 - **Fields left alone write nothing**, so a caption that differs per image keeps its value while
   the date shared by the same images is typed once.
 - With one row picked it's the editor it has always been.
-- The readback shows `(3 entries)` on such an editor, or `(mixed)` when they differ.
+- The readback shows `(3 entries)` on such an editor, or `(3 entries, mixed)` when they
+  differ. While mixed, it shows its own empty text, the store entry `$mixed/<id>`, which the
+  store file leaves out and which goes once the field isn't mixed.
 
 Known limit: a mixed field can't be cleared in one go. Typing anything and deleting it does
 that.

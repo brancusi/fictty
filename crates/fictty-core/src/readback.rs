@@ -31,6 +31,11 @@ pub struct Shown {
     pub rows: Option<usize>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub selected: Option<usize>,
+    /// How many entries an editor over a multi-selection edits, and whether they differ.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub entries: usize,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub mixed: bool,
     /// A `multi` list's picked rows, by index, while more than one is.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub picked: Vec<usize>,
@@ -97,6 +102,8 @@ fn shown(st: &State, n: &Node, depth: usize, (rects, cut): Frame) -> Shown {
         rows: None,
         selected: None,
         picked: s_picked(st, n),
+        entries: if n.field().is_some() { state::doc_keys(st, n).len() } else { 0 },
+        mixed: state::doc_key(st, n).is_some_and(|k| k.starts_with(state::MIXED)),
         rect: id.as_deref().and_then(|i| rects.iter().find(|(r, _)| r == i)).map(|(_, r)| *r),
         style: style::resolve(st, n),
         cut: id.as_deref().is_some_and(|i| cut.iter().any(|c| c == i)),
@@ -151,6 +158,10 @@ fn shown(st: &State, n: &Node, depth: usize, (rects, cut): Frame) -> Shown {
 }
 
 /// The readback as an outline, a line per node, indented by depth:
+fn is_zero(n: &usize) -> bool {
+    *n == 0
+}
+
 /// A `multi` node's picked rows while it has more than one.
 fn s_picked(st: &State, n: &Node) -> Vec<usize> {
     let Some(id) = n.id.as_deref().filter(|_| n.multi) else { return vec![] };
@@ -190,6 +201,9 @@ fn outline_with(shown: &[Shown], styled: bool) -> String {
             (Some(k), Some(n)) => line.push_str(&format!(" ({}/{n})", k + 1)),
             (None, Some(n)) => line.push_str(&format!(" (0/{n})")),
             _ => {}
+        }
+        if s.entries > 1 {
+            line.push_str(&format!(" ({} entries{})", s.entries, if s.mixed { ", mixed" } else { "" }));
         }
         if !s.picked.is_empty() {
             line.push_str(&format!(" (picked {})", s.picked.len()));

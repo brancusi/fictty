@@ -1566,8 +1566,76 @@ fn toggle_task(st: &mut State, id: &str, line: usize) {
 }
 
 /// The store entry an editor or input shows: its `doc` template over the bound value, else its
-/// `bind`, else its id. None while a `doc` has nothing to fill from (no row selected).
+/// `bind`, else its id. None while a `doc` has nothing to fill from (no row selected). An
+/// editor over a multi-selection whose entries differ shows `$mixed/<id>`, an empty text of its
+/// own, until its first edit makes them the same (see `doc_keys`).
 pub fn doc_key(st: &State, n: &Node) -> Option<String> {
+    let keys = doc_keys(st, n);
+    if keys.len() > 1 && !keys.iter().all(|k| entry_text(st, k) == entry_text(st, &keys[0])) {
+        return Some(format!("{MIXED}{}", n.id.as_deref()?));
+    }
+    lead_key(st, n)
+}
+
+/// What an empty field shows: `Multiple values` over picked rows whose entries differ, else its
+/// own `placeholder`.
+pub fn placeholder(st: &State, n: &Node) -> Option<String> {
+    if doc_key(st, n).is_some_and(|k| k.starts_with(MIXED)) {
+        return Some("Multiple values".into());
+    }
+    n.field()?.placeholder.map(String::from)
+}
+
+/// What a mixed editor's own text is called: never saved, gone once it's no longer mixed.
+pub const MIXED: &str = "$mixed/";
+
+/// Every entry an editor edits: its `doc` filled from each picked row when it's bound (`@id`)
+/// to a `multi` node with several picked, else the one it shows. The selected row's comes first.
+pub fn doc_keys(st: &State, n: &Node) -> Vec<String> {
+    let lead = lead_key(st, n);
+    let many = || -> Option<Vec<String>> {
+        let doc = n.field()?.doc?;
+        let (source, path) = split_bind(n.bind.as_deref()?);
+        let id = source.strip_prefix('@')?;
+        let list = tree!(st).find(id).filter(|l| l.multi)?;
+        let picks = picked(st, id);
+        if picks.len() < 2 {
+            return None;
+        }
+        let rows = items(st, list);
+        let mut keys: Vec<String> = lead.iter().cloned().collect();
+        for r in picks {
+            let k = crate::model::fill(doc, lookup(rows.get(r)?, path)?);
+            if !keys.contains(&k) {
+                keys.push(k);
+            }
+        }
+        Some(keys)
+    };
+    many().unwrap_or_else(|| lead.into_iter().collect())
+}
+
+/// The bound value of each picked row after the selected one, in `doc_keys`' order, for seeds.
+fn picked_rows<'a>(st: &'a State, n: &Node) -> Vec<&'a Value> {
+    let Some((source, path)) = n.bind.as_deref().map(split_bind) else { return vec![] };
+    let Some(id) = source.strip_prefix('@') else { return vec![] };
+    let Some(list) = tree!(st).find(id).filter(|l| l.multi) else { return vec![] };
+    let lead = selected(st, id);
+    let rows = items(st, list);
+    picked(st, id).into_iter().filter(|r| *r != lead).filter_map(|r| lookup(rows.get(r)?, path)).collect()
+}
+
+/// An entry's text, a string value as text, nothing as empty.
+fn entry_text(st: &State, key: &str) -> String {
+    match st.store.get(key).map(|e| &e.body) {
+        Some(Body::Text { doc }) => doc.text.to_string(),
+        Some(Body::Value { value: Value::String(s) }) => s.clone(),
+        _ => String::new(),
+    }
+}
+
+/// The entry an editor shows for its selected row (or its bind, or its id).
+fn lead_key(st: &State, n: &Node) -> Option<String> {
     let f = n.field()?;
     match (f.doc, n.bind.as_deref()) {
         (Some(doc), Some(bind)) => Some(crate::model::fill(doc, value_of(st, bind)?)),
@@ -1601,8 +1669,71 @@ fn put_views(st: &mut State, key: &str, views: Vec<(String, caretline::View)>) {
 }
 
 /// A caretline message through editor `id`'s view of its text. Every other editor on the same
-/// text follows the change. A change of text is a store write, by `by`.
+/// text follows the change. A change of text is a store write, by `by`. An editor over several
+/// rows' entries makes the change in each: the same message through the same view while they're
+/// the same, or, while they differ, what its own empty text then holds put into every one.
 fn on_doc(st: &mut State, id: &str, msg: caretline::Msg, by: &str) -> Vec<caretline::Effect> {
+    let Some(node) = tree!(st).find(id) else { return vec![] };
+    let keys = doc_keys(st, node);
+    if keys.len() < 2 {
+        return on_one_doc(st, id, msg, by);
+    }
+    let Some(key) = doc_key(st, node) else { return vec![] };
+    if key.starts_with(MIXED) {
+        let fx = on_one_doc(st, id, msg, by);
+        let text = entry_text(st, &key);
+        if !text.is_empty() {
+            let view = st.local.get(id).and_then(|l| l.editors.get(&key)).cloned();
+            for k in &keys {
+                let _ = write_entry(st, k, Write::Put { value: Value::String(text.clone()) }, None, by);
+            }
+            st.store.remove(&key);
+            if let Some(l) = st.local.get_mut(id) {
+                l.editors.remove(&key);
+                if let Some(v) = view {
+                    l.editors.insert(keys[0].clone(), v);
+                }
+            }
+        }
+        return fx;
+    }
+    let before = st.local.get(id).and_then(|l| l.editors.get(&key)).cloned();
+    let rev = st.store.get(&key).map(|e| e.rev);
+    let fx = on_one_doc(st, id, msg.clone(), by);
+    if st.store.get(&key).map(|e| e.rev) == rev {
+        return fx;
+    }
+    // The text changed: the same change in every other picked row's entry, from where the
+    // caret was in this one.
+    let Some(before) = before else { return fx };
+    for k in keys.iter().filter(|k| **k != key) {
+        let mut views = take_views(st, k);
+        let Some(Entry { body: Body::Text { doc }, .. }) = st.store.get_mut(k) else {
+            put_views(st, k, views);
+            continue;
+        };
+        let changed = doc.rev;
+        let mut vs: Vec<caretline::View> = views.iter().map(|(_, v)| v.clone()).collect();
+        vs.push(before.clone());
+        let acting = vs.len() - 1;
+        caretline::views::update_doc(doc, &mut vs, acting, msg.clone());
+        let mine = vs.pop().expect("pushed");
+        let changed = doc.rev != changed;
+        for ((_, v), new) in views.iter_mut().zip(vs) {
+            *v = new;
+        }
+        views.retain(|(v, _)| v != id);
+        views.push((id.to_string(), mine));
+        put_views(st, k, views);
+        if changed {
+            wrote(st, k, by);
+        }
+    }
+    fx
+}
+
+/// `on_doc` for the one entry editor `id` shows.
+fn on_one_doc(st: &mut State, id: &str, msg: caretline::Msg, by: &str) -> Vec<caretline::Effect> {
     let Some(node) = tree!(st).find(id) else { return vec![] };
     let number = node.field().is_some_and(|f| f.number);
     let Some(key) = doc_key(st, node) else { return vec![] };
@@ -2709,18 +2840,36 @@ fn wanted(st: &mut State) -> Vec<Effect> {
 fn fields(st: &mut State) {
     let mut all = Vec::new();
     tree!(st).walk(&mut all);
-    let mut found: Vec<(String, String, String, bool)> = all
-        .iter()
-        .filter_map(|n| {
-            let f = n.field()?;
-            let key = doc_key(st, n)?;
-            let seed = match n.bind.as_deref().and_then(|b| value_of(st, b)) {
+    // Every entry each field edits (each picked row's, over a multi-selection), seeded from its
+    // own row; then a mixed field's own empty text.
+    let mut found: Vec<(String, String, String, bool)> = Vec::new();
+    for n in &all {
+        let (Some(f), Some(id)) = (n.field(), n.id.clone()) else { continue };
+        let keys = doc_keys(st, n);
+        let rows = picked_rows(st, n);
+        for (i, key) in keys.into_iter().enumerate() {
+            let row = if i == 0 { n.bind.as_deref().and_then(|b| value_of(st, b)) } else { rows.get(i - 1).copied() };
+            let seed = match row {
                 Some(v) if f.doc.is_some() => crate::model::fill(f.seed, v),
                 _ => f.seed.to_string(),
             };
-            Some((n.id.clone()?, key, seed, f.line))
-        })
+            found.push((id.clone(), key, seed, f.line));
+        }
+    }
+    let mixed: Vec<(String, String, bool)> = all
+        .iter()
+        .filter_map(|n| Some((n.id.clone()?, doc_key(st, n)?, n.field()?.line)))
+        .filter(|(_, k, _)| k.starts_with(MIXED))
         .collect();
+    // A mixed text no editor shows any more goes.
+    let stale: Vec<String> = st.store.keys().filter(|k| k.starts_with(MIXED) && !mixed.iter().any(|(_, m, _)| m == *k)).cloned().collect();
+    for k in stale {
+        st.store.remove(&k);
+        for l in st.local.values_mut() {
+            l.editors.remove(&k);
+        }
+    }
+    found.extend(mixed.into_iter().map(|(id, k, line)| (id, k, String::new(), line)));
     // Of editors that show the same new entry, one with a seed seeds it (a preview beside the
     // editor names no text of its own).
     found.sort_by_key(|f| f.2.is_empty());

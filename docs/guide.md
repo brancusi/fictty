@@ -93,6 +93,13 @@ fictty theme paper                                        # choose a loaded them
   `row.active`. `$picked.<id>` is `{"count", "keys", "rows"}`, `toggle` and `remove` act on every
   picked row (all take the selected row's new value), and the readback shows `(picked 3)`
   (`"picked"` in the JSON). `fictty mouse s-click X Y` and `d-click` press with ⇧ or ⌘.
+  An **editor over picked rows** (`"bind": "@files", "doc": "date/{id}"`, `files` multi) edits
+  every picked row's entry: while they're the same it shows the text and makes each edit in
+  each (so undo steps back in each); while they differ it shows nothing, with the placeholder
+  `Multiple values`, and its first edit puts what it then holds into every one. A field left
+  alone writes nothing, so a caption that differs per row keeps its own while a date is typed
+  once for all. The readback shows `(3 entries)` or `(3 entries, mixed)`; the mixed field's own
+  text is the entry `$mixed/<id>`, never saved.
 - **Repeating**: `{"type": "each", "bind": "open", "template": {…}}` draws the template once per
   item of the bound array, top to bottom (`"row": true` side by side). In the template,
   `{$item}` and `{$item.path}` are filled from the item (`"id": "panel-{$item.id}"`,

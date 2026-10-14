@@ -687,7 +687,7 @@ impl Portal {
             }
             Some((_, d)) if d.text.len_chars() == 0 => {
                 let ink = placeholder;
-                text = text.child(inked(div().h(px(cell.h)), ink).child(field.placeholder.unwrap_or_default().to_string()));
+                text = text.child(inked(div().h(px(cell.h)), ink).child(state::placeholder(st, n).unwrap_or_default()));
                 if focused {
                     text = text.child(div().absolute().left(px(0.)).top(px(3.)).w(px(2.)).h(px(cell.h - 6.)).bg(caret));
                 }

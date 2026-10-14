@@ -763,8 +763,9 @@ fn load_store(path: &Path) -> Result<BTreeMap<String, crate::store::Entry>> {
 /// The store to its file: written beside it, then renamed over it, so a crash never leaves half.
 fn save_store(path: &Path, st: &State) -> Result<()> {
     let tmp = path.with_extension("json.tmp");
-    // The host keeps its own entries.
-    let mine: BTreeMap<&String, &crate::store::Entry> = st.store.iter().filter(|(k, _)| !crate::state::hosted(st, k)).collect();
+    // The host keeps its own entries, and a mixed editor's own text is never kept.
+    let mine: BTreeMap<&String, &crate::store::Entry> =
+        st.store.iter().filter(|(k, _)| !crate::state::hosted(st, k) && !k.starts_with(crate::state::MIXED)).collect();
     std::fs::write(&tmp, serde_json::to_vec_pretty(&mine)?)?;
     std::fs::rename(&tmp, path)?;
     Ok(())

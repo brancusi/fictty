@@ -190,6 +190,58 @@ fn a_multi_list_picks_with_command_shift_and_the_keys() {
     assert!(states(2).contains(&"active") && !states(0).contains(&"active"));
 }
 
+/// Entry `key`'s text.
+fn text_of(s: &mut fictty::Headless, key: &str) -> String {
+    s.state().store.get(key).map(|e| e.read()["text"].as_str().unwrap_or_default().to_string()).unwrap_or_default()
+}
+
+#[test]
+fn a_field_over_picked_rows_writes_to_each_and_a_field_left_alone_to_none() {
+    let items: Vec<Value> = (0..4).map(|i| json!({"id": format!("p{i}"), "name": format!("pic {i}")})).collect();
+    let ui = json!({"root": {"type": "row", "children": [
+        {"type": "list", "id": "files", "multi": true, "size": 20, "item": "{name}", "items": items},
+        {"type": "col", "children": [
+            {"type": "editor", "id": "caption", "bind": "@files", "doc": "caption/{id}", "size": 4, "placeholder": "Caption"},
+            {"type": "editor", "id": "date", "bind": "@files", "doc": "date/{id}", "size": 3}
+        ]}
+    ]}, "store": {"caption/p0": "a red door", "caption/p1": "a blue gate", "caption/p2": "a green wall"}, "focus": "files"});
+    let mut s = window(ui, 70, 16);
+    // The first three picked: their captions differ, their dates are all empty.
+    s.keys(&["s-down", "s-down"]);
+    assert_eq!(node(&mut s, "files").picked, vec![0, 1, 2]);
+    let caption = node(&mut s, "caption");
+    assert!(caption.mixed && caption.entries == 3 && caption.text.is_empty(), "{caption:?}");
+    let st = s.state();
+    let tree = st.ui.root.clone();
+    assert_eq!(fictty::state::placeholder(st, tree.find("caption").unwrap()).as_deref(), Some("Multiple values"));
+    assert!(!node(&mut s, "date").mixed);
+    // A date typed once lands in all three; the captions are left as they were.
+    s.keys(&["tab", "tab"]);
+    assert_eq!(s.state().focus.as_deref(), Some("date"));
+    s.keys(&["2", "0", "2", "6"]);
+    for i in 0..3 {
+        assert_eq!(text_of(&mut s, &format!("date/p{i}")), "2026");
+    }
+    assert_eq!(text_of(&mut s, "date/p3"), "", "the row not picked");
+    assert_eq!(text_of(&mut s, "caption/p1"), "a blue gate");
+    // A caption typed over the mixed ones makes them one, and undo gives each its own back.
+    s.keys(&["s-tab"]);
+    s.keys(&["d", "o", "o", "r"]);
+    for i in 0..3 {
+        assert_eq!(text_of(&mut s, &format!("caption/p{i}")), "door");
+    }
+    assert!(!node(&mut s, "caption").mixed);
+    s.keys(&["d-z", "d-z"]);
+    assert_eq!(text_of(&mut s, "caption/p0"), "a red door");
+    assert_eq!(text_of(&mut s, "caption/p2"), "a green wall");
+    assert!(node(&mut s, "caption").mixed, "different again");
+    assert!(!s.state().store.keys().any(|k| k.starts_with("$mixed/")) || node(&mut s, "caption").mixed);
+    // One row picked: the editor it always was.
+    s.keys(&["s-tab", "esc"]);
+    assert_eq!(node(&mut s, "caption").entries, 1);
+    assert_eq!(node(&mut s, "caption").text, "a green wall");
+}
+
 #[test]
 fn a_press_on_a_list_that_isnt_multi_with_a_modifier_is_a_click() {
     let ui = json!({"root": {"type": "list", "id": "l", "items": rows(6)}});

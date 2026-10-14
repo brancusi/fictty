@@ -56,6 +56,36 @@ fn editors_beside_lists_and_inputs() {
     fuzzed(ui, 60, 14);
 }
 
+fn gallery() -> Value {
+    let items: Vec<Value> = (0..6).map(|i| json!({"id": format!("p{i}"), "name": format!("pic {i}"), "file": format!("/none/p{i}.png")})).collect();
+    json!({
+        "root": {"type": "row", "children": [
+            {"type": "list", "id": "files", "multi": true, "size": 16, "item": "{name}", "items": items},
+            {"type": "col", "children": [
+                {"type": "image", "id": "pic", "bind": "@files", "src": "{file}", "size": 3},
+                {"type": "editor", "id": "caption", "bind": "@files", "doc": "caption/{id}", "size": 4},
+                {"type": "editor", "id": "date", "bind": "@files", "doc": "date/{id}", "size": 3}
+            ]}
+        ]},
+        "store": {"caption/p0": "a red door", "caption/p1": "a blue gate", "date/p2": "2026"},
+        "focus": "files"
+    })
+}
+
+/// The keys that pick rows, beside the defaults.
+fn picking() -> Config {
+    let mut keys = Config::default().keys;
+    keys.extend(["s-down", "s-up", "d-a", "esc", "j", "k"].map(String::from));
+    Config { keys, ..cfg() }
+}
+
+#[test]
+fn a_gallery_that_picks_rows_and_edits_them_together() {
+    if let Err(f) = fuzz::run(screen(gallery(), 60, 12), &mut fuzz::editing(), &picking()) {
+        panic!("{f}");
+    }
+}
+
 #[test]
 fn an_editor_beside_a_read_only_preview_of_its_text() {
     // Undoing everything goes through the editor, not the preview (Thought Control's fuzzer: the
@@ -221,6 +251,16 @@ mod window {
             "focus": "body"
         });
         fuzzed(ui, 60, 14);
+    }
+
+    #[test]
+    fn a_gallery_in_the_window() {
+        let ui = super::gallery();
+        let make = move || App::new(serde_json::from_value(ui.clone()).unwrap()).in_window(60, 12).unwrap();
+        let cfg = Config { terminal: false, ..super::picking() };
+        if let Err(f) = fuzz::run(make, &mut checks(), &cfg) {
+            panic!("{f}");
+        }
     }
 
     #[test]
