@@ -642,8 +642,17 @@ pub enum Kind {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         width: Option<f32>,
     },
-    /// An image file (PNG), scaled into the node.
-    Image { src: String },
+    /// An image file, scaled into the node keeping its proportions. `src` is a template over the
+    /// bound value (`"{preview}"` bound to `@files` follows a selection). The window draws PNG,
+    /// JPEG, GIF, WebP, BMP and TIFF; a terminal PNG only. `fit: "cover"` fills the node,
+    /// cropping; `alt` shows where it can't be drawn.
+    Image {
+        src: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        fit: Option<Fit>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        alt: Option<String>,
+    },
     /// Vector art: inline SVG markup (`{field}` placeholders filled from the bound value, so it
     /// can draw live data) or an `.svg` file, rendered at the terminal's real pixel size. `alt`
     /// shows where the terminal has no graphics.
@@ -1366,6 +1375,15 @@ pub enum Action {
         #[serde(rename = "do")]
         steps: Vec<Action>,
     },
+}
+
+/// How a picture fills its node: whole inside it (`contain`, the default) or covering it.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Fit {
+    #[default]
+    Contain,
+    Cover,
 }
 
 impl Node {

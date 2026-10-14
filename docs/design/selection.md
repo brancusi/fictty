@@ -40,8 +40,9 @@ case per kind, and the terminal and the window both get it.
   inside the node while keeping its proportions, and centred.
 - `fit: "cover"` fills the node instead, cropping. That's the only option; it maps onto GPUI's
   `object_fit`.
-- A file that can't be read is a problem (`get --state`), and the node shows its `alt` or its
-  path.
+- A file that can't be read shows the node's `alt`, or `[image <path>]`. The readback gives the
+  path an image shows as its text. (Telling the core a file didn't load, the way fonts do through
+  `Drawn`, waits until a screen needs it.)
 
 ## 3. Choosing many
 

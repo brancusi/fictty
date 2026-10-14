@@ -17,11 +17,11 @@ mod text;
 use crate::engine::{Drawn, Hit, Live, Rect};
 use look::{Ink, Look, inked, padded};
 use crate::style;
-use crate::model::{Float, Kind, Len, Lens, Md, Measure, Node, Size, md_roles};
+use crate::model::{Fit, Float, Kind, Len, Lens, Md, Measure, Node, Size, md_roles};
 use crate::state::{self, Msg, State};
 use anyhow::Result;
 use gpui::{
-    AnyElement, App, Application, Bounds, ClipboardItem, Context, DefiniteLength, DispatchPhase, FocusHandle, HighlightStyle, KeyDownEvent, MouseButton, MouseDownEvent, MouseMoveEvent, Pixels,
+    AnyElement, App, Application, Bounds, ObjectFit, StyledImage, img, ClipboardItem, Context, DefiniteLength, DispatchPhase, FocusHandle, HighlightStyle, KeyDownEvent, MouseButton, MouseDownEvent, MouseMoveEvent, Pixels,
     MouseUpEvent, Point, ScrollWheelEvent, SharedString, StyledText, Window, WindowBounds, WindowOptions, canvas, div, font, prelude::*, px, relative, size,
 };
 use serde_json::{Value, json};
@@ -526,6 +526,23 @@ impl Portal {
                 }
                 let ts: Vec<AnyElement> = st.toasts.iter().rev().map(|t| toast(st, lk, t, c)).collect();
                 div().flex().flex_col().gap_1().children(ts).into_any_element()
+            }
+            Kind::Image { fit, alt, .. } => {
+                let fit = match fit.unwrap_or_default() {
+                    Fit::Contain => ObjectFit::Contain,
+                    Fit::Cover => ObjectFit::Cover,
+                };
+                match state::image_src(st, n) {
+                    Some(src) => {
+                        let (dim, why) = (lk.dim, alt.clone().unwrap_or_else(|| format!("[image {src}]")));
+                        img(std::path::PathBuf::from(src))
+                            .size_full()
+                            .object_fit(fit)
+                            .with_fallback(move || div().text_color(dim).child(why.clone()).into_any_element())
+                            .into_any_element()
+                    }
+                    None => div().into_any_element(),
+                }
             }
             _ => div().text_color(lk.dim).child(format!("[{}]", n.kind_name())).into_any_element(),
         };

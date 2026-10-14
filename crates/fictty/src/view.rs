@@ -1186,9 +1186,10 @@ fn node(cx: &mut Cx, n: &Node, f: &mut Frame, area: Rect) {
                 }
             }
         }
-        Kind::Image { src } => {
-            if pixels {
-                cx.pics.push(Placed { x: inner.x, y: inner.y, w: inner.width, h: inner.height, z: 0, pic: Pic::File(src.clone()) });
+        Kind::Image { .. } => {
+            let src = crate::state::image_src(st, n).unwrap_or_default();
+            if pixels && !src.is_empty() {
+                cx.pics.push(Placed { x: inner.x, y: inner.y, w: inner.width, h: inner.height, z: 0, pic: Pic::File(src) });
             } else {
                 f.render_widget(Paragraph::new(format!("[image {src}]")).style(Style::default().fg(cx.th.dim)), inner);
             }

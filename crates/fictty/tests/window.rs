@@ -128,6 +128,20 @@ fn a_press_on_a_picture_runs_the_click_of_the_card_around_it() {
 }
 
 #[test]
+fn an_image_follows_the_row_its_src_is_filled_from() {
+    let ui = json!({"root": {"type": "row", "children": [
+        {"type": "list", "id": "l", "size": 20, "item": "{name}",
+         "items": [{"name": "a", "file": "/pics/a.png"}, {"name": "b", "file": "/pics/b.jpg"}]},
+        {"type": "image", "id": "pic", "bind": "@l", "src": "{file}", "fit": "cover"}
+    ]}});
+    let mut s = window(ui, 60, 12);
+    assert_eq!(node(&mut s, "pic").text, "/pics/a.png");
+    s.keys(&["j"]);
+    assert_eq!(node(&mut s, "pic").text, "/pics/b.jpg");
+    assert!(node(&mut s, "pic").rect.is_some_and(|r| r.width > 30), "it fills the rest of the row");
+}
+
+#[test]
 fn a_press_in_an_editor_places_the_caret_and_a_drag_selects() {
     let ui = json!({"root": {"type": "editor", "id": "e", "text": "alpha beta gamma\nsecond line"}});
     let mut s = window(ui, 60, 8);

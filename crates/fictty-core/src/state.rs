@@ -2801,6 +2801,14 @@ pub fn bound<'a>(st: &'a State, n: &Node) -> Option<&'a Value> {
     value_of(st, n.bind.as_deref()?)
 }
 
+/// The file an `image` shows: its `src` filled from its bound value. Empty when the template
+/// comes out empty (nothing selected yet), so there's nothing to draw.
+pub fn image_src(st: &State, n: &Node) -> Option<String> {
+    let Kind::Image { src, .. } = &n.kind else { return None };
+    let path = crate::model::fill_raw(src, bound(st, n).unwrap_or(&Value::Null));
+    (!path.trim().is_empty()).then_some(path)
+}
+
 /// A bind's value: a source (and a path into it), or `@id` (and a path), the selected row of
 /// node `id`, so a detail panel follows a list's selection.
 pub fn value_of<'a>(st: &'a State, bind: &str) -> Option<&'a Value> {

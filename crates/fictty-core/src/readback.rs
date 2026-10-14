@@ -139,6 +139,7 @@ fn shown(st: &State, n: &Node, depth: usize, (rects, cut): Frame) -> Shown {
             let titles = tabs.iter().map(|t| fill(t, v)).collect::<Vec<_>>().join(" | ");
             s.text = [lead.as_deref().map(|t| fill(t, v)), Some(titles), trail.as_deref().map(|t| fill(t, v))].into_iter().flatten().collect::<Vec<_>>().join(" · ");
         }
+        Kind::Image { .. } => s.text = crate::state::image_src(st, n).unwrap_or_default(),
         Kind::Toasts {} => s.text = st.toasts.iter().map(|t| t.text.clone()).collect::<Vec<_>>().join("\n"),
         _ => {}
     }

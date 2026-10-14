@@ -410,7 +410,8 @@ python3 examples/finance/tour.py        # from another terminal
   by its sign. `theme` names the colours; `edge` picks the border.
 - **Mouse**: click focuses, selects a row or switches a tab; the wheel scrolls; hover highlights
   the row under the pointer. A node's `tip` is a callout that follows the hovered row, filled
-  from it. `click` on a node runs an action. The view returns each frame's hit regions; the
+  from it. `click` on a node runs an action; a click on a node without one (a picture in a card) runs
+  the nearest `click` around it. The view returns each frame's hit regions; the
   runtime turns pointer events into `Click`, `Scroll` and `Hover` messages.
 - **Layers** (caretline-layers 0.2): `layers` in the UI, or `fictty layers file.json` /
   `{"op":"layers"}`, places callouts, arrows, rings (`pulse` animates them) and spotlights on any
@@ -464,8 +465,11 @@ target/release/fictty upgrade     # after a rebuild: same screen, same state, ne
    markup, `{field}` placeholders filled from its `bind`, so data drives the drawing. The engine
    renders it (resvg, system fonts) fitted to the node; `alt` is the text fallback. Compute
    geometry in the data source (an arc's length, say): templates fill values, they don't do maths.
-3. **PNG only for real bitmaps** (photos, screenshots), as `image` with a path; the terminal reads
-   the file itself.
+3. **`image` for real bitmaps** (photos, screenshots), with a path. `src` is a template over the
+   node's bound value (`"bind": "@files", "src": "{preview}"` follows a selection), `fit:
+   "cover"` fills the node (cropping) instead of fitting inside it, and `alt` shows where it
+   can't be drawn. The window draws PNG, JPEG, GIF, WebP, BMP and TIFF; a terminal reads PNG
+   files itself. The readback's text for an image is the file it shows.
 4. **Animate data, not pictures.** Change a source or `patch` one node; the engine re-renders only
    what changed. A patch replaces the whole node, so send it with its `backdrop`.
 
