@@ -148,7 +148,8 @@ fictty theme paper                                        # choose a loaded them
   value: `"{text} · {due}"`, `<accent+b>styled</>` (or any theme part: `<link>`), `<<` for a
   literal `<`, `{±change}` coloured by sign, `{name:12}` fitted to 12 cells (`{n:>6}`
   right-aligned), maps (`{done|true=☑;*=☐}`), and a tab right-aligns the rest of a line.
-- **Actions** on keys: `quit`, `up`, `down`, `top`, `bottom`, `focus_next`, `focus_prev`,
+- **Actions** on keys: `quit`, `up`, `down` (a line, in a list with `cols`), `next_row` and
+  `prev_row` (one row whatever the `cols`, on across line ends), `top`, `bottom`, `focus_next`, `focus_prev`,
   `refresh`, `{"run": [argv with {field} of the selected row]}`, `{"load": "{file}"}`,
   `{"focus": "id"}`, `{"select": "{store.k}", "in": "list"}` (a row by its key, now or once it
   arrives), `{"theme": "next"}`, `{"copy": "text"}` (onto the system clipboard, through
