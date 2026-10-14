@@ -283,6 +283,16 @@ fn a_list_of_rows_drawn_from_a_node_lays_them_out_in_cols_and_picks_from_a_pictu
 }
 
 #[test]
+fn quit_ends_the_screen_where_c_c_would_copy() {
+    let ui = json!({"root": {"type": "editor", "id": "e", "text": "hi"}, "focus": "e"});
+    let mut s = window(ui, 40, 8);
+    s.keys(&["c-c"]);
+    assert!(!s.quit(), "⌃C in an editor is copy");
+    s.request(json!({"op": "quit"}));
+    assert!(s.quit());
+}
+
+#[test]
 fn a_press_on_a_list_that_isnt_multi_with_a_modifier_is_a_click() {
     let ui = json!({"root": {"type": "list", "id": "l", "items": rows(6)}});
     let mut s = window(ui, 40, 12);

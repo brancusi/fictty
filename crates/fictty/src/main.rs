@@ -95,6 +95,8 @@ enum Cmd {
     Set { id: String, file: PathBuf },
     /// Send keys to the running screen, as if typed.
     Key { keys: Vec<String> },
+    /// End the running screen, wherever its focus is (`key c-c` copies while an editor has it).
+    Quit,
     /// Print the running screen's UI (or, with --state, everything: focus, selections, data).
     Get {
         #[arg(long)]
@@ -243,6 +245,7 @@ fn main() -> Result<()> {
             req["id"] = id.into();
             runtime::send(&socket, req)?
         }
+        Cmd::Quit => runtime::send(&socket, json!({"op": "quit"}))?,
         Cmd::Key { keys } => {
             let mut last = json!(null);
             for key in keys {

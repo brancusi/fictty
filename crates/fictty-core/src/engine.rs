@@ -26,6 +26,9 @@ pub enum Request {
     Push { ui: Ui },
     Patch { id: String, node: crate::model::Node },
     Key { key: String },
+    /// End the screen, wherever the focus is (a key like `c-c` is an editor's copy while one
+    /// has the focus).
+    Quit,
     /// Write one store entry (`put`, `merge` or `edit`), refused when `if_rev` is stale.
     Write {
         key: String,
@@ -716,6 +719,10 @@ impl Driver {
             Request::Push { ui } => Msg::Push { ui },
             Request::Patch { id, node } => Msg::Patch { id, node },
             Request::Key { key } => Msg::Key { key },
+            Request::Quit => {
+                self.quit = true;
+                return json!({"ok": true, "version": st.version, "status": "quitting"});
+            }
             Request::Read { key } => {
                 return st.store.get(&key).map_or_else(|| json!({"ok": false, "status": format!("no entry {key}")}), |e| e.read());
             }
@@ -968,6 +975,8 @@ impl App {
         if self.restore.is_none() {
             self.restore = std::env::var_os("FICTTY_RESTORE").map(PathBuf::from);
         }
+        // One running screen to a store file: a second would write over the first's changes.
+        let held = self.store.as_deref().map(hold_store).transpose()?;
         // Restoring (after an upgrade): the saved state, every selection and focus as it was.
         let mut st = self.start()?;
         let saved_writes = st.store_writes;
@@ -1032,7 +1041,32 @@ impl App {
             seen,
             store: self.store,
             saved_writes,
+            held,
         })
+    }
+}
+
+/// Hold `<store>.lock` (an advisory lock the system lets go of when the process ends, however it
+/// ends) for as long as the screen runs, or say which screen holds it. The store file itself is
+/// replaced on every save, so it can't carry the lock.
+fn hold_store(store: &Path) -> Result<std::fs::File> {
+    let mut path = store.as_os_str().to_owned();
+    path.push(".lock");
+    let path = PathBuf::from(path);
+    let f = std::fs::OpenOptions::new().create(true).truncate(false).read(true).write(true).open(&path).with_context(|| format!("opening {}", path.display()))?;
+    match f.try_lock() {
+        Ok(()) => {
+            use std::io::{Seek, Write};
+            let mut f = f;
+            f.set_len(0)?;
+            f.seek(std::io::SeekFrom::Start(0))?;
+            write!(f, "{}", std::process::id())?;
+            Ok(f)
+        }
+        Err(_) => {
+            let pid = std::fs::read_to_string(&path).unwrap_or_default();
+            bail!("{} is in use by another fictty screen (pid {}): end it first (`fictty quit` on its socket)", store.display(), pid.trim())
+        }
     }
 }
 /// A running screen: the state and the engine (sources, streams, the host, the socket, the
@@ -1064,6 +1098,9 @@ pub struct Live {
     /// The store's file, and the writes it holds.
     store: Option<PathBuf>,
     saved_writes: u64,
+    /// The store file's lock, held while the screen runs.
+    #[allow(dead_code)]
+    held: Option<std::fs::File>,
 }
 
 /// How often an animation moves (120 fps).
@@ -1686,6 +1723,7 @@ fn activity(st: &State, req: &Request) -> Option<(&'static str, String)> {
             ("set", what)
         }
         Request::Key { key } => ("key", key.clone()),
+        Request::Quit => ("quit", String::new()),
         Request::Theme { add, choose } => ("theme", choose.clone().unwrap_or_else(|| format!("{} loaded", add.len()))),
         Request::Layers { layers } => ("layers", format!("{} layers", layers.len())),
         Request::Toast { text, .. } => ("toast", short(text)),

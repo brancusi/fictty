@@ -51,6 +51,7 @@ fictty push examples/trading.json                         # in another: the whol
 fictty patch header node.json                             # replace one node by id
 fictty key j x                                            # type keys
 fictty get --state                                        # everything on screen, as JSON
+fictty quit                                               # end it, wherever the focus is
 fictty run --watch my.json                                # hot reload while you edit
 fictty screen --nodes                                     # the shown nodes: kind, id, focus, text, where
 fictty screen --nodes --style                             # and each one's style under the theme
@@ -188,6 +189,9 @@ document with its undo history), each with a revision (`rev`) and who wrote it l
 - **An agent's text edit is an edit**: the person's carets move with the text, and one undo takes
   it back.
 - **`fictty run --store file.json`** keeps it across runs, written atomically after each change.
+  One running screen holds a store file at a time (a lock beside it, `file.json.lock`, which the
+  system lets go of however the screen ends); a second refuses to start and says which pid has
+  it.
 - **Editors**: `{"type": "editor", "bind": "@notes", "doc": "note/{id}", "text": "# {title}"}` edits
   the entry its template names from the selected note, so a list and an editor make a notes app.
   An editor takes every key but Tab, Shift-Tab and Esc, and the ⌃, ⌥ and ⌘ keys it has no use
