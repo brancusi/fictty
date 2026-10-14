@@ -742,6 +742,11 @@ pub fn problems(st: &State, nodes: &[&Node]) -> Vec<String> {
                 out.push(format!("theme {name}: variant {v}: {c:?} isn't a token or a colour"));
             }
         }
+        for (k, f) in &active.fonts {
+            if let Some(why) = st.fonts_failed.get(f) {
+                out.push(format!("theme {name}: font {k}: {f} didn't load ({why})"));
+            }
+        }
         for (k, l) in &active.space {
             if th.len(l).is_none() {
                 out.push(format!("theme {name}: space {k}: {:?} isn't cells or pixels", len_text(l)));

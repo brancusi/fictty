@@ -177,7 +177,8 @@ and the screens that use it looked at in a real window.
 
 Small things found during step 2 and Daybook, picked up where they fit:
 
-- **Font files that fail to load** aren't problems yet (with 3a's problems).
+- ~~**Font files that fail to load** aren't problems yet (with 3a's problems).~~ Done with 3a:
+  the window hands them back with the frame (`Drawn::fonts`), and the state keeps them.
 - ~~**`tabs.active` and the `active` state** share a word for two things; rename the part
   `tabs.selected` before any theme outside the repo uses it (with 3a).~~ Done with 3a.
 - **A map's catch-all can't read its value** (`{kind|done=✓;*=<accent>{kind}</>}`); a template

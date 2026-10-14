@@ -251,7 +251,7 @@ names families or font files that type roles use. The window draws all of it.
 **Type.** A theme's `type` names roles: `{"font": "serif", "size": 44, "weight": 700, "line":
 54, "tracking": -1, "tabular": true}`. `font` is a `fonts` name or a family; a `fonts` entry is
 a family (`"Georgia"`) or a font file beside the themes (`"fonts/Anton.ttf"`), loaded the first
-time it's needed. A node asks for a role through its style, `"style": {"type": "display"}`
+time it's needed; a file that doesn't load is a problem, and its text falls back to the default. A node asks for a role through its style, `"style": {"type": "display"}`
 (a node's own `type` is its kind), and markup asks with `<display>…</>`: a line takes the first
 role it names. `tabular` lines numbers up; `tracking` reads back but isn't drawn yet. Text
 wraps; `"wrap": false` keeps each line on one, and `"lines": 2` shows at most two. A line that

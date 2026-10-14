@@ -141,6 +141,8 @@ pub struct Drawn {
     pub wake: Option<u64>,
     /// The nodes some of whose text the frame cut to fit (ending it in `…`).
     pub cut: Vec<String>,
+    /// The font files it couldn't load, and why.
+    pub fonts: Vec<(String, String)>,
 }
 
 /// The mouse, as whatever draws reports it.
@@ -1190,9 +1192,9 @@ impl Live {
     /// another frame should follow.
     pub fn drew(&mut self, took: Duration, drawn: Drawn) -> bool {
         self.meter.frame(took);
-        let Drawn { hits, rects, sizes, areas, wake, cut } = drawn;
+        let Drawn { hits, rects, sizes, areas, wake, cut, fonts } = drawn;
         (self.hits, self.rects, self.wake, self.cut) = (hits, rects, wake, cut);
-        resize_editors(&mut self.d, &mut self.st, sizes) | report_areas(&mut self.d, &mut self.st, areas)
+        resize_editors(&mut self.d, &mut self.st, sizes) | report_areas(&mut self.d, &mut self.st, areas) | report_fonts(&mut self.d, &mut self.st, fonts)
     }
 
     /// `screen` requests waiting for a frame; answer each with what it shows.
@@ -1624,11 +1626,11 @@ impl Headless {
         }
         self.drawn = true;
         let Some(f) = &mut self.frame else { return };
-        let Drawn { hits, rects, sizes, areas, cut, .. } = f.draw(&self.st);
+        let Drawn { hits, rects, sizes, areas, cut, fonts, .. } = f.draw(&self.st);
         (self.hits, self.rects, self.cut) = (hits, rects, cut);
         // What drawing sent (a window's cell size) and what it learned (an editor's size) change
         // the state: once more, so the frame is the state's.
-        let changed = resize_editors(&mut self.d, &mut self.st, sizes) | report_areas(&mut self.d, &mut self.st, areas) | self.absorb();
+        let changed = resize_editors(&mut self.d, &mut self.st, sizes) | report_areas(&mut self.d, &mut self.st, areas) | report_fonts(&mut self.d, &mut self.st, fonts) | self.absorb();
         if changed && let Some(f) = &mut self.frame {
             let Drawn { hits, rects, cut, .. } = f.draw(&self.st);
             (self.hits, self.rects, self.cut) = (hits, rects, cut);
@@ -1727,6 +1729,18 @@ fn report_areas(d: &mut Driver, st: &mut State, areas: Vec<(String, u16, u16)>) 
     for (id, width, height) in areas {
         if st.local.get(&id).and_then(|l| l.area) != Some((width, height)) {
             d.apply(st, Msg::Area { id, width, height });
+            changed = true;
+        }
+    }
+    changed
+}
+
+/// Font files the frame couldn't load, to the state (and its problems), once each.
+fn report_fonts(d: &mut Driver, st: &mut State, fonts: Vec<(String, String)>) -> bool {
+    let mut changed = false;
+    for (file, error) in fonts {
+        if st.fonts_failed.get(&file) != Some(&error) {
+            d.apply(st, Msg::Font { file, error });
             changed = true;
         }
     }

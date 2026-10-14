@@ -83,6 +83,8 @@ struct Laid {
     areas: Vec<(String, Bounds<Pixels>)>,
     /// The nodes it cut text in.
     cut: Vec<String>,
+    /// The font files it couldn't load, and why.
+    fonts: Vec<(String, String)>,
 }
 
 type Shared = Rc<RefCell<Laid>>;
@@ -850,9 +852,12 @@ impl Portal {
         for f in files {
             let ts = cx.text_system().clone();
             let before = ts.all_font_names();
-            let family = std::fs::read(&f).ok().filter(|bytes| ts.add_fonts(vec![std::borrow::Cow::Owned(bytes.clone())]).is_ok()).and_then(|_| {
-                ts.all_font_names().into_iter().find(|n| !before.contains(n))
-            });
+            let loaded = std::fs::read(&f).map_err(|e| e.to_string()).and_then(|bytes| ts.add_fonts(vec![std::borrow::Cow::Owned(bytes)]).map_err(|e| e.to_string()));
+            let family = loaded.as_ref().ok().and_then(|_| ts.all_font_names().into_iter().find(|n| !before.contains(n)));
+            // What failed goes back with the frame, to show as a problem.
+            if let Err(why) = loaded {
+                self.laid.borrow_mut().fonts.push((f.clone(), why));
+            }
             self.faces.insert(f, family.unwrap_or_default());
         }
     }
@@ -909,6 +914,7 @@ fn handover(laid: &Shared, shown: &RefCell<DrawnHits>, engine: &Engine, cell: Ce
         areas: l.areas.into_iter().map(|(id, b)| { let (w, h) = cell.fit(b); (id, w, h) }).collect(),
         wake,
         cut: l.cut,
+        fonts: l.fonts,
     };
     *shown.borrow_mut() = l.hits;
     if engine.drew(took, drawn) {

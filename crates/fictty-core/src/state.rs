@@ -66,6 +66,9 @@ pub struct State {
     /// Whether larger text (OSC 66) is on: the terminal's to say, or `FICTTY_TEXT_SIZE=1`.
     #[serde(default)]
     pub text_sizing: bool,
+    /// The font files themes name that whatever draws couldn't load, and why, by path.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub fonts_failed: BTreeMap<String, String>,
     /// The rows a node shows when they aren't its bound array as it is: a tree's open rows in
     /// order, a filtered list's matches. Worked out from the rest after each message (so never
     /// saved); `items` reads them.
@@ -439,6 +442,8 @@ pub enum Msg {
     Screen { width: u16, height: u16 },
     /// What the terminal can draw.
     Caps { caps: Caps, text_sizing: bool },
+    /// A font file a theme names couldn't be loaded by whatever draws, and why.
+    Font { file: String, error: String },
     /// Where this screen runs: its binary, its socket, the folder its UI came from. Bindable as
     /// `$self`, with `cli` (a command line that reaches this screen from any terminal), `env` (a
     /// line that sets a terminal up so `fictty`, and the scripts beside the UI, reach it) and `dir`.
@@ -463,7 +468,7 @@ pub enum Effect {
 }
 
 pub fn update(st: &mut State, msg: Msg) -> Vec<Effect> {
-    let checks = matches!(msg, Msg::Push { .. } | Msg::Patch { .. } | Msg::Data { .. } | Msg::Write { .. } | Msg::Theme { .. } | Msg::Key { .. });
+    let checks = matches!(msg, Msg::Push { .. } | Msg::Patch { .. } | Msg::Data { .. } | Msg::Write { .. } | Msg::Theme { .. } | Msg::Key { .. } | Msg::Font { .. });
     let writes = st.store_writes;
     let quiet = matches!(msg, Msg::Tick { .. } | Msg::Hover { .. } | Msg::Stats { .. } | Msg::Activity { .. } | Msg::Caps { .. } | Msg::Size { .. });
     // A source's new value changes only the rows of the nodes that read it.
@@ -790,6 +795,10 @@ fn apply(st: &mut State, msg: Msg) -> Vec<Effect> {
             } else {
                 st.status = Some(format!("focus: {id} doesn't take the focus now"));
             }
+            vec![]
+        }
+        Msg::Font { file, error } => {
+            st.fonts_failed.insert(file, error);
             vec![]
         }
         Msg::Area { id, width, height } => {

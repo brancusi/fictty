@@ -475,6 +475,16 @@ fn a_length_that_isnt_one_is_a_problem() {
 }
 
 #[test]
+fn a_font_file_that_doesnt_load_is_a_problem() {
+    let ui = json!({"root": {"type": "text", "id": "t", "text": "T", "style": {"type": "display"}}});
+    let theme = json!({"fonts": {"gone": "/no/such/dir/Gone.ttf"}, "type": {"display": {"font": "gone", "size": 30}}});
+    let mut s = themed(theme, ui, 40, 4);
+    let problems = s.state().problems.clone();
+    assert!(problems.iter().any(|p| p.starts_with("theme t: font gone: /no/such/dir/Gone.ttf didn't load (")), "{problems:?}");
+    assert_eq!(node(&mut s, "t").text, "T", "the text still shows, in the default font");
+}
+
+#[test]
 fn pad_and_align_place_what_a_node_holds() {
     let ui = |pad: Value| json!({"root": {"type": "col", "children": [
         {"type": "col", "id": "box", "pad": pad, "border": true, "children": [{"type": "list", "id": "inner", "items": ["x"]}]},
