@@ -9,6 +9,18 @@ it's done. Everything here is window-only: the grid view isn't extended.
 
 Rewritten on 14 October 2026, when 3a merged to `main` (88fd94e), for whoever picks up 3b.
 
+**Since then (14 October, to 84f5c47 and the tidy-up after it):** the gallery came first, by
+Aram's call: [selection.md](selection.md) is done and [gallery-notes.md](gallery-notes.md) has
+what it taught. Three things from it matter to 3b to 3d:
+
+- **A list already scrolls in fractions of a line** (`top: f32`, `Msg::Pan`, scrollbar parts,
+  `(scroll a/b)` in the readback). 3d's container scroll should share that shape: an offset in
+  `State` in the container's own unit, the same parts, the same readback.
+- **A list's `row` is a node template** with `cols`. `size: "fit"` on a row template is where
+  `fit` row heights land; do it in 3b's `fit` commit if it falls out, else leave it to step 4.
+- **Fill every new field from the bound value the same way** `doc`, `src` and `when` are, and
+  read it back as written.
+
 **3a is done:** `pad` and `margin` (one length, `[x, y]` or four sides), `gap` (one or
 `[x, y]`), `min` and `max`, all as `Len` in any unit; float `margin` the same type; problems
 per node and field for a bad length; `tabs.selected`; font files that don't load as problems.

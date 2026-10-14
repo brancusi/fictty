@@ -118,8 +118,11 @@ mise exec -- cargo clippy --all-targets
   `FICTTY_SOCKET=/tmp/x.sock` runs a second screen beside the first (keep socket paths short).
   `fictty run --window ui.json` opens the native window instead. An agent may launch it itself
   (in the background, on its own `FICTTY_SOCKET`), drive it over the socket, and close it when
-  done (`fictty key c-c`, or stop the process). macOS stops drawing a window that's covered, so
-  tell the person it's open and ask them to bring it to the front to look.
+  done (`fictty quit`; `key c-c` is an editor's copy while a field has the focus). A new window
+  takes the keyboard from whatever the person is typing in, so say before opening one. macOS
+  stops drawing a window that's covered, so tell the person it's open and ask them to bring it
+  to the front to look. Never screenshot or drive a screen another agent or person is using;
+  find your own window by its process id, not its title.
 - Performance claims need a release build and numbers: `examples/stress/play.sh` against a running
   screen prints fps, draw time and messages a second. Measure before and after.
 - **What CI taught us** (it was red from 12 to 13 October):

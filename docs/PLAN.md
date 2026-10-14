@@ -37,6 +37,13 @@ motion as data. No more terminal work. **Where to start:** section 0, "Next".
 (fit and alignment) follows the gallery work in [design/selection.md](design/selection.md), from
 "Start here" in [design/layout-step.md](design/layout-step.md).
 
+**Later on 14 October 2026:** the gallery is done, built from parts (clicks that bubble, `image`
+in the window, `multi`, fields over picked rows, rows as nodes with `cols`, smooth scrolling), and
+other agents build screens with fictty through the global `fictty-ui` skill. A second agent used
+it all afternoon on a real catalog; what that found and fixed is in
+[design/gallery-notes.md](design/gallery-notes.md). Old terminal-only to-dos are gone from this
+file (they're in its history). **Where to start:** 3b, from "Start here" in layout-step.md.
+
 ## Done
 
 ### Extraction (2026-10-10)
@@ -216,6 +223,16 @@ The phases of [design/native.md](design/native.md), where each is broken down.
         multi-selection (2026-10-14). The fuzz has a gallery, in the grid and the window
   - [x] Rows as nodes for lists, with `cols` for a grid of them, brought forward for picking from
         thumbnails (2026-10-14). Still open: `fit` row heights, clicks on a row's own buttons
+  - [x] What a second agent's real use found (2026-10-14, [design/gallery-notes.md](design/gallery-notes.md)):
+        `fictty quit` and one screen to a store (its lock in the temporary directory), a screen
+        removes only its own socket, binds name store keys with dots, a `when` filled from its
+        bound value, an editor's text on its own grid under any type role, smooth list
+        scrolling with a scrollbar, flags per picked row, `fictty delete`, a source hidden by a
+        store entry is a problem, a default token is a `tone` with no theme, `border` in short
+  - [ ] Small, any time, from the gallery notes: a parse error names the node it's in; `input`
+        with `doc`, so a one-line field follows a selection; the keys an editor takes, listed,
+        and a problem when a UI key can't reach a focused editor; an image that can't be read
+        is a problem (handed back with the frame, as fonts are); clearing a mixed field at once
   - [ ] **Next: 3b, 3c and 3d**, then 3e and 3f
   - [ ] Step 3, the layout vocabulary, planned in
         [design/layout-step.md](design/layout-step.md). Then: lists and rows as nodes, the rest of
@@ -241,10 +258,7 @@ The phases of [design/native.md](design/native.md), where each is broken down.
       push speed they cost
 - [x] The first release, `v0.1.0`: binaries for macOS and Linux (Intel Macs cross-built), so the
       one-liners need no Rust; how to release is [releasing.md](releasing.md)
-- [ ] Say when a copy didn't reach the clipboard (tmux, or a terminal that refuses OSC 52); today
-      the screen says "copied" either way
 - [ ] A pull request to json-render for its Tab focus bug (one line in the Ink renderer)
-- [ ] Record the showcase (and the tour) for the site's front page
 - [ ] The phosphor theme's heat colours: the market's watchlist is unreadable in it
 - [ ] Close the Thought Control draft PR that carried the prototype, and drop `crates/scene` there
 - [ ] Move the Thought Control examples (`examples/thc/`, the Today screens in `examples/pixels/`)
@@ -261,8 +275,9 @@ The live session showed both gaps: the agent couldn't know the person had typed 
       live editors); `--if-rev` stays strict for values
 - [x] Keep unchanged data sources on push (a push fetches only new and changed ones)
 - [ ] Validated batches: several writes applied together, or none, naming the bad ones
-- [ ] The skill: the alphabet, the store, one full example, and the rules ("check with `screen`",
-      "read before you write", "bind data to commands, never relay it")
+- [x] The skill: `fictty-ui`, global (outside the repo), for agents making screens for a person's
+      task: the window, the store, a ready-made image path with a live manifest, the rules and
+      the pitfalls (2026-10-14). Keep it in step with the format
 - [ ] MCP server: a thin adapter over the socket; semantic tools first (`read`, `put`, `edit`,
       `watch`, `push`), raw keys and mouse as the fallback; the screen as an image
 - [ ] Command policy: data-only by default for pushed UIs; commands from an allowlist; allow/ask/deny
@@ -280,27 +295,22 @@ The live session showed both gaps: the agent couldn't know the person had typed 
 
 ## 4 · Layout and the kit
 
-OpenTUI's component list is the target; each piece wraps the best crate behind one spec and the
-theme.
+Layout itself is step 3 of phase 1 now, and motion is phase 3. What's left here is the kit.
 
-- [ ] Layout on flexbox (a subset, via `taffy`): direction, size, grow, gap, padding, alignment,
-      so the dense screens work at 80×24 as well as 160×46
 - [x] Popups and dialogs (a `stack` with a floating, `modal` child), toasts
 - [x] Scroll bars on lists, tables and trees; `readonly` editors for long text and logs
 - [ ] Markdown rendered (not only styled in an editor), code with syntax colour, a diff view
-- [ ] An embedded terminal for live command output (tui-term)
-- [ ] Motion: transitions on push and theme change (tachyonfx)
+- [ ] An embedded terminal for live command output, drawn in the window
 - [x] A `copy` action onto the system clipboard (OSC 52), and `$self`, so a screen can hand out
       commands that reach it from any terminal
 - [x] Editors: dragging to select, copy and paste with the system clipboard
 - [ ] Editors: search
 - [ ] Project components: JSON with named parameters, loaded from the project, `{"use": "kpi", …}`
-- [ ] Review the drawing-only components (`gauge`, `big`, `bars`, `sparkline`, `chart`, `map`):
-      keep what's compact and degrades well, move the rest to recipes
+- [ ] Review the drawing-only components (`gauge`, `big`, `bars`, `sparkline`, `chart`, `map`)
+      as they move into the window (phase 1): keep what's worth drawing, move the rest to recipes
 - [ ] A catalog: what this screen can render (alphabet, project components, registered widgets)
-- [ ] Widget registry: any ratatui widget, registered by an embedding app (the escape hatch);
-      waits until Thought Control finds something the kit can't do
-- [ ] Rasterise pictures on a worker thread (a 15 Hz plot costs ~7 ms a frame on the main thread)
+- [ ] Widget registry: an element registered by an embedding app (the escape hatch); waits until
+      Thought Control finds something the kit can't do
 
 ## 5 · Design system
 
@@ -315,8 +325,8 @@ themes are the first in-terminal drafts.
 - [ ] The wordmark generator as code: one seeded generator that emits SVG and PNG, and the chosen seed
 - [ ] Favicon and small sizes; the social card
 - [ ] Brand tokens: grounds, tints, neutrals, semantic colours, type for docs and site
-- [ ] **fictty's default theme**: the same palette as an in-terminal theme (ANSI 16 and truecolor),
-      in the theme format, so the brand and the product's default look are one thing
+- [ ] **fictty's default theme**: the brand's palette in the theme format, so the brand and the
+      product's default look are one thing
 - [ ] Where themes live: the person's, the project's, or both merged
 - [ ] Vocabulary: names for theme, throw/shape (push/patch) and the escape hatch, if the glass
       direction wants different words than the clay ones

@@ -112,6 +112,9 @@ field steps back or on in each entry's own history.
 
 ## Done when
 
+Done on 14 October 2026 (d81e67a to 84f5c47); what real use found is in
+[gallery-notes.md](gallery-notes.md).
+
 - `tests/window.rs` covers each input above, a click through an image to its row, an image
   drawn from a template, and multi-edit's three cases (same, mixed, untouched), with undo.
 - The fuzz runs clean at 400 runs in release with `multi` lists in the tour or the wringer.

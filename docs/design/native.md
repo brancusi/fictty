@@ -152,28 +152,27 @@ Every component, every theme, every input the terminal had; then the terminal go
 
 - [x] Layout: `size` in cells and px, `%`, `*`, `min`/`max`, `gap`, `pad`, `align`, `float`,
       `modal` (with a scrim), `$width`/`$height` areas, `stack` (step 1, below)
-- [ ] Text with markup: styled runs (`<b>`, colours, signs), tabs and fills laid out as columns,
-      maps, conditionals; wrapping. Done, except a cut line's `…` (GPUI's `text_ellipsis` breaks
-      under taffy's measuring, so lines clip) and `keep`
+- [x] Text with markup: styled runs (`<b>`, colours, signs), tabs and fills laid out as columns,
+      maps, conditionals; wrapping; our own ellipsis and `keep` (step 2d)
 - [ ] Lists, trees, tables: virtualised, row templates, multi-line rows, `mark`/`lead`,
       variants, skip rows, filters, heat colours, footers, scrollbars, hover. Done: drawn from the
-      state's scroll (only the rows in view), row templates, multi-line rows, hover, the wheel.
-      Left: a tree's indent and folds, `mark`/`lead`, row variants, skip rows, heat colours,
-      footers and totals, column widths and alignment, scrollbars
+      state's scroll (only the rows in view), row templates, multi-line rows, hover, the wheel;
+      `multi`, rows as nodes with `cols`, smooth scrolling and scrollbars (14 October, the
+      gallery). Left: a tree's indent and folds, `mark`/`lead`, row variants, skip rows, heat
+      colours, footers and totals, column widths and alignment
 - [ ] Editors and inputs: caretline at mono cell size; caret, selections, Markdown styles, links,
       task boxes, ordered lists, placeholders, read-only; click, drag, double and triple click,
       wheel; `accept: number`. Done: all of it drawn, and click, drag, double and triple press and
       the wheel. Left to prove with tests: a click on a link or a task box, read-only, `accept`
 - [ ] Charts drawn with `canvas`: sparkline, chart, bars, gauge, plot, map, dot, big
 - [ ] Pictures native: cards (rounded, gradient, shadow, glow) as styles; SVG and images as
-      elements
+      elements. Done: cards (step 2e), `image` (14 October). Left: SVG
 - [ ] Tabs, buttons, spinners, toasts, the status bar, problems. Done: tabs, buttons, spinners,
-      toasts (on time). Left: the status bar as the UI's (its status, problems and hints, and
-      `status_bar: false`), a `toasts` node's placement
+      toasts (on time), the status bar as the UI's (step 2e). Left: a `toasts` node's placement
 - [ ] Layers: callouts, arrows, rings, spotlights, pulses, the hover tip
-- [ ] Themes: every token and part mapped to styles; parts gain radius, shadow, padding, font.
-      Done: tokens, parts and `<spec>` runs (`look.rs`). Left: `variant`, `tone`, `edge`,
-      `backdrop`, and the new part properties
+- [x] Themes: every token and part mapped to styles; parts gain radius, shadow, padding, font.
+      Done: tokens, parts and `<spec>` runs (`look.rs`); parts as whole styles, `variant`,
+      `tone`, `edge`, `backdrop` (steps 2a to 2e)
 - [ ] Input: every key with every modifier from the OS (`d-` is ⌘), IME, the system clipboard
       (copy as text, ⌘V pastes, owned by the runtime), mouse and wheel, hover, focus rings.
       Done: keys, the clipboard, the mouse, the wheel, hover. Left: IME (`Msg::Compose`), focus
@@ -429,7 +428,9 @@ deleted, and the window fuzz runs stay clean.
    `landing` and `calendar` are rebuilt in `screens.py` without their tricks.
 4. **Lists, trees, tables, and rows as nodes (L).** Row templates as nodes (expressive.md,
    "Content"): a list, table or tree's `row` is a node template filled from `$item`, virtualised,
-   its height the template's `size` or `fit`; clicks on a row's own buttons reach them. Done when
+   its height the template's `size` or `fit`; clicks on a row's own buttons reach them. (A
+   list's `row`, with `cols`, came forward for the gallery on 14 October; `fit` heights, its
+   own buttons, and trees' and tables' rows are what's left.) Done when
    `chat` and `kanban` are rebuilt with real bubbles and cards. Then the rest: a tree's indent,
    fold glyphs and clicks on them; `mark`/`lead`; row variants; skip rows; filters; heat colours; column widths and alignment; footers and
    totals; scrollbars. Tests: `a_tree_shows_nested_rows_and_folds_them`,
@@ -505,7 +506,9 @@ What the window makes possible for agents.
 
 ### Phase 3 · Media (M)
 
-- [ ] `image`: a path or URL, `fit` (contain, cover), rounded corners; decoded off the main thread
+- [ ] `image`: a path or URL, `fit` (contain, cover), rounded corners; decoded off the main thread.
+      Done (14 October, [selection.md](selection.md)): a path from a template, `fit`, `alt`.
+      Left: URLs, corners, decoding off the main thread, a file that can't be read as a problem
 - [ ] `video`: a path or URL in a node, hardware-decoded (AVFoundation) frames drawn as a
       `surface`; play, pause, seek and position in `State`, so agents control and read it
 - [ ] Pasting and dropping images: the clipboard's image types arrive as files
