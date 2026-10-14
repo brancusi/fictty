@@ -67,9 +67,16 @@ fictty theme paper                                        # choose a loaded them
   over each other); `text`, `big`, `spinner`; `list`, `tree`, `table` (with column `total`s);
   `editor`, `input`, `button`; `tabs`; `sparkline`, `chart`, `bars` (up, or `horizontal`), `gauge`;
   and the pixel ones below. Every node can have `id`, `size` (`12` cells, `"48px"`, `"30%"`, `"*"`,
-  `"2*"`; a terminal rounds pixels to its cells) with `min` and `max` (cells), `title`, `border`,
-  `pad`, `align`, `variant`, `tone`, `style`, `bind`, `keys`, `click`, `when`, and in a stack
-  `float` and `modal`.
+  `"2*"`; a terminal rounds pixels to its cells) with `min` and `max`, `title`, `border`,
+  `pad`, `margin`, `align`, `variant`, `tone`, `style`, `bind`, `keys`, `click`, `when`, and in
+  a stack `float` and `modal`.
+- **Lengths**: `pad`, `margin`, `gap`, `min` and `max` take cells (`1`), pixels (`"8px"`) or a
+  name from the theme's `space` (`"s3"`), the same lengths a style's `pad` takes. `pad` (space
+  inside, over its style's) and `margin` (space outside, between a node and what's beside it)
+  are one length for every side, `[x, y]` (across, then down), or `[top, right, bottom, left]`,
+  as CSS: `"pad": [1, 0]` is a cell either side. A `gap` is one length or `[x, y]`. A length
+  that isn't one, or names a `space` the theme doesn't have, is a problem (`get --state`'s
+  `problems`, the status line). The window takes every unit; a terminal takes cells only.
 - **Lists and trees** share their row options: `item` (a template), `row_variant` and `variants`
   (a template per kind of row) with `skip` (rows that can't be selected), `mark` and `lead`,
   `selected` (a style), `lines` (rows of several lines), `keep` (cells the left side keeps before
@@ -87,7 +94,8 @@ fictty theme paper                                        # choose a loaded them
   patch changes the template. A `State` read back from `get --state` leaves the tree out (it's
   worked out, not kept): call `derive()` on it before `focus_order` or `tree()`.
 - **Overlays**: a `stack` draws its children over each other, the last on top; one with
-  `float` (`width` and `height` in cells, pixels or `%`, `at` an edge or corner, `margin`) sits
+  `float` (`width` and `height` in cells, pixels or `%`, `at` an edge or corner, `margin` in
+  from the edges, as a node's) sits
   where it says, and a `modal` one dims what's behind it and keeps the focus: while it shows, a
   click or the wheel anywhere outside it goes nowhere. Both cover what's under them. **`when`**
   shows a node only while a condition holds: a bind that's set (`"dialog"`), not set
@@ -231,7 +239,8 @@ variant's `style`:
 
 A style's fields: `fg`; `bg` (a colour or a gradient `{"from", "to", "angle"}`); `bold`, `dim`,
 `italic`, `underline`, `strike`, `reverse`; `type` (a role from the theme's `type`); `pad` (one
-length for every side, or `[x, y]`: cells, `"8px"` or a `space` name); `radius` (pixels or a
+length for every side, `[x, y]` or `[top, right, bottom, left]`: cells, `"8px"` or a `space`
+name); `radius` (pixels or a
 `radius` name); `border` (`width`, `color`, `style`: `solid`, `dashed`, `double`); `shadow` (a
 `depth` name, or `none`); `ring` (`width`, `offset`, `color`); `shape` (tabs `underline`, `pill`,
 `segment`, `plain`; a scrollbar `thin`, `overlay`, `none`; an edge `rounded`, `square`, `double`,
@@ -252,8 +261,8 @@ a node whose text was cut, `(cut)` in the outline and `"cut": true` in the JSON.
 
 **Cards and the status line.** A `backdrop` (`fill`, `fill2` for a gradient down, `border`,
 `radius` and `shadow` as fractions of a cell's height, `glow` for a lit edge) draws as a card in
-the window. A row or column clips what it holds, so give a row of cards `pad` to leave their
-shadows room. The status line at the bottom shows the status, else the first problem, else
+the window. A row or column clips what it holds, so give each card a `margin` to leave its
+shadow room. The status line at the bottom shows the status, else the first problem, else
 hints; `"status_bar": false` gives the UI every row, and `"status_bar": "speed"` adds the
 speed meter (`$stats` has the numbers either way). Its look is the `status` and `status.error`
 parts.

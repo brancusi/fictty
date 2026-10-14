@@ -123,29 +123,26 @@ impl<'a> Look<'a> {
         }
     }
 
-    /// A resolved style's pad in pixels, `(x, y)`: cells are the window's cells.
-    pub fn pad(r: &Resolved, cell: (f32, f32)) -> (f32, f32) {
-        let px_of = |l: &Len, per: f32| match l {
-            Len::Cells(n) => n * per,
-            Len::Spec(s) => s.trim().trim_end_matches("px").trim().parse().unwrap_or(0.),
-        };
-        r.pad.as_ref().map_or((0., 0.), |[x, y]| (px_of(x, cell.0), px_of(y, cell.1)))
+    /// A resolved style's pad in pixels, `[top, right, bottom, left]`: cells are the window's
+    /// cells.
+    pub fn pad(r: &Resolved, cell: (f32, f32)) -> [f32; 4] {
+        let Some([t, rt, b, l]) = &r.pad else { return [0.; 4] };
+        let px_of = |l: &Len, per: f32| l.px(per).unwrap_or(0.);
+        [px_of(t, cell.1), px_of(rt, cell.0), px_of(b, cell.1), px_of(l, cell.0)]
     }
 
     /// A resolved style on a box: its background (a colour or a gradient), its text, `extra`
-    /// pixels of pad over its own, its corners, border, shadows and ring, opacity and cursor.
-    /// The one place the theme's looks become GPUI's.
-    pub fn boxed<E: Styled>(&self, mut el: E, r: &Resolved, cell: (f32, f32), extra: (f32, f32)) -> E {
+    /// pixels of pad over its own (`[top, right, bottom, left]`), its corners, border, shadows
+    /// and ring, opacity and cursor. The one place the theme's looks become GPUI's.
+    pub fn boxed<E: Styled>(&self, mut el: E, r: &Resolved, cell: (f32, f32), extra: [f32; 4]) -> E {
         el = inked(el, self.ink(&r.ink));
         if let Some(g) = &r.gradient
             && let (Some(a), Some(b)) = (parse(&g.from), parse(&g.to))
         {
             el = el.bg(linear_gradient(g.angle, linear_color_stop(a, 0.), linear_color_stop(b, 1.)));
         }
-        let (x, y) = Self::pad(r, cell);
-        if (x, y) != (0., 0.) || extra != (0., 0.) {
-            el = el.px(px(x + extra.0)).py(px(y + extra.1));
-        }
+        let [t, rt, b, l] = Self::pad(r, cell);
+        el = padded(el, [t + extra[0], rt + extra[1], b + extra[2], l + extra[3]]);
         if let Some(rad) = r.radius {
             el = el.rounded(px(rad));
         }
@@ -207,4 +204,12 @@ pub fn inked<E: Styled>(mut el: E, ink: Ink) -> E {
         el = el.opacity(0.6);
     }
     el
+}
+
+/// Pad in pixels, `[top, right, bottom, left]`.
+pub fn padded<E: Styled>(el: E, p: [f32; 4]) -> E {
+    if p == [0.; 4] {
+        return el;
+    }
+    el.pt(px(p[0])).pr(px(p[1])).pb(px(p[2])).pl(px(p[3]))
 }

@@ -33,8 +33,8 @@ themes whole styles resolved in the core, add a layout vocabulary, rows as nodes
 motion as data. No more terminal work. **Where to start:** section 0, "Next".
 
 **14 October 2026:** step 2, the Kestrel demo and Daybook are on `main`, and CI is green. Step 3
-starts from "Start here" in [design/layout-step.md](design/layout-step.md): three decisions for
-Aram, then 3a's commits, against a measured baseline.
+starts from "Start here" in [design/layout-step.md](design/layout-step.md): Aram confirmed the
+three decisions, and 3a (units and the box) is on the `layout-3a` branch.
 
 ## Done
 

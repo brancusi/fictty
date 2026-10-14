@@ -5,13 +5,13 @@
    {
     "type": "text",
     "size": 1,
-    "pad": 1,
+    "pad": [1, 0],
     "bind": "ticks",
     "text": "<c2>●</> <b>fictty</> <d>›</> markets <d>· a made-up market, live from</> <accent>ticks.py</>\t<d>{clock} · esc menu · t theme</> "
    },
    {
     "type": "row",
-    "pad": 1,
+    "pad": [1, 0],
     "children": [
      {
       "type": "col",
@@ -85,7 +85,7 @@
             "bind": "ticks.index",
             "title": "Index",
             "variant": "card",
-            "pad": 1,
+            "pad": [1, 0],
             "text": "<b>{value}</>\t{±pct}%"
            }
           ]
@@ -146,7 +146,7 @@
    {
     "type": "text",
     "size": 1,
-    "pad": 1,
+    "pad": [1, 0],
     "text": "<d>j / k move · the detail and its chart follow the selected row · every number here comes from a stream source, four lines a second</>"
    }
   ]

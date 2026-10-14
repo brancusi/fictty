@@ -395,6 +395,86 @@ fn a_size_can_be_in_pixels() {
 }
 
 #[test]
+fn pad_takes_every_side_or_four_in_any_unit() {
+    let ui = |pad: Value| json!({"root": {"type": "col", "children": [
+        {"type": "col", "id": "box", "pad": pad, "border": true, "children": [{"type": "list", "id": "inner", "items": ["x"]}]}]}});
+    let theme = json!({"space": {"wide": "84px", "tall": 2}});
+    let was = node(&mut window(ui(json!(0)), 40, 12), "inner").rect.unwrap();
+    // Top, right, bottom and left in, from where it was: columns of 8.4 px, rows of 24.
+    for (pad, [t, r, b, l]) in [
+        (json!(1), [1, 1, 1, 1]),
+        (json!([3, 1]), [1, 3, 1, 3]),
+        (json!([1, 2, 3, 4]), [1, 2, 3, 4]),
+        (json!(["84px", "48px"]), [2, 10, 2, 10]),
+        (json!(["tall", "wide", 0, "wide"]), [2, 10, 0, 10]),
+    ] {
+        let i = node(&mut themed(theme.clone(), ui(pad.clone()), 40, 12), "inner").rect.unwrap();
+        assert_eq!((i.x, i.y, i.width, i.height), (was.x + l, was.y + t, was.width - l - r, was.height - t - b), "pad {pad}: {i:?}, from {was:?}");
+    }
+}
+
+#[test]
+fn a_margin_keeps_a_node_off_what_is_beside_it() {
+    let ui = |margin: Value| json!({"root": {"type": "row", "id": "r", "children": [
+        {"type": "text", "id": "a", "text": "A", "size": 10},
+        {"type": "text", "id": "b", "text": "B", "size": 10, "margin": margin},
+        {"type": "text", "id": "c", "text": "C", "size": 10}]}});
+    for (margin, [t, r, b, l]) in [(json!(0), [0, 0, 0, 0]), (json!(1), [1, 1, 1, 1]), (json!([2, "16.8px", 0, "s"]), [2, 2, 0, 5])] {
+        let mut s = themed(json!({"space": {"s": "42px"}}), ui(margin.clone()), 60, 6);
+        let (row, a, bn, c) = (node(&mut s, "r").rect.unwrap(), node(&mut s, "a").rect.unwrap(), node(&mut s, "b").rect.unwrap(), node(&mut s, "c").rect.unwrap());
+        assert_eq!((bn.x, bn.y, bn.height), (a.x + a.width + l, row.y + t, row.height - t - b), "margin {margin}: {bn:?} in {row:?}");
+        assert_eq!(c.x, bn.x + bn.width + r, "margin {margin}: what's after it moves over too");
+    }
+}
+
+#[test]
+fn min_max_and_gap_take_any_unit() {
+    let ui = json!({"root": {"type": "col", "children": [
+        {"type": "row", "id": "r", "children": [
+            {"type": "text", "id": "l", "text": "L", "size": "60%", "max": "84px", "border": true},
+            {"type": "text", "id": "m", "text": "M", "min": "252px", "border": true},
+            {"type": "text", "id": "n", "text": "N", "border": true}]},
+        {"type": "row", "gap": "s", "size": 1, "children": [
+            {"type": "text", "id": "a", "text": "A", "size": 1}, {"type": "text", "id": "b", "text": "B", "size": 1}]},
+        {"type": "col", "gap": [5, "48px"], "size": 4, "children": [
+            {"type": "text", "id": "x", "text": "X", "size": 1}, {"type": "text", "id": "y", "text": "Y", "size": 1}]}]}});
+    let mut s = themed(json!({"space": {"s": "84px"}}), ui, 60, 12);
+    let (l, m) = (node(&mut s, "l").rect.unwrap(), node(&mut s, "m").rect.unwrap());
+    assert_eq!(l.width, 10, "60% held to 84 px: {l:?}");
+    assert!(m.width >= 30, "a share of what's left, at least 252 px: {m:?}");
+    let (a, b) = (node(&mut s, "a").rect.unwrap(), node(&mut s, "b").rect.unwrap());
+    assert_eq!(b.x, a.x + 1 + 10, "a gap named in the theme's space: {a:?} {b:?}");
+    let (x, y) = (node(&mut s, "x").rect.unwrap(), node(&mut s, "y").rect.unwrap());
+    assert_eq!(y.y, x.y + 1 + 2, "a column's gap is the [x, y]'s y: {x:?} {y:?}");
+}
+
+#[test]
+fn a_floats_margin_takes_four_sides() {
+    let ui = json!({"root": {"type": "stack", "id": "s", "children": [
+        {"type": "list", "id": "under", "items": rows(20)},
+        {"type": "text", "id": "badge", "text": "3 new", "float": {"width": 10, "height": 2, "at": "top-right", "margin": [2, "84px", 0, 0]}},
+        {"type": "text", "id": "foot", "text": "bottom", "float": {"width": 10, "height": 1, "at": "bottom-left", "margin": [0, 0, 1, 3]}}
+    ]}});
+    let mut s = window(ui, 60, 14);
+    let (st, badge, foot) = (node(&mut s, "s").rect.unwrap(), node(&mut s, "badge").rect.unwrap(), node(&mut s, "foot").rect.unwrap());
+    assert_eq!((badge.x, badge.y), (st.x + st.width - 10 - 10, st.y + 2), "two rows down, 84 px in: {badge:?} in {st:?}");
+    assert_eq!((foot.x, foot.y), (st.x + 3, st.y + st.height - 1 - 1), "{foot:?} in {st:?}");
+}
+
+#[test]
+fn a_length_that_isnt_one_is_a_problem() {
+    let ui = json!({"root": {"type": "col", "id": "c", "gap": "s9", "children": [
+        {"type": "text", "id": "t", "text": "T", "pad": [1, "8pz"], "margin": "wide", "min": "s", "max": "huge",
+         "float": {"margin": "far"}}]}});
+    let mut s = themed(json!({"space": {"s": "8px"}}), ui, 40, 6);
+    let problems = s.state().problems.join("\n");
+    for p in ["c: gap \"s9\"", "t: pad \"8pz\"", "t: margin \"wide\"", "t: max \"huge\"", "t: float margin \"far\""] {
+        assert!(problems.contains(&format!("{p} isn't a length or one of the theme's space names")), "{p} in:\n{problems}");
+    }
+    assert!(!problems.contains("min"), "a space name the theme has is a length: {problems}");
+}
+
+#[test]
 fn pad_and_align_place_what_a_node_holds() {
     let ui = |pad: Value| json!({"root": {"type": "col", "children": [
         {"type": "col", "id": "box", "pad": pad, "border": true, "children": [{"type": "list", "id": "inner", "items": ["x"]}]},

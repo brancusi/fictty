@@ -6,7 +6,7 @@
 //! Whatever draws reads this one value, the readback prints it, and tests assert on it without a
 //! window. There's no cascade beyond that: nothing else applies.
 
-use crate::model::{Backdrop, Fill, Len, Lens, Node, Part, Ring, Rows, Shadow, Style, ThemeSpec, TypeRole, Variant, is_colour};
+use crate::model::{Backdrop, Fill, Gap, Kind, Len, Lens, Node, Part, Ring, Rows, Shadow, Style, ThemeSpec, TypeRole, Variant, is_colour};
 use crate::state::{self, State};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -181,9 +181,9 @@ pub struct Resolved {
     pub gradient: Option<Gradient>,
     #[serde(default, rename = "type", skip_serializing_if = "Option::is_none")]
     pub role: Option<Role>,
-    /// Space inside, `[x, y]`: cells (numbers) or pixels (`"8px"`).
+    /// Space inside, `[top, right, bottom, left]`: cells (numbers) or pixels (`"8px"`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub pad: Option<[Len; 2]>,
+    pub pad: Option<[Len; 4]>,
     /// Corner radius in pixels.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub radius: Option<f32>,
@@ -224,6 +224,17 @@ fn len_text(l: &Len) -> String {
     }
 }
 
+/// Four sides as briefly as they go: one length, `x y`, or all four.
+fn sides_text([t, r, b, l]: &[Len; 4]) -> String {
+    if t == r && r == b && b == l {
+        len_text(t)
+    } else if t == b && r == l {
+        format!("{} {}", len_text(r), len_text(t))
+    } else {
+        [t, r, b, l].map(len_text).join(" ")
+    }
+}
+
 impl Resolved {
     /// One line: `button.focused · #0f1418+on-#5fd1c6+b · radius 6 · border 1 #5fd1c6 · edge double`.
     pub fn line(&self) -> String {
@@ -242,7 +253,7 @@ impl Resolved {
             t.extend(r.role.weight.map(|w| format!(" {w}")));
             t
         }));
-        out.extend(self.pad.as_ref().map(|[x, y]| format!("pad {} {}", len_text(x), len_text(y))));
+        out.extend(self.pad.as_ref().map(|p| format!("pad {}", sides_text(p))));
         out.extend(self.radius.map(|r| format!("radius {r}")));
         out.extend(self.border.as_ref().map(|b| format!("border {} {}{}", b.width, b.color, if b.style == "solid" { String::new() } else { format!(" {}", b.style) })));
         if !self.shadow.is_empty() {
@@ -392,7 +403,7 @@ impl<'a> Theme<'a> {
     }
 
     /// A length with a `space` name filled in: cells, or `"8px"`.
-    fn len(&self, l: &Len) -> Option<Len> {
+    pub fn len(&self, l: &Len) -> Option<Len> {
         match l {
             Len::Cells(_) => Some(l.clone()),
             Len::Spec(s) if s.trim().strip_suffix("px").is_some_and(|n| n.trim().parse::<f32>().is_ok()) => Some(l.clone()),
@@ -402,6 +413,12 @@ impl<'a> Theme<'a> {
                 v => self.len(v),
             },
         }
+    }
+
+    /// A length in pixels, a cell being `per` of them; none for a `space` name the theme
+    /// doesn't have or a length that isn't one.
+    pub fn px(&self, l: &Len, per: f32) -> Option<f32> {
+        self.len(l)?.px(per)
     }
 
     /// A radius in pixels: a number, `"6px"`, or a `radius` name.
@@ -437,6 +454,12 @@ impl<'a> Theme<'a> {
         self.active?.variants.get(n.variant.as_deref()?)
     }
 
+    /// What's wrong with a field's lengths, in words: one that isn't a length, or names a
+    /// `space` the theme doesn't have.
+    fn len_problems<'l>(&self, field: &str, ls: impl IntoIterator<Item = &'l Len>) -> Vec<String> {
+        ls.into_iter().filter(|l| self.len(l).is_none()).map(|l| format!("{field} {:?} isn't a length or one of the theme's space names", len_text(l))).collect()
+    }
+
     /// What's wrong with a style here, in words.
     fn style_problems(&self, s: &Style) -> Vec<String> {
         let mut out = Vec::new();
@@ -452,14 +475,7 @@ impl<'a> Theme<'a> {
         if let Some(r) = s.role.as_deref().filter(|r| self.role(r).is_none()) {
             out.push(format!("type {r:?} isn't one of the theme's type roles"));
         }
-        let pads = match &s.pad {
-            Some(Lens::One(l)) => vec![l],
-            Some(Lens::XY([x, y])) => vec![x, y],
-            None => vec![],
-        };
-        for l in pads.into_iter().filter(|l| self.len(l).is_none()) {
-            out.push(format!("pad {:?} isn't a length or one of the theme's space names", len_text(l)));
-        }
+        out.extend(self.len_problems("pad", s.pad.iter().flat_map(Lens::written)));
         if let Some(r) = s.radius.as_ref().filter(|r| self.radius(r).is_none()) {
             out.push(format!("radius {:?} isn't pixels or one of the theme's radius names", len_text(r)));
         }
@@ -678,11 +694,10 @@ fn filled(th: &Theme, s: &Style, states: &[&str], edge: Option<&str>, bordered: 
             _ => None,
         },
         role: s.role.as_deref().and_then(|r| th.role(r)),
-        pad: match &s.pad {
-            Some(Lens::One(l)) => th.len(l).map(|l| [l.clone(), l]),
-            Some(Lens::XY([x, y])) => th.len(x).zip(th.len(y)).map(|(x, y)| [x, y]),
-            None => None,
-        },
+        pad: s.pad.as_ref().and_then(|p| {
+            let [t, r, b, l] = p.sides().map(|l| th.len(l));
+            Some([t?, r?, b?, l?])
+        }),
         radius: if edge.is_some() { None } else { s.radius.as_ref().and_then(|r| th.radius(r)) },
         border,
         shadow: s.shadow.as_deref().and_then(|d| th.shadows(d)).unwrap_or_default(),
@@ -743,6 +758,21 @@ pub fn problems(st: &State, nodes: &[&Node]) -> Vec<String> {
         out.extend(n.style.iter().flat_map(|s| th.style_problems(s)).map(|p| format!("{who}: {p}")));
         for c in n.backdrop.iter().flat_map(backdrop_colours).filter(|c| !th.knows(c)) {
             out.push(format!("{who}: {c:?} isn't a token or a colour"));
+        }
+        let gap = match &n.kind {
+            Kind::Col { gap, .. } | Kind::Row { gap, .. } | Kind::Each { gap, .. } => gap.as_ref(),
+            _ => None,
+        };
+        let lens = [
+            ("pad", n.pad.as_ref().map(Lens::written)),
+            ("margin", n.margin.as_ref().map(Lens::written)),
+            ("min", n.min.as_ref().map(std::slice::from_ref)),
+            ("max", n.max.as_ref().map(std::slice::from_ref)),
+            ("gap", gap.map(Gap::written)),
+            ("float margin", n.float.as_ref().and_then(|f| f.margin.as_ref()).map(Lens::written)),
+        ];
+        for (field, ls) in lens {
+            out.extend(th.len_problems(field, ls.unwrap_or_default()).into_iter().map(|p| format!("{who}: {p}")));
         }
         if let Some(Rows { variants, skip, .. }) = n.rows() {
             for s in skip.iter().filter(|s| !variants.contains_key(*s)) {
@@ -871,7 +901,8 @@ mod tests {
         assert_eq!(go.gradient, Some(Gradient { from: "#5fd1c6".into(), to: "#39d6e6".into(), angle: 160. }));
         let role = go.role.clone().unwrap();
         assert_eq!((role.name.as_str(), role.role.font.as_deref(), role.role.size, role.role.weight), ("label", Some("Inter"), Some(13.), Some(600)));
-        assert_eq!(go.pad, Some([Len::Spec("14px".into()), Len::Spec("8px".into())]));
+        let (x, y) = (Len::Spec("14px".into()), Len::Spec("8px".into()));
+        assert_eq!(go.pad, Some([y.clone(), x.clone(), y, x]), "[x, y] is top and bottom y, left and right x");
         assert_eq!(go.radius, Some(6.));
         assert_eq!(go.border, Some(Border { width: 1., color: "#2a353d".into(), style: "solid".into() }), "a border from the part, though the node has none of its own");
         assert_eq!(go.shadow.iter().map(|s| s.color.as_str()).collect::<Vec<_>>(), vec!["#000000", "#39d6e6"], "e2, focused, over e1");
@@ -882,7 +913,7 @@ mod tests {
             "button.focused · #0f1418+on-#5fd1c6 · gradient #5fd1c6→#39d6e6 160° · type label Inter 13px 600 · pad 14px 8px · radius 6 · border 1 #2a353d · shadow ×2 · ring 2 #5fd1c6 · cursor pointer"
         );
         let t = of(&st, "t");
-        assert_eq!((t.shape.as_deref(), t.pad.clone()), (Some("pill"), Some([Len::Cells(1.), Len::Cells(1.)])), "one length pads every side");
+        assert_eq!((t.shape.as_deref(), t.pad.clone()), (Some("pill"), Some([Len::Cells(1.), Len::Cells(1.), Len::Cells(1.), Len::Cells(1.)])), "one length pads every side");
         assert!(st.problems.is_empty(), "{:?}", st.problems);
     }
 

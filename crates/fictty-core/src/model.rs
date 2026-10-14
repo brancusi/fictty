@@ -129,11 +129,21 @@ impl Part {
 }
 
 /// A length: cells (`1`), pixels (`"8px"`), or the name of a `space` entry (`"s2"`).
-#[derive(Clone, Debug, PartialEq, Serialize)]
-#[serde(untagged)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Len {
     Cells(f32),
     Spec(String),
+}
+
+// Whole cells as integers, as they were written.
+impl Serialize for Len {
+    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Len::Cells(n) if n.fract() == 0. && n.abs() < 1e9 => s.serialize_i64(*n as i64),
+            Len::Cells(n) => s.serialize_f32(*n),
+            Len::Spec(t) => s.serialize_str(t),
+        }
+    }
 }
 
 /// One shadow: offset, blur and spread in pixels, and its colour (a token or a colour, with
@@ -341,9 +351,13 @@ pub struct Node {
     /// A meaning for the text colour, as a theme token: `warn`, `neg`, `accent`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tone: Option<String>,
-    /// Space inside the node's border: `1` (cells either side), or `[x, y]` (cells, rows).
+    /// Space inside the node's border, over its style's: one length for every side, `[x, y]`, or
+    /// `[top, right, bottom, left]`. A length is cells (`1`), pixels (`"8px"`) or a `space` name.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub pad: Option<Pad>,
+    pub pad: Option<Lens>,
+    /// Space outside it, between it and what's beside it: lengths as `pad`'s.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub margin: Option<Lens>,
     /// Shown only while this holds: a bind that's set (`"dialog"`; not empty, false, 0 or null),
     /// not set (`"!dialog"`), or compared with a value (`"mode=edit"`, `"$screen.width>=120"`;
     /// `=`, `!=`, `<`, `<=`, `>`, `>=`); several joined by ` & ` must all hold. A hidden node
@@ -356,18 +370,18 @@ pub struct Node {
     /// While shown, focus stays inside this node and what's behind it dims: a dialog.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub modal: bool,
-    /// Bounds, in cells, on the node's share of its row or column: `"size": "60%", "max": 96`.
+    /// Bounds on the node's share of its row or column, as lengths: `"size": "60%", "max": "720px"`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub min: Option<u16>,
+    pub min: Option<Len>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub max: Option<u16>,
+    pub max: Option<Len>,
     #[serde(flatten)]
     pub kind: Kind,
 }
 
 /// Where a floating node sits in its stack: `width` and `height` (cells, `"50%"`, `"240px"`; default the
 /// whole stack) and `at` (`center`, the default, or `top`, `bottom`, `left`, `right` and the
-/// corners, `top-right`), `margin` cells in from the edge it's at.
+/// corners, `top-right`), `margin` in from the edges (lengths as a node's `pad`).
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct Float {
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -377,7 +391,7 @@ pub struct Float {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub at: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub margin: Option<u16>,
+    pub margin: Option<Lens>,
 }
 
 impl Default for Node {
@@ -399,6 +413,7 @@ impl Default for Node {
             variant: None,
             tone: None,
             pad: None,
+            margin: None,
             when: None,
             float: None,
             modal: false,
@@ -413,17 +428,17 @@ impl Default for Node {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "lowercase")]
 pub enum Kind {
-    /// Children stacked top to bottom, `gap` rows apart.
+    /// Children stacked top to bottom, `gap` apart (a length, or `[x, y]`).
     Col {
         children: Vec<Node>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
-        gap: Option<u16>,
+        gap: Option<Gap>,
     },
-    /// Children side by side, `gap` cells apart.
+    /// Children side by side, `gap` apart (a length, or `[x, y]`).
     Row {
         children: Vec<Node>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
-        gap: Option<u16>,
+        gap: Option<Gap>,
     },
     /// Children over each other, the last on top: each fills the stack, or floats where its
     /// `float` says (a dialog, a popup, a corner badge). With `when`, a layer comes and goes.
@@ -439,7 +454,7 @@ pub enum Kind {
         #[serde(default, skip_serializing_if = "std::ops::Not::not")]
         row: bool,
         #[serde(default, skip_serializing_if = "Option::is_none")]
-        gap: Option<u16>,
+        gap: Option<Gap>,
     },
     /// Where toasts show, newest first, a line each, instead of the screen's corner (a bar of
     /// the UI's own). Each takes the theme part `toast.<tone>`, else `toast`.
@@ -831,7 +846,7 @@ pub struct Style {
     /// A type role from the theme's `type`.
     #[serde(default, rename = "type", skip_serializing_if = "Option::is_none")]
     pub role: Option<String>,
-    /// Space inside: one length for every side, or `[x, y]`.
+    /// Space inside: one length for every side, `[x, y]`, or `[top, right, bottom, left]`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub pad: Option<Lens>,
     /// Corner radius: pixels, or a `radius` name.
@@ -858,12 +873,74 @@ pub struct Style {
     pub other: BTreeMap<String, Value>,
 }
 
-/// One length, or `[x, y]`.
+/// A length for each side of a box, as CSS: one for every side, `[x, y]` (left and right, top
+/// and bottom), or `[top, right, bottom, left]`.
 #[derive(Clone, Debug, PartialEq, Serialize)]
 #[serde(untagged)]
 pub enum Lens {
     One(Len),
     XY([Len; 2]),
+    Sides([Len; 4]),
+}
+
+impl Lens {
+    /// Top, right, bottom and left.
+    pub fn sides(&self) -> [&Len; 4] {
+        match self {
+            Lens::One(l) => [l; 4],
+            Lens::XY([x, y]) => [y, x, y, x],
+            Lens::Sides([t, r, b, l]) => [t, r, b, l],
+        }
+    }
+
+    /// The lengths as written.
+    pub fn written(&self) -> &[Len] {
+        match self {
+            Lens::One(l) => std::slice::from_ref(l),
+            Lens::XY(a) => a,
+            Lens::Sides(a) => a,
+        }
+    }
+}
+
+/// Space between a container's children: one length, or `[x, y]` (across and down).
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[serde(untagged)]
+pub enum Gap {
+    One(Len),
+    XY([Len; 2]),
+}
+
+impl Gap {
+    /// Across and down.
+    pub fn xy(&self) -> [&Len; 2] {
+        match self {
+            Gap::One(l) => [l; 2],
+            Gap::XY([x, y]) => [x, y],
+        }
+    }
+
+    /// The lengths as written.
+    pub fn written(&self) -> &[Len] {
+        match self {
+            Gap::One(l) => std::slice::from_ref(l),
+            Gap::XY(a) => a,
+        }
+    }
+}
+
+impl Len {
+    /// In pixels, a cell being `per` of them: cells, `"8px"`, or a number as text. A `space`
+    /// name isn't one until the theme fills it in (`style::Theme::len`).
+    pub fn px(&self, per: f32) -> Option<f32> {
+        match self {
+            Len::Cells(n) => Some(n * per),
+            Len::Spec(s) => match s.trim().strip_suffix("px") {
+                Some(p) => p.trim().parse().ok(),
+                None => s.trim().parse::<f32>().ok().map(|n| n * per),
+            },
+        }
+    }
 }
 
 // The untagged enums above, read by hand, so a wrong value says what was expected instead of
@@ -897,15 +974,28 @@ impl<'de> Deserialize<'de> for Len {
     }
 }
 
+fn lens_of<E: serde::de::Error, const N: usize>(a: Vec<Value>) -> Result<[Len; N], E> {
+    let v: Vec<Len> = a.into_iter().map(len_of).collect::<Result<_, E>>()?;
+    v.try_into().map_err(|_| E::custom("wrong count"))
+}
+
 impl<'de> Deserialize<'de> for Lens {
     fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
         match Value::deserialize(d)? {
-            Value::Array(a) if a.len() == 2 => {
-                let mut a = a.into_iter();
-                Ok(Lens::XY([len_of(a.next().unwrap_or_default())?, len_of(a.next().unwrap_or_default())?]))
-            }
-            v @ Value::Array(_) => Err(wrong("pad is one length or [x, y]", &v)),
+            Value::Array(a) if a.len() == 2 => lens_of(a).map(Lens::XY),
+            Value::Array(a) if a.len() == 4 => lens_of(a).map(Lens::Sides),
+            v @ Value::Array(_) => Err(wrong("sides are one length, [x, y] or [top, right, bottom, left]", &v)),
             v => len_of(v).map(Lens::One),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for Gap {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        match Value::deserialize(d)? {
+            Value::Array(a) if a.len() == 2 => lens_of(a).map(Gap::XY),
+            v @ Value::Array(_) => Err(wrong("a gap is one length or [x, y]", &v)),
+            v => len_of(v).map(Gap::One),
         }
     }
 }
@@ -998,23 +1088,6 @@ pub struct Source {
     pub host: Option<String>,
     #[serde(default, skip_serializing_if = "Value::is_null")]
     pub args: Value,
-}
-
-/// Space inside a node: cells either side, or `[x, y]`.
-#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(untagged)]
-pub enum Pad {
-    X(u16),
-    XY([u16; 2]),
-}
-
-impl Pad {
-    pub fn xy(self) -> (u16, u16) {
-        match self {
-            Pad::X(x) => (x, 0),
-            Pad::XY([x, y]) => (x, y),
-        }
-    }
 }
 
 /// An editor's or input's settings (see `Kind::Editor`, `Kind::Input`).
@@ -1869,5 +1942,26 @@ mod tests {
         let back: Ui = serde_json::from_value(serde_json::to_value(&ui).unwrap()).unwrap();
         assert_eq!(ui, back);
         assert!(ui.root.find("l").unwrap().focusable());
+    }
+
+    #[test]
+    fn box_lengths_read_as_css_and_write_back_as_written() {
+        let n: Node = serde_json::from_value(json!({"type": "row", "children": [], "pad": 1, "margin": [1, "8px", "s2", 0], "min": 20, "max": "720px", "gap": [2, "s1"]})).unwrap();
+        let c = |n: f32| Len::Cells(n);
+        assert_eq!(n.pad.as_ref().unwrap().sides(), [&c(1.); 4], "one length is every side");
+        assert_eq!(n.margin.as_ref().unwrap().sides(), [&c(1.), &Len::Spec("8px".into()), &Len::Spec("s2".into()), &c(0.)], "four are top, right, bottom, left");
+        let xy: Lens = serde_json::from_value(json!([3, 1])).unwrap();
+        assert_eq!(xy.sides(), [&c(1.), &c(3.), &c(1.), &c(3.)], "[x, y] is across, then down");
+        let Kind::Row { gap: Some(g), .. } = &n.kind else { panic!() };
+        assert_eq!(g.xy(), [&c(2.), &Len::Spec("s1".into())]);
+        let back = serde_json::to_value(&n).unwrap();
+        assert_eq!((&back["pad"], &back["min"], &back["max"], &back["margin"]), (&json!(1), &json!(20), &json!("720px"), &json!([1, "8px", "s2", 0])), "whole cells stay integers");
+        for (v, says) in [(json!({"pad": [1, 2, 3]}), "[top, right, bottom, left]"), (json!({"gap": [1, 2, 3, 4]}), "one length or [x, y]"), (json!({"margin": true}), "a length is")] {
+            let mut node = json!({"type": "row", "children": []});
+            node.as_object_mut().unwrap().extend(v.as_object().unwrap().clone());
+            let e = serde_json::from_value::<Node>(node).unwrap_err().to_string();
+            assert!(e.contains(says), "{v}: {e}");
+        }
+        assert_eq!((c(2.).px(8.), Len::Spec(" 12px".into()).px(8.), Len::Spec("1.5".into()).px(8.), Len::Spec("s2".into()).px(8.)), (Some(16.), Some(12.), Some(12.), None));
     }
 }

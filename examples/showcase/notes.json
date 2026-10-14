@@ -5,13 +5,13 @@
    {
     "type": "text",
     "size": 1,
-    "pad": 1,
+    "pad": [1, 0],
     "bind": "$theme",
     "text": "<c1>●</> <b>fictty</> <d>›</> notes\t<d>esc menu · t theme ·</> <accent>{name}</> "
    },
    {
     "type": "row",
-    "pad": 1,
+    "pad": [1, 0],
     "children": [
      {
       "type": "col",
@@ -23,7 +23,7 @@
         "bind": "draft",
         "title": "New note",
         "size": 3,
-        "pad": 1,
+        "pad": [1, 0],
         "placeholder": "Type a title, then Enter",
         "keys": {
          "enter": {
@@ -89,7 +89,7 @@
    {
     "type": "text",
     "size": 1,
-    "pad": 1,
+    "pad": [1, 0],
     "text": "<d>enter add · x delete · tab next pane · ctrl-z undo · every note is a store entry: </><accent>fictty read note/welcome</>"
    }
   ]

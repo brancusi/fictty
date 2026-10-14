@@ -1,8 +1,8 @@
 {
   "root": {"type": "col", "children": [
-    {"type": "text", "size": 1, "pad": 1, "bind": "$theme",
+    {"type": "text", "size": 1, "pad": [1, 0], "bind": "$theme",
      "text": "<c1>●</> <b>fictty</> <d>›</> agent <d>· what agents did over the socket, and what the store holds</>\t<d>t theme ·</> <accent>{name}</> <d>· esc menu</> "},
-    {"type": "row", "pad": 1, "children": [
+    {"type": "row", "pad": [1, 0], "children": [
       {"type": "list", "id": "activity", "bind": "$log", "title": "Agent activity, newest first", "variant": "card",
        "item": "<d>{at}</>  {op|push=<accent+b>push   </>;patch=<violet+b>patch  </>;put=<pos+b>put    </>;edit=<amber+b>edit   </>;merge=<amber+b>merge  </>;set=<violet+b>set    </>;key=<b>key    </>;theme=<violet+b>theme  </>;refused=<rose+b>refused</>;*=<b>$</>}  {what}",
        "empty": "Nothing yet. Run examples/showcase/tour.sh in another terminal and watch an agent drive this showcase."},
@@ -33,7 +33,7 @@
          "text": "<d>Each line sets that terminal up for this screen first, so plain <b>fictty</> works there after.\nWrites take <b>--if-rev N</>: if anyone wrote since revision N, the write is refused.</>"}
       ]}
     ]},
-    {"type": "text", "size": 1, "pad": 1,
+    {"type": "text", "size": 1, "pad": [1, 0],
      "text": "<d>The store outlives every screen: the notes, the ledger and your drafts are all here, by revision and by who wrote them last.</>"}
   ]},
   "keys": {"esc": {"load": "home.json"}, "t": {"theme": "next"}},

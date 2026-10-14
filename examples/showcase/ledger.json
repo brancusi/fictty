@@ -5,13 +5,13 @@
    {
     "type": "text",
     "size": 1,
-    "pad": 1,
+    "pad": [1, 0],
     "bind": "$theme",
     "text": "<c3>●</> <b>fictty</> <d>›</> ledger <d>· October 2026</>\t<d>esc menu · t theme ·</> <accent>{name}</> "
    },
    {
     "type": "row",
-    "pad": 1,
+    "pad": [1, 0],
     "children": [
      {
       "type": "col",
@@ -61,7 +61,7 @@
           "bind": "f_date",
           "title": "Date",
           "size": 14,
-          "pad": 1,
+          "pad": [1, 0],
           "text": "2026-10-10"
          },
          {
@@ -69,7 +69,7 @@
           "id": "f_payee",
           "bind": "f_payee",
           "title": "Payee",
-          "pad": 1,
+          "pad": [1, 0],
           "placeholder": "Who"
          },
          {
@@ -78,7 +78,7 @@
           "bind": "f_cat",
           "title": "Category",
           "size": 16,
-          "pad": 1,
+          "pad": [1, 0],
           "placeholder": "Groceries"
          },
          {
@@ -87,7 +87,7 @@
           "bind": "f_amount",
           "title": "Amount ⏎",
           "size": 14,
-          "pad": 1,
+          "pad": [1, 0],
           "placeholder": "-12.50",
           "accept": "number",
           "keys": {
@@ -145,7 +145,7 @@
         "type": "text",
         "bind": "books",
         "size": 4,
-        "pad": 1,
+        "pad": [1, 0],
         "variant": "card",
         "text": "<pos>in</>   <b>{income}</>\t<d>saved</> <b>{saved}</>\n<neg>out</>  <b>{spent}</>\t<d>{entries} entries</>"
        },
@@ -154,7 +154,7 @@
         "bind": "books.categories",
         "title": "Spending by category",
         "variant": "card",
-        "pad": 1,
+        "pad": [1, 0],
         "label": "{name}",
         "value": "amount",
         "horizontal": true,
@@ -180,7 +180,7 @@
    {
     "type": "text",
     "size": 1,
-    "pad": 1,
+    "pad": [1, 0],
     "text": "<d>tab moves to the form · enter on the amount books it · x deletes the selected entry · the summary comes from </><accent>books.py</><d>, a helper reading the store</>"
    }
   ]

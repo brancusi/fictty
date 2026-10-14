@@ -5,14 +5,14 @@
    {
     "type": "text",
     "size": 1,
-    "pad": 1,
+    "pad": [1, 0],
     "bind": "$theme",
     "text": "<c4>●</> <b>fictty</> <d>›</> gallery <d>· every component, under the theme you have on</>\t<d>t theme ·</> <accent+b>{name}</> <d>· esc menu</> "
    },
    {
     "type": "tabs",
     "id": "tabs",
-    "pad": 1,
+    "pad": [1, 0],
     "tabs": [
      "Components",
      "Variants & tones",
@@ -212,7 +212,7 @@
           "variant": "card",
           "tone": "rose",
           "horizontal": true,
-          "pad": 1,
+          "pad": [1, 0],
           "label": "{k}",
           "value": "v",
           "items": [
@@ -450,7 +450,7 @@
         "bind": "g_input",
         "title": "input",
         "size": 3,
-        "pad": 1,
+        "pad": [1, 0],
         "placeholder": "A one-line field. Type here; Enter does whatever the screen says."
        },
        {
@@ -494,7 +494,7 @@
    {
     "type": "text",
     "size": 1,
-    "pad": 1,
+    "pad": [1, 0],
     "text": "<d>tab to the tab bar, then ← → · t theme · esc menu · both editors on the Text tab show one store entry: type in one, the other follows</>"
    }
   ]

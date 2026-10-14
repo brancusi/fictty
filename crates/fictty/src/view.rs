@@ -2,7 +2,7 @@
 //! Besides the frame it returns the hit regions (what is under each cell, for the mouse), and
 //! it places the UI's layers with caretline-layers over what it drew.
 
-use crate::model::{Float, Kind, LayerSpec, Look, Measure, Node, Seg, Size, Style as NodeStyle, ThemeSpec, Variant, fill, lookup, number, scalar, segments};
+use crate::model::{Float, Kind, LayerSpec, Len, Lens, Look, Measure, Node, Seg, Size, Style as NodeStyle, ThemeSpec, Variant, fill, lookup, number, scalar, segments};
 use crate::state::{Slot, State, bound, field_view, items, selected, shown, shown_in, sized, split_bind, tab_of, value_of};
 use crate::gfx::{Pic, Placed, Rgb};
 use caretline_layers as cl;
@@ -404,7 +404,7 @@ fn toast_look(cx: &Cx, tone: Option<&str>) -> Style {
 
 /// A floating node's place in its stack, with the cell's size in pixels.
 fn float_rect(fl: &Float, area: Rect, (cw, ch): (f32, f32)) -> Rect {
-    let m = fl.margin.unwrap_or(0);
+    let m = fl.margin.as_ref().map_or(0, |l| len_cells(l.sides()[3]).unwrap_or(0));
     let dim = |s: Option<&Size>, full: u16, cell: f32| -> u16 {
         let n = match s.map(Size::measure) {
             Some(Measure::Cells(n)) => n,
@@ -643,8 +643,8 @@ fn node(cx: &mut Cx, n: &Node, f: &mut Frame, area: Rect) {
         }
         area
     };
-    let inner = match n.pad.map(|p| p.xy()) {
-        Some((x, y)) => inner.inner(ratatui::layout::Margin { horizontal: x, vertical: y }),
+    let inner = match n.pad.as_ref().map(Lens::sides) {
+        Some([top, _, _, left]) => inner.inner(ratatui::layout::Margin { horizontal: len_cells(left).unwrap_or(0), vertical: len_cells(top).unwrap_or(0) }),
         None => inner,
     };
     // A bound node whose source hasn't arrived (or failed) says so instead of drawing.
@@ -683,10 +683,10 @@ fn node(cx: &mut Cx, n: &Node, f: &mut Frame, area: Rect) {
             let showing: Vec<&Node> = children.iter().filter(|c| shown_in(st, c, Some(here))).collect();
             let along = if matches!(n.kind, Kind::Col { .. }) { inner.height } else { inner.width };
             let cell = if matches!(n.kind, Kind::Col { .. }) { if st.caps.cell_h > 0.0 { st.caps.cell_h } else { 16.0 } } else { st.caps.cell_w };
-            let cs: Vec<Constraint> = showing.iter().map(|c| bounded(constraint(c.size.as_ref(), cell), c.min, c.max, along)).collect();
+            let cs: Vec<Constraint> = showing.iter().map(|c| bounded(constraint(c.size.as_ref(), cell), c.min.as_ref().and_then(len_cells), c.max.as_ref().and_then(len_cells), along)).collect();
             let areas = match n.kind {
-                Kind::Col { .. } => Layout::vertical(cs).spacing(gap.unwrap_or(0)).split(inner),
-                _ => Layout::horizontal(cs).spacing(gap.unwrap_or(0)).split(inner),
+                Kind::Col { .. } => Layout::vertical(cs).spacing(gap.as_ref().map_or(0, |g| len_cells(g.xy()[1]).unwrap_or(0))).split(inner),
+                _ => Layout::horizontal(cs).spacing(gap.as_ref().map_or(0, |g| len_cells(g.xy()[0]).unwrap_or(0))).split(inner),
             };
             for (c, a) in showing.into_iter().zip(areas.iter()) {
                 cx.laid_out = true;
@@ -1452,6 +1452,15 @@ fn scrollbar(cx: &Cx, buf: &mut Buffer, r: Rect, from: usize, len: usize) {
 }
 
 /// A child's share with its `min` and `max` (cells) applied, along `along` cells of its parent.
+/// A length as whole cells, for the grid: pixels and `space` names are none. The grid isn't
+/// extended for lengths in other units; the window has them.
+fn len_cells(l: &Len) -> Option<u16> {
+    match l {
+        Len::Cells(n) => Some(n.max(0.) as u16),
+        Len::Spec(_) => None,
+    }
+}
+
 fn bounded(c: Constraint, min: Option<u16>, max: Option<u16>, along: u16) -> Constraint {
     if min.is_none() && max.is_none() {
         return c;

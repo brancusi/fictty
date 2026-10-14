@@ -9,8 +9,8 @@ it's done. Everything here is window-only: the grid view isn't extended.
 
 Written on 14 October 2026 for whoever picks this up next.
 
-1. **Get the three decisions under "Settle first" confirmed by Aram.** Nothing in 3a should be
-   written before then, since decision 1 rewrites examples and decision 2 sets every field's type.
+1. ~~**Get the three decisions under "Settle first" confirmed by Aram.**~~ Confirmed on 14
+   October 2026, all three as recommended.
 2. **Branch** (`git switch -c layout-3a`) and land 3a as these commits, each with its tests:
    - `Pad` (`model.rs`, `enum Pad`, today `X(u16)` or `XY([u16; 2])`) becomes four sides of
      `Len`: one length (every side, as CSS), `[x, y]` as today, or `[top, right, bottom,
@@ -81,7 +81,7 @@ What each example does without the vocabulary, and what retires it:
 ## Settle first
 
 Three decisions change the shape of everything after them, so they come before any code. My
-recommendation is first in each.
+recommendation is first in each. **Aram confirmed all three as recommended on 14 October 2026.**
 
 1. **One meaning for a single number: every side.** `pad: 1`, `margin: 1` and a style's `pad`
    all mean every side, as CSS does; `[x, y]` and `[top, right, bottom, left]` say more. The
@@ -110,8 +110,8 @@ and the screens that use it looked at in a real window.
 - Decisions 1 and 2: `pad` four-sided in any unit, `margin` (new) on any node, `min`/`max` in
   any unit, `gap` as one length or `[x, y]`.
 - `margin` maps to Taffy's margin. A float's `margin` becomes the same type.
-- Rows and columns still clip. A margin gives a card's shadow room, so Kestrel's Floor row drops
-  its `pad`.
+- Rows and columns still clip. A margin gives a card's shadow room. (Kestrel's Floor row has no
+  `pad` to drop by now; its cards get their margins with the rest of the demo in 3f.)
 - Problems: a malformed length, an unknown `space` name, `margin` on a float's anchor that
   can't take it.
 

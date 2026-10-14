@@ -234,7 +234,7 @@ mod tests {
         assert_eq!(s.readback()[1].style.ink.bg.as_deref(), Some("#5fd1c6"), "a focused button, on the accent");
         assert_eq!(
             crate::readback::outline_styled(&s.readback()),
-            "col\n  button go (focus): Go\n    ┊ button.focused · #0f1418+on-#5fd1c6+b · pad 12px 0 · radius 6 · cursor pointer\n  text \"Note\": saved\n    ┊ text · #8bd49c+on-#161d22 · pad 8px 8px · radius 8 · border 1 #2a353d · title #93a3ad+b\n"
+            "col\n  button go (focus): Go\n    ┊ button.focused · #0f1418+on-#5fd1c6+b · pad 12px 0 · radius 6 · cursor pointer\n  text \"Note\": saved\n    ┊ text · #8bd49c+on-#161d22 · pad 8px · radius 8 · border 1 #2a353d · title #93a3ad+b\n"
         );
     }
 }

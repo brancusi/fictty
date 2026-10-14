@@ -15,9 +15,9 @@ pub mod test;
 mod text;
 
 use crate::engine::{Drawn, Hit, Live, Rect};
-use look::{Ink, Look, inked};
+use look::{Ink, Look, inked, padded};
 use crate::style;
-use crate::model::{Float, Kind, Md, Measure, Node, Size, md_roles};
+use crate::model::{Float, Kind, Len, Lens, Md, Measure, Node, Size, md_roles};
 use crate::state::{self, Msg, State};
 use anyhow::Result;
 use gpui::{
@@ -263,8 +263,9 @@ fn key_name(e: &KeyDownEvent) -> Option<String> {
 
 /// A node's share of its row or column, as flexbox: cells and pixels a basis it may shrink from
 /// (as a terminal's layout gives a fixed size up when there isn't room), `30%` a fraction, `*`
-/// and `2*` a grow factor; `min` and `max` bound it, in cells.
-fn sized(el: gpui::Stateful<gpui::Div>, n: &Node, along_row: bool, cell: Cell) -> gpui::Stateful<gpui::Div> {
+/// and `2*` a grow factor; `min` and `max` bound it, and `margin` keeps it off its neighbours,
+/// as lengths.
+fn sized(el: gpui::Stateful<gpui::Div>, n: &Node, along_row: bool, cell: Cell, th: &style::Theme) -> gpui::Stateful<gpui::Div> {
     let per = if along_row { cell.w } else { cell.h };
     let fixed = |mut el: gpui::Stateful<gpui::Div>, l: DefiniteLength| {
         el.style().flex_grow = Some(0.);
@@ -281,13 +282,26 @@ fn sized(el: gpui::Stateful<gpui::Div>, n: &Node, along_row: bool, cell: Cell) -
         }
         None => el.flex_1().min_w(px(0.)).min_h(px(0.)),
     };
-    if let Some(m) = n.min {
-        el = if along_row { el.min_w(px(m as f32 * per)) } else { el.min_h(px(m as f32 * per)) };
+    if let Some(m) = n.min.as_ref().and_then(|m| th.px(m, per)) {
+        el = if along_row { el.min_w(px(m)) } else { el.min_h(px(m)) };
     }
-    if let Some(m) = n.max {
-        el = if along_row { el.max_w(px(m as f32 * per)) } else { el.max_h(px(m as f32 * per)) };
+    if let Some(m) = n.max.as_ref().and_then(|m| th.px(m, per)) {
+        el = if along_row { el.max_w(px(m)) } else { el.max_h(px(m)) };
+    }
+    let [t, r, b, l] = sides(th, n.margin.as_ref(), cell);
+    if [t, r, b, l] != [0.; 4] {
+        el = el.mt(px(t)).mr(px(r)).mb(px(b)).ml(px(l));
     }
     el
+}
+
+/// Four sides in pixels, `[top, right, bottom, left]`: across in cells' widths, down in their
+/// heights. A length that isn't one is nothing (and a problem).
+fn sides(th: &style::Theme, l: Option<&Lens>, cell: Cell) -> [f32; 4] {
+    let Some(l) = l else { return [0.; 4] };
+    let [t, r, b, lf] = l.sides();
+    let at = |l: &Len, per: f32| th.px(l, per).unwrap_or(0.);
+    [at(t, cell.h), at(r, cell.w), at(b, cell.h), at(lf, cell.w)]
 }
 
 /// One side of a float, as a length: cells, pixels or a fraction of its stack; the whole stack
@@ -310,10 +324,11 @@ impl Portal {
         let key = if id.is_empty() { path.to_string() } else { id.clone() };
         let focused = !id.is_empty() && st.focus.as_deref() == Some(id.as_str());
         let cell = self.cell;
+        let th = style::Theme::of(st);
         // Everything clips what it holds, rows and columns too: a squeezed row's children would
         // spill over each other otherwise. A card's shadow is clipped where its row ends, so a
-        // row of cards takes `pad` to give their shadows room.
-        let mut el = sized(div().id(SharedString::from(format!("n-{key}"))).relative().flex().flex_col().overflow_hidden(), n, along_row, cell);
+        // card takes a `margin` to give its shadow room.
+        let mut el = sized(div().id(SharedString::from(format!("n-{key}"))).relative().flex().flex_col().overflow_hidden(), n, along_row, cell, &th);
         // Where it was laid out, for the readback and the mouse: noted before its children, so
         // the innermost hit comes last.
         if !id.is_empty() {
@@ -326,11 +341,10 @@ impl Portal {
         let rs = style::resolve(st, n);
         let v = state::bound(st, n).unwrap_or(&Value::Null);
         let c = (cell.w, cell.h);
-        // `pad` cells and rows inside, over the style's own; a button's style is its face's.
-        let (x, y) = n.pad.map_or((0, 0), |p| p.xy());
-        let extra = (x as f32 * cell.w, y as f32 * cell.h);
+        // `pad` inside, over the style's own; a button's style is its face's.
+        let extra = sides(&th, n.pad.as_ref(), cell);
         let button = matches!(n.kind, Kind::Button { .. });
-        el = if button { el.px(px(extra.0)).py(px(extra.1)) } else { lk.boxed(el, &rs, c, extra) };
+        el = if button { padded(el, extra) } else { lk.boxed(el, &rs, c, extra) };
         el = match n.align.as_deref() {
             Some("center") => el.text_center(),
             Some("right") => el.text_right(),
@@ -349,7 +363,11 @@ impl Portal {
             Kind::Col { children, gap } | Kind::Row { children, gap } => {
                 let row = matches!(n.kind, Kind::Row { .. });
                 let kids: Vec<AnyElement> = children.iter().enumerate().map(|(k, c)| self.node(st, lk, c, row, &format!("{key}.{k}"), cx)).collect();
-                let d = div().relative().flex().size_full().min_h(px(0.)).min_w(px(0.)).gap(px(gap.unwrap_or(0) as f32 * if row { cell.w } else { cell.h }));
+                let [gx, gy] = gap.as_ref().map_or([0.; 2], |g| {
+                    let [x, y] = g.xy();
+                    [th.px(x, cell.w).unwrap_or(0.), th.px(y, cell.h).unwrap_or(0.)]
+                });
+                let d = div().relative().flex().size_full().min_h(px(0.)).min_w(px(0.)).gap_x(px(gx)).gap_y(px(gy));
                 let d = if row { d.flex_row() } else { d.flex_col() };
                 // `$width` and `$height` in a child's `when` are this node's inner size.
                 let sized: Vec<String> = children.iter().filter(|c| c.when.as_deref().is_some_and(state::sized)).filter_map(|c| c.id.clone()).collect();
@@ -407,7 +425,7 @@ impl Portal {
                     measure(&self.laid, move |l, b| l.hits.push((b, hit(under, None, None, false))))
                 });
                 // As tall as its row, the label in the middle, so a border stays inside the row.
-                lk.boxed(div().id(SharedString::from(format!("btn-{key}"))).relative().flex_none().h_full().flex().items_center(), &rs, c, (0., 0.))
+                lk.boxed(div().id(SharedString::from(format!("btn-{key}"))).relative().flex_none().h_full().flex().items_center(), &rs, c, [0.; 4])
                     .children(face)
                     .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, _, cx| this.send(Msg::Click { id: target.clone(), row: None, tab: None }, cx)))
                     .child(label)
@@ -419,14 +437,14 @@ impl Portal {
                 let rows = state::items(st, n).to_vec();
                 let columns = columns.clone();
                 // The header sits over the rows' text: the rows' pad, the header's own look.
-                let (row_x, _) = Look::pad(&style::inner(st, "row", &[]), c);
-                let head = lk.boxed(div().flex().flex_row().h(px(cell.h)), &style::inner(st, "table.header", &[]), c, (row_x, 0.)).children(columns.iter().map(|c| div().flex_1().child(c.title.clone())));
+                let [_, row_r, _, row_l] = Look::pad(&style::inner(st, "row", &[]), c);
+                let head = lk.boxed(div().flex().flex_row().h(px(cell.h)), &style::inner(st, "table.header", &[]), c, [0., row_r, 0., row_l]).children(columns.iter().map(|c| div().flex_1().child(c.title.clone())));
                 let body: Vec<AnyElement> = shown_rows(st, &id, rows.len(), 1)
                     .map(|k| (k, &rows[k]))
                     .map(|(k, r)| {
                         let target = id.clone();
                         let under = id.clone();
-                        lk.boxed(div().id(k).relative().flex().flex_row().h(px(cell.h)), &style::inner(st, "row", &style::row_states(st, n, k)), c, (0., 0.))
+                        lk.boxed(div().id(k).relative().flex().flex_row().h(px(cell.h)), &style::inner(st, "row", &style::row_states(st, n, k)), c, [0.; 4])
                             .child(measure(&self.laid, move |l, b| l.hits.push((b, hit(under, Some(k), None, false)))))
                             .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, _, cx| this.send(Msg::Click { id: target.clone(), row: Some(k), tab: None }, cx)))
                             .children(columns.iter().map(|c| div().flex_1().min_w_0().child(text::line(&tx, &c.value, r, Ink::default(), false))))
@@ -471,7 +489,7 @@ impl Portal {
                     let mut frame = style::inner(st, "panel", &[]);
                     frame.pad = None;
                     frame.border = style::inner(st, "input", &[]).border;
-                    bar = lk.boxed(bar.gap_0().flex_none().overflow_hidden(), &frame, c, (0., 0.));
+                    bar = lk.boxed(bar.gap_0().flex_none().overflow_hidden(), &frame, c, [0.; 4]);
                     active.radius = None;
                     idle.radius = None;
                 }
@@ -481,7 +499,7 @@ impl Portal {
                 let bar = bar.children(tabs.iter().enumerate().map(|(k, t)| {
                     let target = id.clone();
                     let under = id.clone();
-                    lk.boxed(div().id(SharedString::from(format!("tab-{key}-{k}"))).relative(), if k == at { &active } else { &idle }, c, (0., 0.))
+                    lk.boxed(div().id(SharedString::from(format!("tab-{key}-{k}"))).relative(), if k == at { &active } else { &idle }, c, [0.; 4])
                         .when_some(underline.filter(|_| k == at), |d, u| d.border_b_2().border_color(u))
                         .child(measure(&self.laid, move |l, b| l.hits.push((b, hit(under, None, Some(k), false)))))
                         .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, _, cx| this.send(Msg::Click { id: target.clone(), row: None, tab: Some(k) }, cx)))
@@ -505,13 +523,12 @@ impl Portal {
     }
 
     /// A node floating in its stack where its `float` says: its own size (the stack's by default),
-    /// at a side, a corner or the middle, `margin` cells in from the edge. It covers what's under
+    /// at a side, a corner or the middle, `margin` in from the edges. It covers what's under
     /// it, the mouse too.
     fn float(&mut self, st: &State, lk: &Look, n: Node, fl: &Float, path: &str, cx: &mut Context<Self>) -> AnyElement {
         let cell = self.cell;
-        let m = fl.margin.unwrap_or(0) as f32;
         let at = fl.at.as_deref().unwrap_or("center");
-        let wrap = div().absolute().inset_0().flex().px(px(m * cell.w)).py(px(m * cell.h));
+        let wrap = padded(div().absolute().inset_0().flex(), sides(&style::Theme::of(st), fl.margin.as_ref(), cell));
         let wrap = if at.contains("left") {
             wrap.justify_start()
         } else if at.contains("right") {
@@ -544,7 +561,7 @@ impl Portal {
         let laid = self.laid.clone();
         let tx = text::Tx { lk, laid: &laid, id, keep: look.keep.map_or(0., |k| k as f32 * cell.w), line_h: cell.h };
         if rows.is_empty() {
-            return lk.boxed(div(), &style::inner(st, "empty", &[]), (cell.w, cell.h), (8., 0.)).child(look.empty.clone().unwrap_or_else(|| "(nothing)".into())).into_any_element();
+            return lk.boxed(div(), &style::inner(st, "empty", &[]), (cell.w, cell.h), [0., 8., 0., 8.]).child(look.empty.clone().unwrap_or_else(|| "(nothing)".into())).into_any_element();
         }
         let shown: Vec<AnyElement> = shown_rows(st, id, rows.len(), per)
             .map(|k| {
@@ -554,7 +571,7 @@ impl Portal {
                     None => div().child(crate::model::scalar(Some(r))).into_any_element(),
                 };
                 let (target, under) = (id.to_string(), id.to_string());
-                lk.boxed(div().id(k).relative().flex_none(), &style::inner(st, "row", &style::row_states(st, n, k)), (cell.w, cell.h), (0., 0.))
+                lk.boxed(div().id(k).relative().flex_none(), &style::inner(st, "row", &style::row_states(st, n, k)), (cell.w, cell.h), [0.; 4])
                     .child(measure(&self.laid, move |l, b| l.hits.push((b, hit(under, Some(k), None, false)))))
                     .h(px(cell.h * per as f32))
                     .flex()
@@ -756,14 +773,14 @@ impl Portal {
         let bar = st.ui.status_bar.is_none_or(|b| b.shown()).then(|| {
             let said = st.status.as_ref().or(st.problems.first());
             let text = match said {
-                Some(s) => lk.boxed(div().flex_1().min_w_0().overflow_hidden().whitespace_nowrap(), &style::inner(st, "status.error", &[]), c, (0., 0.)).child(s.clone()),
+                Some(s) => lk.boxed(div().flex_1().min_w_0().overflow_hidden().whitespace_nowrap(), &style::inner(st, "status.error", &[]), c, [0.; 4]).child(s.clone()),
                 None => div().flex_1().min_w_0().overflow_hidden().whitespace_nowrap().child("tab moves the focus · ↑ ↓ move · ← → tabs · q quits"),
             };
             let speed = (st.ui.status_bar == Some(crate::model::StatusBar::Speed)).then(|| {
                 let s = &st.stats;
                 div().flex_none().child(format!("{} fps · build {:.2} ms (max {:.1}) · {} msg/s", s.fps as u64, s.draw_ms, s.max_ms, s.msgs as u64))
             });
-            lk.boxed(div().flex().flex_row().gap_4().items_center().h(px(ROW)).text_xs(), &style::inner(st, "status", &[]), c, (0., 0.)).child(text).children(speed)
+            lk.boxed(div().flex().flex_row().gap_4().items_center().h(px(ROW)).text_xs(), &style::inner(st, "status", &[]), c, [0.; 4]).child(text).children(speed)
         });
         let toasts: Vec<AnyElement> = st.toasts.iter().rev().take(3).map(|t| toast(st, &lk, t, (self.cell.w, self.cell.h))).collect();
         // Once the frame has painted, what it laid out goes to the engine; if that changed the
@@ -815,7 +832,7 @@ impl Portal {
             .text_color(lk.fg)
             .text_size(px(TYPE))
             .line_height(px(ROW))
-            .map(|d| text::typed(lk.boxed(d, &screen, (self.cell.w, self.cell.h), (0., 0.)), screen.role.as_ref(), &lk.fonts()))
+            .map(|d| text::typed(lk.boxed(d, &screen, (self.cell.w, self.cell.h), [0.; 4]), screen.role.as_ref(), &lk.fonts()))
             // A cell's margin, so the body starts on the cell grid: a cell's middle never falls on
             // the edge between two rows.
             .child(div().flex().flex_1().min_h(px(0.)).px(px(self.cell.w)).py(px(self.cell.h)).child(body))
@@ -879,7 +896,7 @@ fn toast(st: &State, lk: &Look, t: &state::Toast, cell: (f32, f32)) -> AnyElemen
     if let (Some(b), Some(c)) = (r.border.as_mut(), t.tone.as_deref().and_then(|c| style::Theme::of(st).colour(c))) {
         b.color = c;
     }
-    lk.boxed(div(), &r, cell, (0., 0.)).child(t.text.clone()).into_any_element()
+    lk.boxed(div(), &r, cell, [0.; 4]).child(t.text.clone()).into_any_element()
 }
 
 /// What a painted frame laid out, to the engine, in cells.
