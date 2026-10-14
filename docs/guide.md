@@ -125,7 +125,9 @@ fictty theme paper                                        # choose a loaded them
   where it says, and a `modal` one dims what's behind it and keeps the focus: while it shows, a
   click or the wheel anywhere outside it goes nowhere. Both cover what's under them. **`when`**
   shows a node only while a condition holds: a bind that's set (`"dialog"`), not set
-  (`"!dialog"`), compared (`"mode=edit"`, `"$screen.width>=120"`), or several joined by ` & `. `$width` and `$height`
+  (`"!dialog"`), compared (`"mode=edit"`, `"$screen.width>=120"`), or several joined by ` & `.
+  Its `{field}`s are filled from the node's bound value first (`"bind": "@files", "when":
+  "remove/{id}"` reads the selected row's flag). `$width` and `$height`
   are the size of the area the node's parent lays it out in (a container query): a pane beside a
   sidebar switches on its own width, not the screen's. A hidden node takes no
   room and no focus. Layers take `when` too. **Toasts** show for a while: the `toast` action,

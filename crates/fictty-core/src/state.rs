@@ -3143,13 +3143,16 @@ pub fn shown(st: &State, n: &Node) -> bool {
 }
 
 /// Whether a node shows when its parent lays it out in an area of `size` (for `$width`,
-/// `$height`). Not knowing the size yet, a node that asks for it shows.
+/// `$height`). Not knowing the size yet, a node that asks for it shows. Its `{field}`s are
+/// filled from its bound value first, as its `doc` and `src` are (`"when": "remove/{id}"`
+/// bound to `@files` reads the selected row's flag).
 pub fn shown_in(st: &State, n: &Node, size: Option<(u16, u16)>) -> bool {
     let Some(w) = n.when.as_deref() else { return true };
-    if size.is_none() && sized(w) {
+    let w: std::borrow::Cow<str> = if w.contains('{') { crate::model::fill_raw(w, bound(st, n).unwrap_or(&Value::Null)).into() } else { w.into() };
+    if size.is_none() && sized(&w) {
         return true;
     }
-    holds_in(st, w, size)
+    holds_in(st, &w, size)
 }
 
 /// Whether a condition reads the size it's laid out in.
@@ -3895,6 +3898,20 @@ mod tests {
         assert_eq!(flags, vec![json!(true), json!(true), json!(true), Value::Null]);
         let Some(Slot::Ready { value }) = st.data.get("$picked") else { panic!("no $picked") };
         assert_eq!((value["l"]["index"].clone(), value["l"]["total"].clone()), (json!(3), json!(4)));
+    }
+
+    #[test]
+    fn a_when_is_filled_from_the_nodes_bound_row() {
+        let mut st = State::default();
+        let ui = ui(json!({"root": {"type": "col", "children": [
+            {"type": "list", "id": "files", "items": [{"id": "a.tif"}, {"id": "b.tif"}]},
+            {"type": "text", "id": "mark", "bind": "@files", "when": "remove/{id}", "text": "flagged"}
+        ]}, "store": {"remove/b.tif": true}, "focus": "files"}));
+        update(&mut st, Msg::Push { ui });
+        let mark = |st: &State| shown(st, &tree!(st).find("mark").cloned().unwrap());
+        assert!(!mark(&st), "a.tif isn't flagged");
+        keys(&mut st, &["j"]);
+        assert!(mark(&st), "b.tif is");
     }
 
     #[test]
