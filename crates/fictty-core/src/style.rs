@@ -50,6 +50,8 @@ const DEFAULT_PARTS: &str = r#"{
     "row.hover": {"bg": "hover"},
     "row.selected": {"fg": "accent", "bg": "ring"},
     "row.selected.blur": {"fg": "fg", "bg": "hover"},
+    "scrollbar": {"shape": "thin"},
+    "scrollbar.thumb": {"bg": "dim", "radius": 3, "opacity": 0.5},
     "table.header": "accent+b",
     "empty": "dim+i",
     "input.placeholder": "dim+i",

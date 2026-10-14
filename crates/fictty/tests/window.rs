@@ -345,13 +345,38 @@ fn the_wheel_scrolls_a_list_from_the_state_and_leaves_the_selection() {
     for _ in 0..3 {
         s.mouse("wheel-down", l.x + 2, l.y + 2);
     }
-    assert_eq!(s.state().local["l"].top, Some(9), "three notches, three rows each");
+    assert_eq!(s.state().local["l"].top, Some(9.0), "three notches, three rows each");
     assert_eq!(s.state().local["l"].selected, 0, "the selection stays");
     // The rows drawn are the ones the state says: a press lands on row 9 + 1.
     s.mouse("press", l.x + 2, l.y + 1).mouse("release", l.x + 2, l.y + 1);
     assert_eq!(s.state().local["l"].selected, 10);
     s.mouse("wheel-up", l.x + 2, l.y + 2);
-    assert_eq!(s.state().local["l"].top, Some(6));
+    assert_eq!(s.state().local["l"].top, Some(6.0));
+    assert!(node(&mut s, "l").scroll.is_some_and(|(at, of)| at == 6.0 && of == 80), "{:?}", node(&mut s, "l").scroll);
+}
+
+#[test]
+fn a_trackpad_moves_a_list_by_part_of_a_row_and_a_press_still_lands_on_the_row_under_it() {
+    let ui = json!({"root": {"type": "list", "id": "l", "items": rows(80)}});
+    let mut s = window(ui, 30, 14);
+    let l = node(&mut s, "l").rect.unwrap();
+    // Two and three quarter rows down, as a trackpad would, in small moves.
+    for _ in 0..11 {
+        s.msg(Msg::Pan { id: "l".into(), lines: 0.25 });
+    }
+    assert_eq!(s.state().local["l"].top, Some(2.75));
+    // The rows are drawn three quarters of a row up: the middle of the list's second cell row
+    // is on row 4 (it would be row 3 if only whole rows moved). A frame first, as a window
+    // draws one before the next press.
+    s.screen();
+    s.mouse("press", l.x + 2, l.y + 1).mouse("release", l.x + 2, l.y + 1);
+    assert_eq!(s.state().local["l"].selected, 4);
+    // Never past the start or the last whole view.
+    s.msg(Msg::Pan { id: "l".into(), lines: -40.0 });
+    assert_eq!(s.state().local["l"].top, Some(0.0));
+    s.msg(Msg::Pan { id: "l".into(), lines: 500.0 });
+    let fit = s.state().local["l"].rows as f32;
+    assert_eq!(s.state().local["l"].top, Some(80.0 - fit));
 }
 
 #[test]

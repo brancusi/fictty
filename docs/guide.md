@@ -231,8 +231,12 @@ document with its undo history), each with a revision (`rev`) and who wrote it l
   ⌘C copies without the program seeing it): `fictty setup wezterm` installs a small module that
   sends those keys only to panes running a fictty screen (it says so with a terminal user var),
   for any app built on fictty. Ghostty and kitty need nothing.
-- **The wheel** scrolls a list, tree or table three rows a notch and leaves the selection where it
-  is; a key that moves the selection out of view brings the view back to it.
+- **The wheel** scrolls a list, tree or table three lines a notch and leaves the selection where
+  it is; in the window a trackpad moves it as far as the fingers do, part of a row at a time
+  (the view's start is `top` in lines, fractions too). A key that moves the selection out of
+  view brings the view back to it. While a list has more than it shows, the window draws a
+  scrollbar (the `scrollbar` and `scrollbar.thumb` parts; `shape: "none"` hides it), and the
+  readback shows `(scroll 6/16)`, lines scrolled past and lines in all.
 
 ## Themes
 

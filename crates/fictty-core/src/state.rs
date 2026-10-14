@@ -298,10 +298,12 @@ pub struct Local {
     /// on that row when rows come and go above it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub key: Option<String>,
-    /// The first row a list, tree or table shows, when the wheel has moved its view away from
-    /// following the selection; none while it follows.
+    /// Where the view of a list, tree or table starts, in lines from its first (a line is a row,
+    /// or `cols` rows), when the wheel or the trackpad has moved it away from following the
+    /// selection; none while it follows. A fraction is part of a line scrolled past, so a window
+    /// scrolls smoothly; a terminal shows whole lines.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub top: Option<usize>,
+    pub top: Option<f32>,
     /// How many rows it showed in the last frame (the view reports it), for the wheel.
     #[serde(default, skip_serializing_if = "is_zero")]
     pub rows: u16,
@@ -335,16 +337,41 @@ pub fn first_row(local: Option<&Local>, len: usize, fit: usize) -> usize {
 /// The first row shown when rows go `cols` to a line: always the start of a line, and `fit`
 /// rows (whole lines of them) from there show.
 pub fn first_shown(local: Option<&Local>, len: usize, fit: usize, cols: usize) -> usize {
+    view_offset(local, len, fit, cols).floor() as usize * cols.max(1)
+}
+
+/// Where the view starts, in lines (`cols` rows to a line), fractions included: the line that
+/// keeps the selection in view, or where the wheel left it, never past the last whole view.
+pub fn view_offset(local: Option<&Local>, len: usize, fit: usize, cols: usize) -> f32 {
     let cols = cols.max(1);
     let lines = (fit / cols).max(1);
     let sel = local.map(|l| l.selected).unwrap_or(0);
-    let follow = (sel / cols + 1).saturating_sub(lines) * cols;
-    let last = len.saturating_sub(1) / cols;
-    let most = (last + 1).saturating_sub(lines) * cols;
+    let follow = (sel / cols + 1).saturating_sub(lines);
+    let total = len.div_ceil(cols);
+    let most = total.saturating_sub(lines) as f32;
     match local.and_then(|l| l.top) {
-        Some(top) => (top / cols * cols).min(most),
-        None => follow,
+        Some(top) => top.clamp(0.0, most),
+        None => follow as f32,
     }
+}
+
+/// Move a list's view by `lines`, from where it is now.
+fn pan(st: &mut State, id: &str, lines: f32) {
+    let Some(n) = tree!(st).find(id) else { return };
+    let len = items(st, n).len();
+    let cols = per_line(n);
+    let fit = st.local.get(id).map(|l| l.rows).unwrap_or(0) as usize;
+    let at = view_offset(st.local.get(id), len, fit, cols);
+    let most = len.div_ceil(cols).saturating_sub((fit / cols).max(1)) as f32;
+    st.local.entry(id.to_string()).or_default().top = Some((at + lines).clamp(0.0, most));
+}
+
+/// Whether row `to` is in the view `local` has of a list `cols` to a line.
+fn in_view(local: &Local, to: usize, cols: usize) -> bool {
+    let Some(top) = local.top else { return true };
+    let lines = (local.rows as usize / cols.max(1)).max(1);
+    let line = (to / cols.max(1)) as f32;
+    line >= top.floor() && line < top.floor() + lines as f32
 }
 
 /// How many rows to a line node `n` lays out (a list's `cols`).
@@ -388,6 +415,9 @@ pub enum Msg {
     Hover { hover: Option<Hover> },
     /// The wheel over a node: rows to move (negative is up).
     Scroll { id: String, by: isize },
+    /// The view of a list moved by `lines` (fractions too), as a trackpad moves it; the
+    /// selection stays where it is.
+    Pan { id: String, lines: f32 },
     /// A click inside an editor's or input's text, at a cell relative to it: focus it and put the
     /// caret there, or with `extend` (Shift held) stretch the selection to it. A second click on
     /// the same cell soon after selects a word, a third the line.
@@ -826,8 +856,9 @@ fn apply(st: &mut State, msg: Msg) -> Vec<Effect> {
             vec![]
         }
         Msg::Scroll { id, by } => {
-            let Some(n) = tree!(st).find(&id).filter(|n| n.focusable()) else { return vec![] };
-            let len = items(st, n).len();
+            if !tree!(st).find(&id).is_some_and(|n| n.focusable()) {
+                return vec![];
+            }
             let rows = st.local.get(&id).map(|l| l.rows).unwrap_or(0) as usize;
             st.focus = Some(id.clone());
             if rows == 0 {
@@ -835,10 +866,15 @@ fn apply(st: &mut State, msg: Msg) -> Vec<Effect> {
                 return step(st, |sel, len| sel.saturating_add_signed(by).min(len.saturating_sub(1)));
             }
             // The wheel scrolls the view three lines a notch; the selection stays where it is.
-            let cols = per_line(n);
-            let from = first_shown(st.local.get(&id), len, rows, cols);
-            let top = from.saturating_add_signed(by * 3 * cols as isize).min(len.saturating_sub(rows));
-            st.local.entry(id).or_default().top = Some(top);
+            pan(st, &id, by as f32 * 3.0);
+            vec![]
+        }
+        Msg::Pan { id, lines } => {
+            let list = tree!(st).find(&id).is_some_and(|n| n.focusable() && n.field().is_none());
+            if !list || st.local.get(&id).is_none_or(|l| l.rows == 0) {
+                return vec![];
+            }
+            pan(st, &id, lines);
             vec![]
         }
         Msg::Tick { now_ms } => {
@@ -2413,14 +2449,13 @@ fn pick(st: &mut State, id: &str, row: usize, how: Pick) {
             ((from.min(row)..=from.max(row)).collect(), row)
         }
     };
+    let cols = per_line(n);
     let local = st.local.entry(id.to_string()).or_default();
     local.picked = if set.len() > 1 { set.iter().filter_map(|r| keys.get(*r).cloned().flatten()).collect() } else { vec![] };
     local.anchor = if how == Pick::Toggle { Some(key) } else { anchor };
     local.selected = to;
     local.key = keys.get(to).cloned().flatten();
-    if let Some(top) = local.top
-        && !(top..top + local.rows as usize).contains(&to)
-    {
+    if !in_view(local, to, cols) {
         local.top = None;
     }
 }
@@ -2676,6 +2711,7 @@ fn step(st: &mut State, f: impl Fn(usize, usize) -> usize) -> Vec<Effect> {
     // Its key now, not once the message is done: a store write later in the same `do` would
     // have the selection follow the row it left.
     let key = rows.get(to).and_then(|r| key_of(n, r));
+    let cols = per_line(n);
     let local = st.local.entry(id).or_default();
     local.selected = to;
     local.key = key;
@@ -2683,9 +2719,7 @@ fn step(st: &mut State, f: impl Fn(usize, usize) -> usize) -> Vec<Effect> {
     local.anchor = None;
     // A view the wheel moved stays put while the selection is in it, and follows it again
     // once it leaves.
-    if let Some(top) = local.top
-        && !(top..top + local.rows as usize).contains(&to)
-    {
+    if !in_view(local, to, cols) {
         local.top = None;
     }
     vec![]

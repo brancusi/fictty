@@ -31,6 +31,10 @@ pub struct Shown {
     pub rows: Option<usize>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub selected: Option<usize>,
+    /// Where a list's view is and how many lines it has, while it has more than it shows: lines
+    /// scrolled past (fractions too) and the lines in all.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub scroll: Option<(f32, usize)>,
     /// How many entries an editor over a multi-selection edits, and whether they differ.
     #[serde(default, skip_serializing_if = "is_zero")]
     pub entries: usize,
@@ -102,6 +106,7 @@ fn shown(st: &State, n: &Node, depth: usize, (rects, cut): Frame) -> Shown {
         rows: None,
         selected: None,
         picked: s_picked(st, n),
+        scroll: s_scroll(st, n),
         entries: if n.field().is_some() { state::doc_keys(st, n).len() } else { 0 },
         mixed: state::doc_key(st, n).is_some_and(|k| k.starts_with(state::MIXED)),
         rect: id.as_deref().and_then(|i| rects.iter().find(|(r, _)| r == i)).map(|(_, r)| *r),
@@ -182,6 +187,16 @@ fn is_zero(n: &usize) -> bool {
     *n == 0
 }
 
+/// A list's view and its lines, while it has more lines than it shows.
+fn s_scroll(st: &State, n: &Node) -> Option<(f32, usize)> {
+    let rows = n.rows()?;
+    let local = st.local.get(n.id.as_deref()?)?;
+    let cols = rows.per_line();
+    let (len, fit) = (state::items(st, n).len(), local.rows as usize);
+    let total = len.div_ceil(cols);
+    (fit > 0 && total > (fit / cols).max(1)).then(|| (state::view_offset(Some(local), len, fit, cols), total))
+}
+
 /// A `multi` node's picked rows while it has more than one.
 fn s_picked(st: &State, n: &Node) -> Vec<usize> {
     let Some(id) = n.id.as_deref().filter(|_| n.multi) else { return vec![] };
@@ -221,6 +236,9 @@ fn outline_with(shown: &[Shown], styled: bool) -> String {
             (Some(k), Some(n)) => line.push_str(&format!(" ({}/{n})", k + 1)),
             (None, Some(n)) => line.push_str(&format!(" (0/{n})")),
             _ => {}
+        }
+        if let Some((at, of)) = s.scroll {
+            line.push_str(&format!(" (scroll {at}/{of})"));
         }
         if s.entries > 1 {
             line.push_str(&format!(" ({} entries{})", s.entries, if s.mixed { ", mixed" } else { "" }));

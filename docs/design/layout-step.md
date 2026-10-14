@@ -135,6 +135,10 @@ recommendation is first in each. **Aram confirmed all three as recommended on 14
    `"gap": "s3"` work. `size` keeps its own type (it alone has shares, `%` and `fit`). A
    `space` name a theme doesn't have is a problem, as in styles.
 3. **A scroll offset lives in `State`, in rows for lists and logical pixels for containers.**
+   (Revised with Aram on 14 October 2026: a list's offset is lines with fractions, `top: f32`,
+   so a trackpad scrolls a list smoothly in the window; a line is whole cells, so the fraction
+   is exact to the pixel without the core knowing the font. Lists draw a scrollbar from the
+   `scrollbar` parts. 3d's containers keep logical pixels.)
    Lists keep the offset they have (`top`, by row). A scrolling container's offset is pixels,
    the window's unit, now that the terminal is dropped. It's view state by node id like
    selection, so it survives a push, replays, and shows in `get --state`. The readback reports

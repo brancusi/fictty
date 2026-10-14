@@ -775,6 +775,7 @@ mod tests {
             rows: None,
             selected: None,
             picked: vec![],
+            scroll: None,
             entries: 0,
             mixed: false,
             rect: r.map(|(x, y, w, h)| Rect::new(x, y, w, h)),

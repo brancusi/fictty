@@ -197,6 +197,18 @@ impl Portal {
 
     /// The wheel over `id`: a mouse wheel's notch is a step (three rows, as in a terminal), and
     /// a trackpad's travel a step each three rows of it.
+    /// The wheel or the trackpad over a list: its view moves by as much as the fingers did, a
+    /// pixel at a time (a line is `line_h` pixels); a mouse wheel's notch is three lines.
+    fn pan(&mut self, id: &str, e: &ScrollWheelEvent, line_h: f32, cx: &mut Context<Self>) {
+        let lines = match e.delta {
+            gpui::ScrollDelta::Lines(l) => -l.y * 3.0,
+            gpui::ScrollDelta::Pixels(p) => -f32::from(p.y) / line_h.max(1.0),
+        };
+        if lines != 0.0 {
+            self.send(Msg::Pan { id: id.to_string(), lines }, cx);
+        }
+    }
+
     fn wheel(&mut self, id: &str, e: &ScrollWheelEvent, cx: &mut Context<Self>) {
         if self.wheel.0 != id {
             self.wheel = (id.to_string(), 0.0);
@@ -661,6 +673,14 @@ impl Portal {
             }
             shown = lines;
         }
+        // Where the view is, to the pixel: the part of its first line scrolled past moves the
+        // rows up by that much.
+        let local = st.local.get(id);
+        let fit = local.map_or(0, |l| l.rows as usize);
+        let at = state::view_offset(local, rows.len(), fit, cols);
+        let line_h = cell.h * per as f32;
+        let lines = div().flex().flex_col().flex_none().w_full().mt(px(-(at - at.floor()) * line_h)).children(shown);
+        let bar = self.scrollbar(st, lk, at, rows.len().div_ceil(cols), (fit / cols).max(1));
         let (fits, wheel) = (id.to_string(), id.to_string());
         div()
             .id(SharedString::from(format!("rows-{id}")))
@@ -672,9 +692,22 @@ impl Portal {
             .overflow_hidden()
             // The items it has room for: the wheel and paging move by them.
             .child(measure(&self.laid, move |l, b| l.sizes.push((fits, b, per, cols as u16))))
-            .on_scroll_wheel(cx.listener(move |this, e: &ScrollWheelEvent, _, cx| this.wheel(&wheel, e, cx)))
-            .children(shown)
+            .on_scroll_wheel(cx.listener(move |this, e: &ScrollWheelEvent, _, cx| this.pan(&wheel, e, line_h, cx)))
+            .child(lines)
+            .children(bar)
             .into_any_element()
+    }
+
+    /// A list's scrollbar while it has more lines than it shows: a thumb as tall as the share
+    /// shown, where the view is, from the `scrollbar` and `scrollbar.thumb` parts (`shape:
+    /// "none"` draws none).
+    fn scrollbar(&self, st: &State, lk: &Look, at: f32, total: usize, shown: usize) -> Option<AnyElement> {
+        if total <= shown || style::inner(st, "scrollbar", &[]).shape.as_deref() == Some("none") {
+            return None;
+        }
+        let (size, from) = (shown as f32 / total as f32, at / total as f32);
+        let thumb = lk.boxed(div().absolute().left_0().right_0().top(relative(from)).h(relative(size)), &style::inner(st, "scrollbar.thumb", &[]), (self.cell.w, self.cell.h), [0.; 4]);
+        Some(div().absolute().top_0().bottom_0().right(px(2.)).w(px(5.)).child(thumb).into_any_element())
     }
 
     /// An editor or input, drawn from caretline's own frame of it: the text at the monospace
