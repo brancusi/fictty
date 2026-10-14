@@ -34,7 +34,8 @@ motion as data. No more terminal work. **Where to start:** section 0, "Next".
 
 **14 October 2026:** step 2, the Kestrel demo and Daybook are on `main`, and CI is green. Step 3's
 3a (units and the box: `pad`, `margin`, `gap`, `min`, `max` in any unit) is on `main` too; 3b
-(fit and alignment) is next, from "Start here" in [design/layout-step.md](design/layout-step.md).
+(fit and alignment) follows the gallery work in [design/selection.md](design/selection.md), from
+"Start here" in [design/layout-step.md](design/layout-step.md).
 
 ## Done
 
@@ -209,7 +210,11 @@ The phases of [design/native.md](design/native.md), where each is broken down.
   - [x] CI green on macOS and Linux again (2026-10-13): the fuzz's emulator rebuilt on a
         resize (no terminal on CI), `openpty` on Linux, a debug time budget for the fuzz, and
         the pty test's presses spaced apart. AGENTS.md has the lessons
-  - [ ] **Next: step 3**, the layout vocabulary, planned in
+  - [ ] **Next: galleries** ([design/selection.md](design/selection.md), Aram's call on
+        14 October 2026): a click runs the nearest `click`, `image` in the window, `multi`
+        selection on lists, trees and tables, and editors over a multi-selection. Then 3b, 3c
+        and 3d, then rows as nodes, ahead of 3e and 3f
+  - [ ] Step 3, the layout vocabulary, planned in
         [design/layout-step.md](design/layout-step.md). Then: lists and rows as nodes, the rest of
         editors, charts and icons, toasts and layers, embedding and the examples, then the terminal
         goes. Each step moves its share of the 32 grid tests left into the window
