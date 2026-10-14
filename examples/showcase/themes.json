@@ -9,7 +9,7 @@
     "parts": {
       "border": "border", "border.focused": "accent", "title": "dim+b", "title.focused": "accent+b",
       "table.header": "violet+b", "table.total": "fg+b", "row.selected": "fg+on-ring+b",
-      "row.selected.blur": "on-panel", "tabs.active": "bg+on-accent+b", "tabs.idle": "dim",
+      "row.selected.blur": "on-panel", "tabs.selected": "bg+on-accent+b", "tabs.idle": "dim",
       "editor.caret": "bg+on-accent", "editor.selection": "fg+on-ring", "input.placeholder": "dim+i",
       "empty": "dim+i", "status": "dim", "status.error": "rose",
       "button": "fg+on-ring", "button.focused": "bg+on-accent+b", "toast": "fg+on-panel",
@@ -34,7 +34,7 @@
     "parts": {
       "border": "border", "border.focused": "accent", "title": "dim+b", "title.focused": "accent+b",
       "table.header": "violet+b", "table.total": "fg+b", "row.selected": "fg+on-ring+b",
-      "row.selected.blur": "on-panel", "tabs.active": "bg+on-accent+b", "tabs.idle": "dim",
+      "row.selected.blur": "on-panel", "tabs.selected": "bg+on-accent+b", "tabs.idle": "dim",
       "editor.caret": "bg+on-accent", "editor.selection": "fg+on-ring", "input.placeholder": "dim+i",
       "empty": "dim+i", "status": "dim", "status.error": "rose",
       "button": "fg+on-panel", "button.focused": "bg+on-accent+b", "toast": "fg+on-panel",
@@ -59,7 +59,7 @@
     "parts": {
       "border": "border", "border.focused": "accent", "title": "dim+b", "title.focused": "accent+b",
       "table.header": "violet+b", "table.total": "accent+b", "row.selected": "accent+on-ring+b",
-      "row.selected.blur": "on-panel", "tabs.active": "bg+on-accent+b", "tabs.idle": "dim",
+      "row.selected.blur": "on-panel", "tabs.selected": "bg+on-accent+b", "tabs.idle": "dim",
       "editor.caret": "bg+on-fg", "editor.selection": "bg+on-dim", "input.placeholder": "dim+i",
       "empty": "dim+i", "status": "dim", "status.error": "rose",
       "button": "fg+on-ring", "button.focused": "bg+on-accent+b", "toast": "accent+on-panel",

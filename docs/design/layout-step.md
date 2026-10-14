@@ -178,8 +178,8 @@ and the screens that use it looked at in a real window.
 Small things found during step 2 and Daybook, picked up where they fit:
 
 - **Font files that fail to load** aren't problems yet (with 3a's problems).
-- **`tabs.active` and the `active` state** share a word for two things; rename the part
-  `tabs.selected` before any theme outside the repo uses it (with 3a).
+- ~~**`tabs.active` and the `active` state** share a word for two things; rename the part
+  `tabs.selected` before any theme outside the repo uses it (with 3a).~~ Done with 3a.
 - **A map's catch-all can't read its value** (`{kind|done=✓;*=<accent>{kind}</>}`); a template
   language fix, any time.
 - **A task action** (`{"task": "toggle"}`) so ⌘Enter can tick a task: editors, step 5.

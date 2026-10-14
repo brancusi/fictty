@@ -18,7 +18,7 @@ pub const STATES: [&str; 6] = ["hover", "focused", "active", "selected", "disabl
 
 /// The parts the runtime draws inside a node, besides each component's own (its `type`).
 const INNER: [&str; 29] = [
-    "screen", "panel", "border", "title", "row", "empty", "status", "status.error", "toast", "table.header", "table.total", "tabs.active", "tabs.idle",
+    "screen", "panel", "border", "title", "row", "empty", "status", "status.error", "toast", "table.header", "table.total", "tabs.selected", "tabs.idle",
     "tabs.underline", "editor.caret", "editor.selection", "input.placeholder", "md.heading", "md.bullet", "md.quote", "md.code",
     "md.task", "md.done", "md.link", "scrollbar", "scrollbar.thumb", "tree.guide", "bars.label", "spinner",
 ];
@@ -43,7 +43,7 @@ const DEFAULT_PARTS: &str = r#"{
     "border": "border",
     "border.focused": "accent",
     "spinner": "accent",
-    "tabs.active": {"fg": "bg", "bg": "accent", "bold": true, "pad": ["8px", 0], "radius": 6, "cursor": "pointer"},
+    "tabs.selected": {"fg": "bg", "bg": "accent", "bold": true, "pad": ["8px", 0], "radius": 6, "cursor": "pointer"},
     "tabs.idle": {"fg": "dim", "pad": ["8px", 0], "radius": 6, "cursor": "pointer"},
     "tabs.underline": "accent",
     "row": {"pad": ["8px", 0], "radius": 2, "cursor": "pointer"},
@@ -640,7 +640,7 @@ pub fn resolve(st: &State, n: &Node) -> Resolved {
     r
 }
 
-/// A part a component draws inside a node (`row`, `tabs.active`, `table.header`, `toast`), in
+/// A part a component draws inside a node (`row`, `tabs.selected`, `table.header`, `toast`), in
 /// the states that hold for it, resolved like a node's: a list's row is `row` with `selected`,
 /// `hover` and `blur` as they hold for that row.
 pub fn inner(st: &State, part: &str, states: &[&str]) -> Resolved {

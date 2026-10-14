@@ -1132,7 +1132,7 @@ fn node(cx: &mut Cx, n: &Node, f: &mut Frame, area: Rect) {
                 }
                 let r = Rect::new(x, inner.y, w, 1);
                 let ts = if k == shown {
-                    cx.look("tabs.active", Style::default().fg(Color::Black).bg(cx.th.accent).add_modifier(Modifier::BOLD))
+                    cx.look("tabs.selected", Style::default().fg(Color::Black).bg(cx.th.accent).add_modifier(Modifier::BOLD))
                 } else if cx.st.hover.as_ref().is_some_and(|h| h.id == id && h.row == Some(1000 + k)) {
                     Style::default().fg(cx.th.accent).bg(cx.th.hover)
                 } else {

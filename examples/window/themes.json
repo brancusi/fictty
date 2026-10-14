@@ -174,7 +174,7 @@
    "tabs": {
     "shape": "underline"
    },
-   "tabs.active": {
+   "tabs.selected": {
     "fg": "accent",
     "type": "label"
    },
@@ -469,7 +469,7 @@
    "tabs": {
     "shape": "pill"
    },
-   "tabs.active": {
+   "tabs.selected": {
     "fg": "bg",
     "bg": "accent",
     "radius": 99,
@@ -738,7 +738,7 @@
    "tabs": {
     "shape": "underline"
    },
-   "tabs.active": {
+   "tabs.selected": {
     "fg": "fg",
     "type": "label"
    },
@@ -999,7 +999,7 @@
    "tabs": {
     "shape": "segment"
    },
-   "tabs.active": {
+   "tabs.selected": {
     "fg": "bg",
     "bg": "fg"
    },
@@ -1254,7 +1254,7 @@
    "tabs": {
     "shape": "segment"
    },
-   "tabs.active": {
+   "tabs.selected": {
     "fg": "bg",
     "bg": "fg",
     "type": "label"
@@ -1540,7 +1540,7 @@
    "tabs": {
     "shape": "pill"
    },
-   "tabs.active": {
+   "tabs.selected": {
     "fg": "panel",
     "bg": "accent",
     "radius": 99,

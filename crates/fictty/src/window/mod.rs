@@ -471,7 +471,7 @@ impl Portal {
             Kind::Tabs { tabs, children, lead, trail, .. } => {
                 let at = state::tab_of(st, n).min(children.len().saturating_sub(1));
                 let tabs = tabs.clone();
-                let (mut active, mut idle) = (style::inner(st, "tabs.active", &[]), style::inner(st, "tabs.idle", &[]));
+                let (mut active, mut idle) = (style::inner(st, "tabs.selected", &[]), style::inner(st, "tabs.idle", &[]));
                 // The shape the theme gives the tabs: pills (the default), an underline under the
                 // shown one, segments joined in one box, or plain text.
                 let shape = rs.shape.as_deref().unwrap_or("pill");
