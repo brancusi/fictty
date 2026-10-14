@@ -3088,11 +3088,10 @@ pub fn problems(st: &State) -> Vec<String> {
         {
             out.push(format!("{name}: the theme has no variant {v:?}"));
         }
-        if let Some(t) = &n.tone {
-            let known = active.is_some_and(|a| a.tokens.contains_key(t)) || st.ui.theme.contains_key(t) || crate::model::is_colour(t);
-            if !known {
-                out.push(format!("{name}: tone {t:?} isn't a theme token or a colour"));
-            }
+        if let Some(t) = &n.tone
+            && !crate::style::Theme::of(st).knows(t)
+        {
+            out.push(format!("{name}: tone {t:?} isn't a theme token or a colour"));
         }
         if let Some(id) = n.bind.as_deref().and_then(|b| split_bind(b).0.strip_prefix('@'))
             && selects_in_a_loop(st, id)
@@ -3649,6 +3648,17 @@ mod tests {
         let r = write(&mut st, "rows", json!({"write": "put", "value": [{"a": 1}]}), None);
         assert_eq!(r["ok"], json!(true));
         assert_eq!(st.problems.len(), 3);
+    }
+
+    #[test]
+    fn a_default_token_is_a_tone_with_no_theme_loaded() {
+        let mut st = State::default();
+        update(&mut st, Msg::Push { ui: ui(json!({"root": {"type": "col", "children": [
+            {"type": "text", "id": "a", "tone": "accent", "text": "hi"},
+            {"type": "text", "id": "m", "tone": "muted", "text": "hi"},
+            {"type": "text", "id": "w", "tone": "warning", "text": "hi"}
+        ]}})) });
+        assert_eq!(st.problems, vec!["w: tone \"warning\" isn't a theme token or a colour".to_string()]);
     }
 
     #[test]

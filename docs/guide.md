@@ -285,7 +285,8 @@ A style's fields: `fg`; `bg` (a colour or a gradient `{"from", "to", "angle"}`);
 `italic`, `underline`, `strike`, `reverse`; `type` (a role from the theme's `type`); `pad` (one
 length for every side, `[x, y]` or `[top, right, bottom, left]`: cells, `"8px"` or a `space`
 name); `radius` (pixels or a
-`radius` name); `border` (`width`, `color`, `style`: `solid`, `dashed`, `double`); `shadow` (a
+`radius` name); `border` (`width`, `color`, `style`: `solid`, `dashed`, `double`, or in short
+`"2px dashed accent"`, `"accent"`); `shadow` (a
 `depth` name, or `none`); `ring` (`width`, `offset`, `color`); `shape` (tabs `underline`, `pill`,
 `segment`, `plain`; a scrollbar `thin`, `overlay`, `none`; an edge `rounded`, `square`, `double`,
 `thick`); `opacity`; `cursor` (`default`, `pointer`, `text`, `grab`). A style never arranges: no

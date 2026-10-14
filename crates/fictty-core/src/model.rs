@@ -210,8 +210,9 @@ impl Fill {
 }
 
 /// A line around a box: its width in pixels, colour, and `solid` (the default), `dashed` or
-/// `double`.
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+/// `double`. Written as an object or in short, as a backdrop's border is: `"accent"`,
+/// `"2px dashed accent"`.
+#[derive(Clone, Debug, Default, PartialEq, Serialize)]
 pub struct Line {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub width: Option<f32>,
@@ -1019,6 +1020,37 @@ impl<'de> Deserialize<'de> for Gap {
             Value::Array(a) if a.len() == 2 => lens_of(a).map(Gap::XY),
             v @ Value::Array(_) => Err(wrong("a gap is one length or [x, y]", &v)),
             v => len_of(v).map(Gap::One),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for Line {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        #[derive(Deserialize)]
+        struct Whole {
+            #[serde(default)]
+            width: Option<f32>,
+            #[serde(default)]
+            color: Option<String>,
+            #[serde(default)]
+            style: Option<String>,
+        }
+        match Value::deserialize(d)? {
+            Value::String(s) => {
+                let mut line = Line::default();
+                for w in s.split_whitespace() {
+                    let px = w.strip_suffix("px").unwrap_or(w).parse::<f32>().ok();
+                    match (px, w) {
+                        (Some(n), _) if line.width.is_none() => line.width = Some(n),
+                        (_, "solid" | "dashed" | "double") if line.style.is_none() => line.style = Some(w.to_string()),
+                        _ if line.color.is_none() => line.color = Some(w.to_string()),
+                        _ => return Err(serde::de::Error::custom(format!("a border is \"[width] [solid|dashed|double] [colour]\", not {s:?}"))),
+                    }
+                }
+                Ok(line)
+            }
+            v @ Value::Object(_) => serde_json::from_value::<Whole>(v).map(|w| Line { width: w.width, color: w.color, style: w.style }).map_err(serde::de::Error::custom),
+            v => Err(wrong("a border is {\"width\", \"color\", \"style\"} or \"2px dashed accent\"", &v)),
         }
     }
 }
@@ -1949,6 +1981,18 @@ mod tests {
         assert_eq!(text("a << b <b>bold</>"), "a < b bold");
         assert_eq!(text("{k:6}|{v:>4}|{long:5}|"), "ab    |   7|abcd…|");
         assert_eq!(text("{row|markup}"), "left⇥right", "a tab in a value marked up is a tab");
+    }
+
+    #[test]
+    fn a_border_is_an_object_or_written_short() {
+        let line = |v: Value| serde_json::from_value::<Line>(v);
+        let l = |w: Option<f32>, c: Option<&str>, s: Option<&str>| Line { width: w, color: c.map(str::to_string), style: s.map(str::to_string) };
+        assert_eq!(line(json!("accent")).unwrap(), l(None, Some("accent"), None));
+        assert_eq!(line(json!("2px dashed #ff8800")).unwrap(), l(Some(2.0), Some("#ff8800"), Some("dashed")));
+        assert_eq!(line(json!("1 border")).unwrap(), l(Some(1.0), Some("border"), None));
+        assert_eq!(line(json!({"width": 1, "color": "red"})).unwrap(), l(Some(1.0), Some("red"), None));
+        assert!(line(json!("red blue")).unwrap_err().to_string().contains("a border is"));
+        assert!(line(json!(3)).is_err());
     }
 
     #[test]

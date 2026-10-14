@@ -303,7 +303,7 @@ impl<'a> Theme<'a> {
     }
 
     /// Whether `name` means a colour here: a token or a colour by itself.
-    fn knows(&self, name: &str) -> bool {
+    pub fn knows(&self, name: &str) -> bool {
         name == "muted" || self.token(name).is_some() || DEFAULT_TOKENS.iter().any(|(k, _)| *k == name) || is_colour(name) || hex(name).is_some()
     }
 
