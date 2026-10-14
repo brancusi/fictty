@@ -1047,13 +1047,13 @@ impl App {
     }
 }
 
-/// Hold `<store>.lock` (an advisory lock the system lets go of when the process ends, however it
-/// ends) for as long as the screen runs, or say which screen holds it. The store file itself is
-/// replaced on every save, so it can't carry the lock.
+/// Hold the store file's lock for as long as the screen runs, or say which screen holds it. The
+/// lock is an advisory one the system lets go of however the process ends, on a file in the
+/// temporary directory named from the store's full path: not beside the store, where a synced
+/// folder (Dropbox) may replace the file under the lock, and the store itself is replaced on
+/// every save.
 fn hold_store(store: &Path) -> Result<std::fs::File> {
-    let mut path = store.as_os_str().to_owned();
-    path.push(".lock");
-    let path = PathBuf::from(path);
+    let path = lock_path(store);
     let f = std::fs::OpenOptions::new().create(true).truncate(false).read(true).write(true).open(&path).with_context(|| format!("opening {}", path.display()))?;
     match f.try_lock() {
         Ok(()) => {
@@ -1061,14 +1061,31 @@ fn hold_store(store: &Path) -> Result<std::fs::File> {
             let mut f = f;
             f.set_len(0)?;
             f.seek(std::io::SeekFrom::Start(0))?;
-            write!(f, "{}", std::process::id())?;
+            write!(f, "{}\n{}\n", std::process::id(), store.display())?;
             Ok(f)
         }
         Err(_) => {
             let pid = std::fs::read_to_string(&path).unwrap_or_default();
+            let pid = pid.lines().next().unwrap_or_default().to_string();
             bail!("{} is in use by another fictty screen (pid {}): end it first (`fictty quit` on its socket)", store.display(), pid.trim())
         }
     }
+}
+
+/// The lock file for a store: in the temporary directory, named from a hash (FNV-1a, the same
+/// in every build) of the store's full path, so every screen on that store finds the same one.
+fn lock_path(store: &Path) -> PathBuf {
+    let full = match (store.parent().filter(|p| !p.as_os_str().is_empty()).map(std::fs::canonicalize), store.file_name()) {
+        (Some(Ok(dir)), Some(name)) => dir.join(name),
+        (None, Some(name)) => std::env::current_dir().map(|d| d.join(name)).unwrap_or_else(|_| store.to_path_buf()),
+        _ => store.to_path_buf(),
+    };
+    let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+    for b in full.as_os_str().as_encoded_bytes() {
+        h ^= *b as u64;
+        h = h.wrapping_mul(0x0100_0000_01b3);
+    }
+    std::env::temp_dir().join(format!("fictty-store-{h:016x}.lock"))
 }
 /// A running screen: the state and the engine (sources, streams, the host, the socket, the
 /// watched file, the store file), with no drawing. Whatever draws it reads `state` for each frame,
@@ -1820,6 +1837,23 @@ fn report_fonts(d: &mut Driver, st: &mut State, fonts: Vec<(String, String)>) ->
 mod tests {
     use super::*;
     use std::sync::Mutex;
+
+    #[test]
+    fn one_screen_holds_a_store_however_its_path_is_written_and_nothing_goes_beside_it() {
+        let dir = std::env::temp_dir().join(format!("fictty-lock-test-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let store = dir.join("store.json");
+        let held = hold_store(&store).unwrap();
+        // The same store by another spelling of its path is the same lock.
+        let again = dir.join(".").join("store.json");
+        let err = hold_store(&again).unwrap_err().to_string();
+        assert!(err.contains(&format!("pid {}", std::process::id())), "{err}");
+        assert!(hold_store(&dir.join("other.json")).is_ok(), "another store has its own");
+        assert_eq!(std::fs::read_dir(&dir).unwrap().count(), 0, "no lock file beside the store");
+        drop(held);
+        assert!(hold_store(&store).is_ok(), "free once the screen holding it lets go");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     /// A host that keeps one page and merges what's saved into it, as a vault does: it notes
     /// every save and load.
