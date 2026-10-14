@@ -7,33 +7,55 @@ it's done. Everything here is window-only: the grid view isn't extended.
 
 ## Start here
 
-Written on 14 October 2026 for whoever picks this up next.
+Rewritten on 14 October 2026, when 3a merged to `main` (88fd94e), for whoever picks up 3b.
 
-1. ~~**Get the three decisions under "Settle first" confirmed by Aram.**~~ Confirmed on 14
-   October 2026, all three as recommended.
-2. **Branch** (`git switch -c layout-3a`) and land 3a as these commits, each with its tests:
-   - `Pad` (`model.rs`, `enum Pad`, today `X(u16)` or `XY([u16; 2])`) becomes four sides of
-     `Len`: one length (every side, as CSS), `[x, y]` as today, or `[top, right, bottom,
-     left]`. `Len` and its `Deserialize` are in `model.rs` already (step 2b); `style.rs`'s
-     `pad: Option<[Len; 2]>` moves to the same four sides, so a node's and a style's `pad` are
-     one thing. Where the window reads it: `window/mod.rs`, `sized` and the `n.pad.map_or` just
-     below it.
-   - The 25 `"pad": 1` uses are all in the showcase's hand-written JSON (`agent`, `gallery`,
-     `notes`, `markets`, `ledger`). `tour.py` already writes `pad=[1, 0]`. Rewrite them in the
-     same commit as the type, and render each one before and after (`fictty render --nodes`).
-   - `view.rs` reads `pad` too (`n.pad.map(|p| p.xy())`). Keep it compiling by reading the
-     four sides as cells, left and top only. Don't extend the grid.
-   - `margin` on `Node` (new) and on `Float` (today `Option<u16>`), both as four sides of
-     `Len`. In the window, Taffy's margin.
-   - `min` and `max` (`Node`, today `Option<u16>`) and `gap` (on `Kind::Col` and
-     `Kind::Row`, today `Option<u16>`) become `Len`. A `gap` can also be `[x, y]`, ready for
-     wrap and grid.
-   - Problems for a malformed length and an unknown `space` name, reported in the same way as
-     a style's.
-   - The guide's layout section, then Daybook: its centred column becomes a `max` in any unit
-     where 3a allows it. The spacers wait for 3b's `self`.
-3. **Measure before calling 3a done** (below), and look at the wringer and the demo in a real
-   window.
+**3a is done:** `pad` and `margin` (one length, `[x, y]` or four sides), `gap` (one or
+`[x, y]`), `min` and `max`, all as `Len` in any unit; float `margin` the same type; problems
+per node and field for a bad length; `tabs.selected`; font files that don't load as problems.
+The Kestrel demo plays in a real window on it.
+
+**What 3a taught:**
+
+- **Never send a `Msg` from inside the window's draw.** The engine is locked while a frame is
+  built, so a send from there deadlocks. Whatever the draw learns (a font that didn't load,
+  rectangles, hits) goes back with the frame in `Drawn`, and the engine turns it into messages
+  after (`report_fonts`). 3b's measured `fit` sizes, if the core ever needs them, go the same way.
+- **Measure in the window at one refresh rate, and A/B headless for small differences.** The
+  window's `draw_ms` moved by 2× between a 120 Hz and a 60 Hz session for the same code, plasma
+  (three nodes) as much as biglist, so it's no good for a before-and-after across sessions. A
+  throwaway test in the window's test platform (release, a few hundred frames of plasma, the
+  50k-row list and many padded cards, `update`, frame and readback timed together) was steady
+  to 2% between runs. Use it to compare two builds, and the stress windows for absolute numbers.
+- **A box written in shorthand reads back in shorthand.** `Len` serializes whole cells as
+  integers and `Lens`/`Gap` keep the form they were written in (`written()`), so `get --state`
+  and `screen --nodes` show `pad 14px 8px` rather than four expanded sides. Keep that for
+  `self`, `justify` and `aspect`: read back what was written.
+- **A float's margin is padding on its wrapper**, so it works at every anchor and the planned
+  "margin on an anchor that can't take it" problem wasn't needed. Look for that kind of answer
+  before adding a problem.
+- **A renamed part matches silently.** A theme still saying `tabs.active` now styles `tabs` in
+  the `active` state, with no problem reported, by choice: nothing outside the repo used it.
+  Rename parts early, as this one was.
+- **The release fuzz at 400 runs takes about five and a half minutes** (the tour and the long
+  list are the slow ones). Run it in the background while writing the guide.
+
+**Next, 3b (fit and alignment), as these commits, each with its tests in `tests/window.rs`:**
+
+1. **`self`, `justify`, `items`.** No measuring, so it's the safe first commit: `self` on any
+   node maps to Taffy's `align_self`; `justify` and `items` on `col`, `row` and `each` to
+   `justify_content` and `align_items`. Unknown words fail to parse with a clear error, as
+   `Lens` does. Read back as written. The guide's layout section.
+2. **`aspect`** (`"16/9"` or a number) to Taffy's `aspect_ratio`, on any node.
+3. **`size: "fit"`.** `Size` (`model.rs`, `Size::measure`) gains `Fit`; in the window it's
+   Taffy's `auto` basis with no grow, and text is measured by GPUI's own layout. This is the
+   risky one (GPUI's ellipsis broke under Taffy's measuring in step 2d): test a `fit` text, button,
+   list and editor at many widths in `in_window`, and add a fuzz property that a `fit` node isn't
+   cut while its parent has room. A `fit` list is as tall as its rows up to its `max`; an editor
+   as tall as its lines.
+4. **Daybook**: the spacers either side of the writing column go, replaced by `max` and
+   `self: "center"`. (Zen's top margin is already possible with 3a's `margin`; do it here too.)
+5. **Look** at the wringer's `landing` and `settings` and the Kestrel demo in a real window
+   (ask Aram to bring it forward), and run `FUZZ_RUNS=400` in release.
 
 **The baseline**, taken in a release build at 0300ead on an Apple M5 Max, in the window
 (`FICTTY_SOCKET=/tmp/fstress.sock fictty run --window …`, then `HOLD=6 examples/stress/play.sh`).
@@ -124,7 +146,7 @@ Each sub-step lands with tests in `tests/window.rs` (one per field at least), cl
 runs (`FUZZ_RUNS=400` in release, `fuzz::laid_out` included), the grid twins it retires deleted,
 and the screens that use it looked at in a real window.
 
-### 3a · Units and the box (S)
+### 3a · Units and the box (S) · done 14 October 2026
 
 - Decisions 1 and 2: `pad` four-sided in any unit, `margin` (new) on any node, `min`/`max` in
   any unit, `gap` as one length or `[x, y]`.
@@ -134,7 +156,7 @@ and the screens that use it looked at in a real window.
 - Problems: a malformed length, an unknown `space` name, `margin` on a float's anchor that
   can't take it.
 
-### 3b · Fit and alignment (M)
+### 3b · Fit and alignment (M) · next
 
 - `size: "fit"`: as big as the content along the parent's direction. Text is measured with the
   window's own text layout (as step 2d's ellipsis does). A `fit` list is as tall as its rows
