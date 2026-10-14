@@ -3245,9 +3245,11 @@ pub fn value_of<'a>(st: &'a State, bind: &str) -> Option<&'a Value> {
         }
         return lookup(items(st, n).get(selected(st, id))?, path);
     }
-    if let Some(e) = st.store.get(source) {
-        return match &e.body {
-            Body::Value { value } => lookup(value, path),
+    // A store key can hold dots (`remove/photo.tif`): the longest one the bind starts with, up
+    // to a dot or its end, is the entry, and the rest a path into it.
+    if let Some((key, rest)) = store_key(st, bind) {
+        return match &st.store[key].body {
+            Body::Value { value } => lookup(value, rest),
             Body::Text { .. } => None,
         };
     }
@@ -3255,6 +3257,19 @@ pub fn value_of<'a>(st: &'a State, bind: &str) -> Option<&'a Value> {
         Slot::Ready { value } => lookup(value, path),
         _ => None,
     }
+}
+
+/// The store entry a bind names and the path after it: the longest key the bind starts with,
+/// ending where the bind does or at a dot.
+fn store_key<'b>(st: &State, bind: &'b str) -> Option<(&'b str, &'b str)> {
+    let ends = bind.match_indices('.').map(|(i, _)| i).chain(std::iter::once(bind.len()));
+    let mut found = None;
+    for end in ends {
+        if st.store.contains_key(&bind[..end]) {
+            found = Some((&bind[..end], bind.get(end + 1..).unwrap_or("")));
+        }
+    }
+    found
 }
 
 /// Whether node `id`'s rows come, through `@` binds (another node's selected row), back to
@@ -3880,6 +3895,20 @@ mod tests {
         assert_eq!(flags, vec![json!(true), json!(true), json!(true), Value::Null]);
         let Some(Slot::Ready { value }) = st.data.get("$picked") else { panic!("no $picked") };
         assert_eq!((value["l"]["index"].clone(), value["l"]["total"].clone()), (json!(3), json!(4)));
+    }
+
+    #[test]
+    fn a_store_key_with_dots_is_bound_and_shown_whole() {
+        let mut st = State::default();
+        let ui = ui(json!({"root": {"type": "col", "children": [
+            {"type": "text", "id": "flag", "when": "remove/photo.tif", "text": "flagged"},
+            {"type": "text", "id": "size", "bind": "meta/photo.tif.size", "text": "{w}"}
+        ]}, "store": {"remove/photo.tif": true, "meta/photo.tif": {"size": {"w": 640}}}}));
+        update(&mut st, Msg::Push { ui });
+        assert!(holds(&st, "remove/photo.tif"));
+        assert!(!holds(&st, "remove/other.tif"));
+        let size = tree!(st).find("size").cloned().unwrap();
+        assert_eq!(bound(&st, &size), Some(&json!({"w": 640})), "the key, then a path into it");
     }
 
     #[test]

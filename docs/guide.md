@@ -144,7 +144,9 @@ fictty theme paper                                        # choose a loaded them
   with why). `$self` says where the screen runs: `bin`, `socket`, `dir` (its UI's folder), `cli`
   (a command line that reaches this screen from any terminal) and `env` (a line that sets a
   terminal up so `fictty`, and the scripts beside the UI, reach it).
-- **Binds and templates**: `bind` names a store entry or a source, then a path (`books.running`);
+- **Binds and templates**: `bind` names a store entry or a source, then a path (`books.running`;
+  a store key may hold dots, `remove/photo.tif`: the longest key the bind starts with is the
+  entry);
   `@id` is the selected row of another list. Text and columns are templates over the bound
   value: `"{text} · {due}"`, `<accent+b>styled</>` (or any theme part: `<link>`), `<<` for a
   literal `<`, `{±change}` coloured by sign, `{name:12}` fitted to 12 cells (`{n:>6}`
