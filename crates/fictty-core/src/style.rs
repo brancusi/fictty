@@ -49,7 +49,7 @@ const DEFAULT_PARTS: &str = r#"{
     "row": {"pad": ["8px", 0], "radius": 2, "cursor": "pointer"},
     "row.hover": {"bg": "hover"},
     "row.selected": {"fg": "accent", "bg": "ring"},
-    "row.selected.blur": {"fg": "fg", "bg": "panel"},
+    "row.selected.blur": {"fg": "fg", "bg": "hover"},
     "table.header": "accent+b",
     "empty": "dim+i",
     "input.placeholder": "dim+i",

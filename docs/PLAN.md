@@ -210,10 +210,11 @@ The phases of [design/native.md](design/native.md), where each is broken down.
   - [x] CI green on macOS and Linux again (2026-10-13): the fuzz's emulator rebuilt on a
         resize (no terminal on CI), `openpty` on Linux, a debug time budget for the fuzz, and
         the pty test's presses spaced apart. AGENTS.md has the lessons
-  - [ ] **Next: galleries** ([design/selection.md](design/selection.md), Aram's call on
-        14 October 2026): a click runs the nearest `click`, `image` in the window, `multi`
-        selection on lists, trees and tables, and editors over a multi-selection. Then 3b, 3c
-        and 3d, then rows as nodes, ahead of 3e and 3f
+  - [x] Galleries, first part ([design/selection.md](design/selection.md), Aram's call on
+        14 October 2026): a click runs the nearest `click`, `image` in the window (from a
+        template, `fit`), `multi` selection on lists, trees and tables, and editors over a
+        multi-selection (2026-10-14). The fuzz has a gallery, in the grid and the window
+  - [ ] **Next: 3b, 3c and 3d**, then rows as nodes (a gallery's thumbnails), ahead of 3e and 3f
   - [ ] Step 3, the layout vocabulary, planned in
         [design/layout-step.md](design/layout-step.md). Then: lists and rows as nodes, the rest of
         editors, charts and icons, toasts and layers, embedding and the examples, then the terminal
