@@ -1749,6 +1749,7 @@ fn activity(st: &State, req: &Request) -> Option<(&'static str, String)> {
                     let first = changes.first().map(|c| format!(": \"{}\"", short(&c.2))).unwrap_or_default();
                     ("edit", format!("{key}{rev}{first}"))
                 }
+                Write::Delete {} => ("delete", format!("{key}{rev}")),
             }
         }
         Request::Set { id, selected, tab, key } => {

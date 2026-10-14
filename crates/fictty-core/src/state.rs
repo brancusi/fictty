@@ -938,7 +938,11 @@ fn apply(st: &mut State, msg: Msg) -> Vec<Effect> {
                     if let Some((ms, paths)) = lasting {
                         expire_later(st, &key, paths, ms);
                     }
-                    serde_json::json!({"ok": true, "key": key, "rev": st.store[&key].rev})
+                    // A deleted entry has no revision left to report.
+                    match st.store.get(&key) {
+                        Some(e) => serde_json::json!({"ok": true, "key": key, "rev": e.rev}),
+                        None => serde_json::json!({"ok": true, "key": key, "deleted": true}),
+                    }
                 }
                 Err(status) => {
                     let mut r = serde_json::json!({"ok": false, "status": status});
@@ -1851,6 +1855,16 @@ fn write_entry(st: &mut State, key: &str, write: Write, if_rev: Option<u64>, by:
     if if_rev.is_some_and(|r| r > 0) && !st.store.contains_key(key) {
         return Err(format!("stale: {key} doesn't exist"));
     }
+    if matches!(write, Write::Delete {}) {
+        if st.store.remove(key).is_none() {
+            return Err(format!("no entry {key}"));
+        }
+        for l in st.local.values_mut() {
+            l.editors.remove(key);
+        }
+        st.store_writes += 1;
+        return Ok(());
+    }
     let is_text = matches!(st.store.get(key), Some(Entry { body: Body::Text { .. }, .. }));
     match write {
         Write::Put { value } if !is_text => {
@@ -1881,6 +1895,7 @@ fn write_entry(st: &mut State, key: &str, write: Write, if_rev: Option<u64>, by:
         Write::Put { .. } => return Err(format!("{key} is text: put a string, or send an edit")),
         Write::Merge { .. } => return Err(format!("{key} is text: merge is for values")),
         Write::Edit { .. } => return Err(format!("{key} isn't text: put or merge a value")),
+        Write::Delete {} => unreachable!("handled above"),
     }
     Ok(())
 }
@@ -3054,6 +3069,10 @@ pub fn problems(st: &State) -> Vec<String> {
     tree!(st).walk(&mut all);
     let active = st.theme.as_ref().and_then(|t| st.themes.get(t));
     let mut out = Vec::new();
+    // A bind reads the store before the sources, so a source named like an entry is never read.
+    for name in st.ui.data.keys().filter(|k| st.store.contains_key(k.as_str())) {
+        out.push(format!("{name} is a store entry and a data source: binds read the store's (`fictty delete {name}` to read the source)"));
+    }
     let kind = |v: &Value| match v {
         Value::Array(_) => "a list",
         Value::Object(_) => "an object",
@@ -3898,6 +3917,22 @@ mod tests {
         assert_eq!(flags, vec![json!(true), json!(true), json!(true), Value::Null]);
         let Some(Slot::Ready { value }) = st.data.get("$picked") else { panic!("no $picked") };
         assert_eq!((value["l"]["index"].clone(), value["l"]["total"].clone()), (json!(3), json!(4)));
+    }
+
+    #[test]
+    fn a_source_hidden_by_a_store_entry_is_a_problem_until_the_entry_is_deleted() {
+        let mut st = State::default();
+        let ui = ui(json!({"root": {"type": "list", "id": "l", "bind": "rows"},
+            "data": {"rows": {"value": [{"id": "new"}]}}, "store": {"rows": [{"id": "old"}]}}));
+        update(&mut st, Msg::Push { ui });
+        // The source's value, as the engine fetches it.
+        update(&mut st, Msg::Data { name: "rows".into(), result: Ok(json!([{"id": "new"}])) });
+        let first = |st: &State| bound(st, &tree!(st).find("l").cloned().unwrap()).cloned();
+        assert_eq!(first(&st), Some(json!([{"id": "old"}])), "the store's");
+        assert!(st.problems.iter().any(|p| p.starts_with("rows is a store entry and a data source")), "{:?}", st.problems);
+        update(&mut st, Msg::Write { key: "rows".into(), write: Write::Delete {}, if_rev: None, by: "agent".into(), for_ms: None });
+        assert_eq!(first(&st), Some(json!([{"id": "new"}])), "the source's, once the entry is gone");
+        assert!(st.problems.is_empty(), "{:?}", st.problems);
     }
 
     #[test]

@@ -59,6 +59,7 @@ fictty run --window my.json                               # in a native window (
 fictty render examples/tasks.json --size 100x30 --keys j  # no terminal
 fictty read ledger                                        # one store entry: rev, by, value or text
 fictty put ledger rows.json --if-rev 12                   # write it, unless someone wrote since 12
+fictty delete ledger                                      # the entry goes (a seed can start it again)
 fictty theme paper                                        # choose a loaded theme
 ```
 
@@ -185,7 +186,9 @@ The app's data, apart from the UI: named entries, each a JSON value or a text (a
 document with its undo history), each with a revision (`rev`) and who wrote it last (`by`).
 
 - **A push never changes it.** A UI can seed entries that don't exist yet (`"store": {…}`, or an
-  editor's `text`); a seed never overwrites.
+  editor's `text`); a seed never overwrites. A bind reads the store before the sources, so an
+  entry named like a source hides it, which is a problem until `fictty delete <name>` takes
+  the entry away (a UI that moved its rows from the store to a source, say).
 - **Writes**: typing in an editor or input; store actions on keys; and from agents,
   `fictty put` (a value, or a string as a text's new contents), `merge` (RFC 7396) and `edit`
   (`[[from, to, "text"]]` ranges of a text). With `--if-rev N` a write is refused if anyone wrote

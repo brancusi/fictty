@@ -84,6 +84,13 @@ enum Cmd {
     },
     /// Read a store entry: its revision, who wrote it last, and its text or value.
     Read { key: String },
+    /// Delete a store entry (a list a UI once seeded, say, that now hides a source of the same
+    /// name). With --if-rev, refused if someone wrote since that revision.
+    Delete {
+        key: String,
+        #[arg(long)]
+        if_rev: Option<u64>,
+    },
     /// Choose the running screen's theme (a name, `next` or `prev`), or load themes from a file.
     Theme {
         name: Option<String>,
@@ -231,6 +238,7 @@ fn main() -> Result<()> {
         Cmd::Merge { key, file, if_rev, by, for_ms } => write(&socket, "merge", key, "value", &file, if_rev, by, for_ms)?,
         Cmd::Edit { key, file, if_rev, by } => write(&socket, "edit", key, "changes", &file, if_rev, by, None)?,
         Cmd::Read { key } => runtime::send(&socket, json!({"op": "read", "key": key}))?,
+        Cmd::Delete { key, if_rev } => runtime::send(&socket, json!({"op": "write", "write": "delete", "key": key, "if_rev": if_rev}))?,
         Cmd::Theme { name, load } => {
             let add = match load {
                 Some(p) => serde_json::to_value(runtime::load_themes(&p)?)?,

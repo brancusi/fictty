@@ -35,6 +35,9 @@ pub enum Write {
     Merge { value: Value },
     /// Ranges of the current text replaced, in chars, in order and apart: `[from, to, text]`.
     Edit { changes: Vec<(usize, usize, String)> },
+    /// The entry goes: a seed of the same name can start it again, and a source of the same
+    /// name is no longer hidden by it.
+    Delete {},
 }
 
 impl Entry {
