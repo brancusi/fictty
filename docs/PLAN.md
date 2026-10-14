@@ -214,7 +214,9 @@ The phases of [design/native.md](design/native.md), where each is broken down.
         14 October 2026): a click runs the nearest `click`, `image` in the window (from a
         template, `fit`), `multi` selection on lists, trees and tables, and editors over a
         multi-selection (2026-10-14). The fuzz has a gallery, in the grid and the window
-  - [ ] **Next: 3b, 3c and 3d**, then rows as nodes (a gallery's thumbnails), ahead of 3e and 3f
+  - [x] Rows as nodes for lists, with `cols` for a grid of them, brought forward for picking from
+        thumbnails (2026-10-14). Still open: `fit` row heights, clicks on a row's own buttons
+  - [ ] **Next: 3b, 3c and 3d**, then 3e and 3f
   - [ ] Step 3, the layout vocabulary, planned in
         [design/layout-step.md](design/layout-step.md). Then: lists and rows as nodes, the rest of
         editors, charts and icons, toasts and layers, embedding and the examples, then the terminal

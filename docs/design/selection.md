@@ -94,6 +94,22 @@ An editor bound to a multi-selection (`"bind": "@files"`, `"doc": "date/{id}"`, 
 Known limit: a mixed field can't be cleared in one go. Typing anything and deleting it does
 that.
 
+## Rows as nodes, brought forward
+
+Picking from thumbnails needed one more part, rows as nodes (expressive.md, "Content"), so it
+came ahead of 3b on 14 October 2026 rather than after 3d: a list's `row` is a node template
+filled from `$item`, drawn in the row's place, with every id and click taken off so the row
+takes the presses, the selection and `multi` as any row does. `cols` lays rows N to a line:
+↑/↓ go a line, ←/→ a row, and the first row shown is always the start of a line. Lists already
+virtualise and scroll their rows, so a gallery needed neither `grid` nor `scroll: true`; those
+stay in 3c and 3d for containers. Still open from expressive.md: `fit` heights for rows, and
+clicks on a row's own buttons.
+
+The fuzz found that mirroring only the edits let the entries drift: a document keeps its own
+clock and clipboard, which decide how typing groups into undo steps and what a paste puts in.
+So every message goes to every entry while they're the same, and an undo or redo on a mixed
+field steps back or on in each entry's own history.
+
 ## Done when
 
 - `tests/window.rs` covers each input above, a click through an image to its row, an image

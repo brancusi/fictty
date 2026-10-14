@@ -243,6 +243,46 @@ fn a_field_over_picked_rows_writes_to_each_and_a_field_left_alone_to_none() {
 }
 
 #[test]
+fn a_list_of_rows_drawn_from_a_node_lays_them_out_in_cols_and_picks_from_a_picture() {
+    let items: Vec<Value> = (0..30).map(|i| json!({"id": format!("p{i}"), "name": format!("pic {i}"), "thumb": format!("/thumbs/p{i}.png")})).collect();
+    let row = json!({"type": "col", "size": 4, "children": [
+        {"type": "image", "src": "{$item.thumb}"},
+        {"type": "text", "size": 1, "text": "{$item.name}"}
+    ]});
+    let ui = json!({"root": {"type": "row", "children": [
+        {"type": "list", "id": "g", "multi": true, "cols": 3, "size": 36, "row": row, "items": items},
+        {"type": "text", "id": "n", "bind": "$picked.g", "text": "{count} picked"}
+    ]}, "focus": "g"});
+    let mut s = window(ui, 60, 14);
+    let g = node(&mut s, "g");
+    assert_eq!(g.text, "/thumbs/p0.png · pic 0", "the selected row reads back as what it shows");
+    let r = g.rect.unwrap();
+    // A press on the picture in the second column of the first line, then ⌘ on the third.
+    let col = |c: u16| r.x + r.width * c / 3 + r.width / 6;
+    s.mouse("press", col(1), r.y + 1).mouse("release", col(1), r.y + 1);
+    assert_eq!(s.state().local["g"].selected, 1);
+    s.mouse("d-press", col(2), r.y + 1).mouse("release", col(2), r.y + 1);
+    // ⇧ on the first of the second line: the range from the anchor (2) to it (3).
+    s.mouse("s-press", col(0), r.y + 5).mouse("release", col(0), r.y + 5);
+    assert_eq!(node(&mut s, "g").picked, vec![2, 3]);
+    assert_eq!(node(&mut s, "n").text, "2 picked");
+    // ↓ goes a line, → a row.
+    s.keys(&["esc", "down"]);
+    assert_eq!(s.state().local["g"].selected, 6);
+    s.keys(&["right"]);
+    assert_eq!(s.state().local["g"].selected, 7);
+    // Far down, the view follows by whole lines: the first row shown starts a line.
+    s.keys(&["down", "down", "down", "down", "down"]);
+    assert_eq!(s.state().local["g"].selected, 22);
+    let fit = s.state().local["g"].rows as usize;
+    assert!(fit >= 6 && fit.is_multiple_of(3), "whole lines of rows fit: {fit}");
+    let st = s.state();
+    let from = fictty::state::first_shown(st.local.get("g"), 30, fit, 3);
+    assert!(from.is_multiple_of(3));
+    assert!((from..from + fit).contains(&22), "{from} + {fit}");
+}
+
+#[test]
 fn a_press_on_a_list_that_isnt_multi_with_a_modifier_is_a_click() {
     let ui = json!({"root": {"type": "list", "id": "l", "items": rows(6)}});
     let mut s = window(ui, 40, 12);

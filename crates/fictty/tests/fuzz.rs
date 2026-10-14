@@ -60,7 +60,8 @@ fn gallery() -> Value {
     let items: Vec<Value> = (0..6).map(|i| json!({"id": format!("p{i}"), "name": format!("pic {i}"), "file": format!("/none/p{i}.png")})).collect();
     json!({
         "root": {"type": "row", "children": [
-            {"type": "list", "id": "files", "multi": true, "size": 16, "item": "{name}", "items": items},
+            {"type": "list", "id": "files", "multi": true, "cols": 2, "size": 20, "items": items,
+             "row": {"type": "col", "size": 3, "children": [{"type": "image", "src": "{$item.file}"}, {"type": "text", "size": 1, "text": "{$item.name}"}]}},
             {"type": "col", "children": [
                 {"type": "image", "id": "pic", "bind": "@files", "src": "{file}", "size": 3},
                 {"type": "editor", "id": "caption", "bind": "@files", "doc": "caption/{id}", "size": 4},
@@ -75,7 +76,7 @@ fn gallery() -> Value {
 /// The keys that pick rows, beside the defaults.
 fn picking() -> Config {
     let mut keys = Config::default().keys;
-    keys.extend(["s-down", "s-up", "d-a", "esc", "j", "k"].map(String::from));
+    keys.extend(["s-down", "s-up", "d-a", "esc", "j", "k", "left", "right"].map(String::from));
     Config { keys, ..cfg() }
 }
 

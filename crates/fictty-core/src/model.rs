@@ -705,8 +705,17 @@ fn yes() -> bool {
 /// - `filter`: show only the rows matching the text in this store entry (or bind): every word
 ///   of it, in any case, somewhere in the row's values.
 /// - `empty`: what shows when there are no rows.
+/// - `row`: a node drawn for each row instead of `item`, its `{$item}` and `{$item.path}`
+///   filled from the row as an `each` template's are: a picture, a name, a badge. It's as tall
+///   as its `size` in cells (else `lines`). A press anywhere in it is a press on the row, so
+///   its nodes take no clicks or focus of their own.
+/// - `cols`: rows to a line, a grid of them; ↑/↓ move a line, ←/→ a row.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct Rows {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub row: Option<Box<Node>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cols: Option<u16>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub item: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -1570,6 +1579,36 @@ impl Node {
             return true;
         }
         self.children_mut().is_some_and(|cs| cs.iter_mut().any(|c| c.replace(id, with)))
+    }
+}
+
+/// A list's row template for row `item`: filled as an `each` instance is, with every id taken
+/// off, since the row takes the presses and the focus for all of it.
+pub fn row_instance(template: &Node, item: &Value) -> Node {
+    fn bare(n: &mut Node) {
+        n.id = None;
+        n.click = None;
+        if let Some(cs) = n.children_mut() {
+            cs.iter_mut().for_each(bare);
+        }
+    }
+    let mut n = instance(template, item);
+    bare(&mut n);
+    n
+}
+
+impl Rows {
+    /// How many rows to a line (1 unless `cols` says more).
+    pub fn per_line(&self) -> usize {
+        self.cols.unwrap_or(1).max(1) as usize
+    }
+
+    /// How many cells tall a row is: its template's `size` in cells, else `lines`, else one.
+    pub fn height(&self) -> u16 {
+        match self.row.as_ref().and_then(|r| r.size.as_ref()).map(Size::measure) {
+            Some(Measure::Cells(c)) => c.max(1),
+            _ => self.lines.unwrap_or(1).max(1),
+        }
     }
 }
 

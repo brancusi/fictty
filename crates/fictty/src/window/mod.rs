@@ -78,7 +78,9 @@ struct Laid {
     hits: DrawnHits,
     /// Each editor's text area and each list's rows, as bounds to fit cells into, with the
     /// rows a list's item takes (1 for an editor).
-    sizes: Vec<(String, Bounds<Pixels>, u16)>,
+    /// Each node's bounds with how tall one of its rows is in cells and how many go to a line,
+    /// so a list is told how many rows it has room for.
+    sizes: Vec<(String, Bounds<Pixels>, u16, u16)>,
     /// The area each node whose `when` reads `$width` or `$height` was laid out in.
     areas: Vec<(String, Bounds<Pixels>)>,
     /// The nodes it cut text in.
@@ -455,7 +457,7 @@ impl Portal {
                 // The header sits over the rows' text: the rows' pad, the header's own look.
                 let [_, row_r, _, row_l] = Look::pad(&style::inner(st, "row", &[]), c);
                 let head = lk.boxed(div().flex().flex_row().h(px(cell.h)), &style::inner(st, "table.header", &[]), c, [0., row_r, 0., row_l]).children(columns.iter().map(|c| div().flex_1().child(c.title.clone())));
-                let body: Vec<AnyElement> = shown_rows(st, &id, rows.len(), 1)
+                let body: Vec<AnyElement> = shown_rows(st, &id, rows.len(), 1, 1)
                     .map(|k| (k, &rows[k]))
                     .map(|(k, r)| {
                         let target = id.clone();
@@ -481,7 +483,7 @@ impl Portal {
                     .flex_1()
                     .min_h(px(0.))
                     .overflow_hidden()
-                    .child(measure(&self.laid, move |l, b| l.sizes.push((fits, b, 1))))
+                    .child(measure(&self.laid, move |l, b| l.sizes.push((fits, b, 1, 1))))
                     .on_scroll_wheel(cx.listener(move |this, e: &ScrollWheelEvent, _, cx| this.wheel(&wheel, e, cx)))
                     .children(body);
                 div().flex().flex_col().size_full().child(head).child(rows_area).into_any_element()
@@ -608,35 +610,57 @@ impl Portal {
         let (Kind::List { rows: look, .. } | Kind::Tree { rows: look, .. }) = &n.kind else { unreachable!("a list or tree") };
         let cell = self.cell;
         let rows = state::items(st, n);
-        let per = look.lines.unwrap_or(1).max(1);
+        let per = look.height();
+        let cols = look.per_line();
         let laid = self.laid.clone();
-        let tx = text::Tx { lk, laid: &laid, id, keep: look.keep.map_or(0., |k| k as f32 * cell.w), line_h: cell.h };
         if rows.is_empty() {
             return lk.boxed(div(), &style::inner(st, "empty", &[]), (cell.w, cell.h), [0., 8., 0., 8.]).child(look.empty.clone().unwrap_or_else(|| "(nothing)".into())).into_any_element();
         }
-        let shown: Vec<AnyElement> = shown_rows(st, id, rows.len(), per)
-            .map(|k| {
-                let r = &rows[k];
-                let text = match &look.item {
-                    Some(t) => text::lines(&tx, t, r, Ink::default(), false, None),
-                    None => div().child(crate::model::scalar(Some(r))).into_any_element(),
-                };
-                let (target, under) = (id.to_string(), id.to_string());
-                lk.boxed(div().id(k).relative().flex_none(), &style::inner(st, "row", &style::row_states(st, n, k)), (cell.w, cell.h), [0.; 4])
-                    .child(measure(&self.laid, move |l, b| l.hits.push((b, hit(under, Some(k), None, false)))))
-                    .h(px(cell.h * per as f32))
-                    .flex()
-                    .flex_col()
-                    .justify_center()
-                    .overflow_hidden()
-                    .on_mouse_down(MouseButton::Left, cx.listener(move |this, e: &MouseDownEvent, _, cx| {
+        let mut shown: Vec<AnyElement> = Vec::new();
+        for k in shown_rows(st, id, rows.len(), per, cols) {
+            let r = &rows[k];
+            // A row is its template's nodes, or its item's text.
+            let body = match (&look.row, &look.item) {
+                (Some(t), _) => self.node(st, lk, &crate::model::row_instance(t, r), false, &format!("{id}/row{k}"), cx),
+                (None, Some(t)) => {
+                    let tx = text::Tx { lk, laid: &laid, id, keep: look.keep.map_or(0., |k| k as f32 * cell.w), line_h: cell.h };
+                    text::lines(&tx, t, r, Ink::default(), false, None)
+                }
+                (None, None) => div().child(crate::model::scalar(Some(r))).into_any_element(),
+            };
+            let (target, under) = (id.to_string(), id.to_string());
+            let row = lk
+                .boxed(div().id(k).relative().flex_none(), &style::inner(st, "row", &style::row_states(st, n, k)), (cell.w, cell.h), [0.; 4])
+                .child(measure(&self.laid, move |l, b| l.hits.push((b, hit(under, Some(k), None, false)))))
+                .h(px(cell.h * per as f32))
+                .flex()
+                .flex_col()
+                .justify_center()
+                .overflow_hidden()
+                .on_mouse_down(
+                    MouseButton::Left,
+                    cx.listener(move |this, e: &MouseDownEvent, _, cx| {
                         cx.stop_propagation();
                         this.send(row_press(&target, k, e), cx)
-                    }))
-                    .child(text)
-                    .into_any_element()
-            })
-            .collect();
+                    }),
+                )
+                .when(cols > 1, |d| d.flex_1().min_w_0())
+                .child(body);
+            shown.push(row.into_any_element());
+        }
+        // Rows `cols` to a line, each line as tall as a row and each row an equal share of it.
+        if cols > 1 {
+            let mut lines = Vec::new();
+            let mut it = shown.into_iter().peekable();
+            while it.peek().is_some() {
+                let mut line: Vec<AnyElement> = it.by_ref().take(cols).collect();
+                while line.len() < cols {
+                    line.push(div().flex_1().into_any_element());
+                }
+                lines.push(div().flex().flex_row().flex_none().w_full().children(line).into_any_element());
+            }
+            shown = lines;
+        }
         let (fits, wheel) = (id.to_string(), id.to_string());
         div()
             .id(SharedString::from(format!("rows-{id}")))
@@ -647,7 +671,7 @@ impl Portal {
             .min_h(px(0.))
             .overflow_hidden()
             // The items it has room for: the wheel and paging move by them.
-            .child(measure(&self.laid, move |l, b| l.sizes.push((fits, b, per))))
+            .child(measure(&self.laid, move |l, b| l.sizes.push((fits, b, per, cols as u16))))
             .on_scroll_wheel(cx.listener(move |this, e: &ScrollWheelEvent, _, cx| this.wheel(&wheel, e, cx)))
             .children(shown)
             .into_any_element()
@@ -673,7 +697,7 @@ impl Portal {
         }
         let (fits, under) = (id.to_string(), id.to_string());
         text = text.child(measure(&self.laid, move |l, b| {
-            l.sizes.push((fits, b, 1));
+            l.sizes.push((fits, b, 1, 1));
             l.hits.push((b, hit(under, None, None, true)));
         }));
         match doc {
@@ -936,12 +960,13 @@ fn md_inks<'a>(st: &'a State, lk: &'a Look<'a>) -> impl Fn(Md) -> Ink + 'a {
 /// The rows of a list or table to draw: from its first shown row (`state::first_row`), as many
 /// as the last frame said fit, and one more for a row partly in view. Before any frame has said,
 /// up to 200 rows (clipped to what shows).
-fn shown_rows(st: &State, id: &str, len: usize, per: u16) -> std::ops::Range<usize> {
+fn shown_rows(st: &State, id: &str, len: usize, per: u16, cols: usize) -> std::ops::Range<usize> {
     let local = st.local.get(id);
     let fit = local.map_or(0, |l| l.rows as usize);
-    let fit = if fit == 0 { 200 / per.max(1) as usize } else { fit };
-    let from = state::first_row(local, len, fit);
-    from..(from + fit + 1).min(len)
+    let fit = if fit == 0 { 200 / per.max(1) as usize * cols } else { fit };
+    let from = state::first_shown(local, len, fit, cols);
+    // A line more than fits, so a partly shown one at the bottom is drawn.
+    from..(from + fit + cols).min(len)
 }
 
 /// A selected row's ink, focused or not.
@@ -963,7 +988,7 @@ fn handover(laid: &Shared, shown: &RefCell<DrawnHits>, engine: &Engine, cell: Ce
     let drawn = Drawn {
         rects: l.rects.into_iter().map(|(id, b)| (id, cell.rect(b))).collect(),
         hits: l.hits.iter().map(|(b, h)| Hit { rect: cell.rect(*b), ..h.clone() }).collect(),
-        sizes: l.sizes.into_iter().map(|(id, b, per)| { let (w, h) = cell.fit(b); (id, w, h / per.max(1)) }).collect(),
+        sizes: l.sizes.into_iter().map(|(id, b, per, cols)| { let (w, h) = cell.fit(b); (id, w, h / per.max(1) * cols.max(1)) }).collect(),
         areas: l.areas.into_iter().map(|(id, b)| { let (w, h) = cell.fit(b); (id, w, h) }).collect(),
         wake,
         cut: l.cut,

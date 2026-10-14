@@ -99,7 +99,17 @@ fictty theme paper                                        # choose a loaded them
   `Multiple values`, and its first edit puts what it then holds into every one. A field left
   alone writes nothing, so a caption that differs per row keeps its own while a date is typed
   once for all. The readback shows `(3 entries)` or `(3 entries, mixed)`; the mixed field's own
-  text is the entry `$mixed/<id>`, never saved.
+  text is the entry `$mixed/<id>`, never saved. ⌘Z on a mixed field steps back in each entry's
+  own history.
+- **Rows as nodes**: a list's `row` is a node drawn for each row instead of `item`, its
+  `{$item}` and `{$item.path}` filled from the row as an `each` template's are (a picture over
+  a name: `{"type": "col", "size": 8, "children": [{"type": "image", "src": "{$item.thumb}"},
+  {"type": "text", "size": 1, "text": "{$item.name}"}]}`). It's as tall as its `size` in
+  cells. A press anywhere in it is a press on the row, so selection, `multi` picking, keys and
+  scrolling are the list's as ever; its nodes take no ids or clicks of their own. `cols: 3`
+  lays rows three to a line: a grid, where ↑/↓ move a line and ←/→ a row, and the view scrolls
+  by whole lines. The readback's text for such a row is what its nodes show (`/thumbs/a.png ·
+  a name`). The window draws them; a terminal shows the row's value.
 - **Repeating**: `{"type": "each", "bind": "open", "template": {…}}` draws the template once per
   item of the bound array, top to bottom (`"row": true` side by side). In the template,
   `{$item}` and `{$item.path}` are filled from the item (`"id": "panel-{$item.id}"`,

@@ -2,7 +2,7 @@
 //! the terminal, the socket and child processes; it feeds messages in and carries effects out.
 //! `State` serializes, so `fictty get --state` shows exactly what is drawn.
 
-use crate::model::{Action, Kind, LayerSpec, Node, ThemeSpec, Ui, lookup};
+use crate::model::{Action, Kind, LayerSpec, Node, Rows, ThemeSpec, Ui, lookup};
 use crate::store::{Body, Entry, Write};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -329,12 +329,27 @@ fn is_zero(n: &u16) -> bool {
 /// The first row a list of `len` rows shows in `fit` rows: where the wheel left it, else where
 /// the selection is in view (at the bottom when it's further down).
 pub fn first_row(local: Option<&Local>, len: usize, fit: usize) -> usize {
+    first_shown(local, len, fit, 1)
+}
+
+/// The first row shown when rows go `cols` to a line: always the start of a line, and `fit`
+/// rows (whole lines of them) from there show.
+pub fn first_shown(local: Option<&Local>, len: usize, fit: usize, cols: usize) -> usize {
+    let cols = cols.max(1);
+    let lines = (fit / cols).max(1);
     let sel = local.map(|l| l.selected).unwrap_or(0);
-    let follow = (sel + 1).saturating_sub(fit.max(1));
+    let follow = (sel / cols + 1).saturating_sub(lines) * cols;
+    let last = len.saturating_sub(1) / cols;
+    let most = (last + 1).saturating_sub(lines) * cols;
     match local.and_then(|l| l.top) {
-        Some(top) => top.min(len.saturating_sub(fit)),
+        Some(top) => (top / cols * cols).min(most),
         None => follow,
     }
+}
+
+/// How many rows to a line node `n` lays out (a list's `cols`).
+fn per_line(n: &Node) -> usize {
+    n.rows().map_or(1, Rows::per_line)
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -819,9 +834,10 @@ fn apply(st: &mut State, msg: Msg) -> Vec<Effect> {
                 // Not drawn yet (or not a list): the wheel moves the selection.
                 return step(st, |sel, len| sel.saturating_add_signed(by).min(len.saturating_sub(1)));
             }
-            // The wheel scrolls the view three rows a notch; the selection stays where it is.
-            let from = first_row(st.local.get(&id), len, rows);
-            let top = from.saturating_add_signed(by * 3).min(len.saturating_sub(rows));
+            // The wheel scrolls the view three lines a notch; the selection stays where it is.
+            let cols = per_line(n);
+            let from = first_shown(st.local.get(&id), len, rows, cols);
+            let top = from.saturating_add_signed(by * 3 * cols as isize).min(len.saturating_sub(rows));
             st.local.entry(id).or_default().top = Some(top);
             vec![]
         }
@@ -1679,6 +1695,14 @@ fn on_doc(st: &mut State, id: &str, msg: caretline::Msg, by: &str) -> Vec<caretl
         return on_one_doc(st, id, msg, by);
     }
     let Some(key) = doc_key(st, node) else { return vec![] };
+    if key.starts_with(MIXED) && matches!(msg, caretline::Msg::Undo | caretline::Msg::Redo) {
+        // Entries that differ each step back (or on) through their own history.
+        for k in &keys {
+            let view = st.local.get(id).and_then(|l| l.editors.get(k)).cloned().unwrap_or_else(|| caretline::View::new(caretline::Viewport { width: 1, height: 1 }));
+            mirror_into(st, id, k, msg.clone(), view, by);
+        }
+        return vec![];
+    }
     if key.starts_with(MIXED) {
         let fx = on_one_doc(st, id, msg, by);
         let text = entry_text(st, &key);
@@ -1698,38 +1722,41 @@ fn on_doc(st: &mut State, id: &str, msg: caretline::Msg, by: &str) -> Vec<caretl
         return fx;
     }
     let before = st.local.get(id).and_then(|l| l.editors.get(&key)).cloned();
-    let rev = st.store.get(&key).map(|e| e.rev);
     let fx = on_one_doc(st, id, msg.clone(), by);
-    if st.store.get(&key).map(|e| e.rev) == rev {
-        return fx;
-    }
-    // The text changed: the same change in every other picked row's entry, from where the
-    // caret was in this one.
+    // Every message, not only edits, goes to every other picked row's entry from where the caret
+    // was in this one: a document keeps its own clock and clipboard, and they decide how typing
+    // groups into undo steps and what a paste puts in, so the entries stay alike step by step.
     let Some(before) = before else { return fx };
     for k in keys.iter().filter(|k| **k != key) {
-        let mut views = take_views(st, k);
-        let Some(Entry { body: Body::Text { doc }, .. }) = st.store.get_mut(k) else {
-            put_views(st, k, views);
-            continue;
-        };
-        let changed = doc.rev;
-        let mut vs: Vec<caretline::View> = views.iter().map(|(_, v)| v.clone()).collect();
-        vs.push(before.clone());
-        let acting = vs.len() - 1;
-        caretline::views::update_doc(doc, &mut vs, acting, msg.clone());
-        let mine = vs.pop().expect("pushed");
-        let changed = doc.rev != changed;
-        for ((_, v), new) in views.iter_mut().zip(vs) {
-            *v = new;
-        }
-        views.retain(|(v, _)| v != id);
-        views.push((id.to_string(), mine));
-        put_views(st, k, views);
-        if changed {
-            wrote(st, k, by);
-        }
+        mirror_into(st, id, k, msg.clone(), before.clone(), by);
     }
     fx
+}
+
+/// A caretline message into entry `key` through `view` as editor `id`'s view of it; every other
+/// editor on it follows, and a change of text is a write by `by`.
+fn mirror_into(st: &mut State, id: &str, key: &str, msg: caretline::Msg, view: caretline::View, by: &str) {
+    let mut views = take_views(st, key);
+    views.retain(|(v, _)| v != id);
+    let Some(Entry { body: Body::Text { doc }, .. }) = st.store.get_mut(key) else {
+        put_views(st, key, views);
+        return;
+    };
+    let rev = doc.rev;
+    let mut vs: Vec<caretline::View> = views.iter().map(|(_, v)| v.clone()).collect();
+    vs.push(view);
+    let acting = vs.len() - 1;
+    caretline::views::update_doc(doc, &mut vs, acting, msg);
+    let mine = vs.pop().expect("pushed");
+    let changed = doc.rev != rev;
+    for ((_, v), new) in views.iter_mut().zip(vs) {
+        *v = new;
+    }
+    views.push((id.to_string(), mine));
+    put_views(st, key, views);
+    if changed {
+        wrote(st, key, by);
+    }
 }
 
 /// `on_doc` for the one entry editor `id` shows.
@@ -1932,6 +1959,14 @@ fn resolve(st: &State, key: &str) -> Option<Action> {
     // Esc leaves a text field (one with nothing selected; see `editing`).
     if key == "esc" && focused.is_some_and(|n| n.field().is_some()) {
         return Some(Action::Named("leave".into()));
+    }
+    // Rows in a grid: ←/→ go a row, as ↑/↓ go a line.
+    if focused.is_some_and(|n| per_line(n) > 1) {
+        match key {
+            "h" | "left" => return Some(Action::Named("prev_row".into())),
+            "l" | "right" => return Some(Action::Named("next_row".into())),
+            _ => {}
+        }
     }
     // A list that picks several rows: ⇧ with a move extends the range, ⌘A (⌥A) takes them all,
     // and Esc goes back to the selected row alone.
@@ -2208,8 +2243,16 @@ fn act(st: &mut State, a: Action) -> Vec<Effect> {
         Action::Named(n) => match n.as_str() {
             "quit" => vec![Effect::Quit],
             "refresh" => refresh(st),
-            "down" => step(st, |sel, len| (sel + 1).min(len.saturating_sub(1))),
-            "up" => step(st, |sel, _| sel.saturating_sub(1)),
+            "down" => {
+                let by = focused_cols(st);
+                step(st, move |sel, len| if sel + by < len { sel + by } else { sel })
+            }
+            "up" => {
+                let by = focused_cols(st);
+                step(st, move |sel, _| sel.checked_sub(by).unwrap_or(sel))
+            }
+            "next_row" => step(st, |sel, len| (sel + 1).min(len.saturating_sub(1))),
+            "prev_row" => step(st, |sel, _| sel.saturating_sub(1)),
             "top" => step(st, |_, _| 0),
             "bottom" => step(st, |_, len| len.saturating_sub(1)),
             "tab_next" => switch(st, 1),
@@ -2220,8 +2263,14 @@ fn act(st: &mut State, a: Action) -> Vec<Effect> {
             "leave" => leave(st),
             "focus_next" => cycle(st, 1),
             "focus_prev" => cycle(st, -1),
-            "extend_down" => extend(st, 1),
-            "extend_up" => extend(st, -1),
+            "extend_down" => {
+                let by = focused_cols(st) as isize;
+                extend(st, by)
+            }
+            "extend_up" => {
+                let by = focused_cols(st) as isize;
+                extend(st, -by)
+            }
             "pick_all" => pick_all(st),
             "unpick" => {
                 if let Some(l) = st.focus.clone().and_then(|f| st.local.get_mut(&f)) {
@@ -2356,6 +2405,11 @@ fn pick(st: &mut State, id: &str, row: usize, how: Pick) {
     {
         local.top = None;
     }
+}
+
+/// How many rows to a line the focused node lays out.
+fn focused_cols(st: &State) -> usize {
+    st.focus.as_deref().and_then(|f| tree!(st).find(f)).map_or(1, per_line)
 }
 
 /// ⇧↓ and ⇧↑ on a `multi` list: the range from the anchor grows or shrinks by a row.

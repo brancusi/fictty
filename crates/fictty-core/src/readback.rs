@@ -127,9 +127,10 @@ fn shown(st: &State, n: &Node, depth: usize, (rects, cut): Frame) -> Shown {
             s.rows = Some(items.len());
             if !items.is_empty() {
                 s.selected = Some(at);
-                s.text = match (&rows.item, items.get(at)) {
-                    (Some(t), Some(r)) => lines(t, r),
-                    (None, r) => scalar(r),
+                s.text = match (&rows.item, &rows.row, items.get(at)) {
+                    (Some(t), _, Some(r)) => lines(t, r),
+                    (None, Some(row), Some(r)) => row_text(row, r),
+                    (None, _, r) => scalar(r),
                     _ => String::new(),
                 };
             }
@@ -158,6 +159,24 @@ fn shown(st: &State, n: &Node, depth: usize, (rects, cut): Frame) -> Shown {
 }
 
 /// The readback as an outline, a line per node, indented by depth:
+/// What a row drawn from a node template shows: its texts, labels and pictures' files, in order.
+fn row_text(template: &Node, row: &Value) -> String {
+    let n = crate::model::row_instance(template, row);
+    let mut all = Vec::new();
+    n.walk(&mut all);
+    let parts: Vec<String> = all
+        .into_iter()
+        .filter_map(|n| match &n.kind {
+            Kind::Text { text, .. } => Some(lines(text, &Value::Null)),
+            Kind::Button { label } => Some(fill(label, &Value::Null)),
+            Kind::Image { src, .. } => Some(crate::model::fill_raw(src, &Value::Null)),
+            _ => None,
+        })
+        .filter(|t| !t.is_empty())
+        .collect();
+    parts.join(" · ")
+}
+
 fn is_zero(n: &usize) -> bool {
     *n == 0
 }
