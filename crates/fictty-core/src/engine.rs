@@ -996,7 +996,7 @@ impl App {
                 std::env::set_var("FICTTY", me);
             }
         }
-        serve(&self.socket, tx.clone())?;
+        let bound = serve(&self.socket, tx.clone())?;
         // The host's notices join the queue like everything else.
         let (ntx, nrx) = mpsc::channel::<Msg>();
         let fwd = tx.clone();
@@ -1042,6 +1042,7 @@ impl App {
             store: self.store,
             saved_writes,
             held,
+            bound,
         })
     }
 }
@@ -1098,6 +1099,9 @@ pub struct Live {
     /// The store's file, and the writes it holds.
     store: Option<PathBuf>,
     saved_writes: u64,
+    /// The socket file this screen made (its device and inode): the one it removes, and no
+    /// other screen's that took the path since.
+    bound: (u64, u64),
     /// The store file's lock, held while the screen runs.
     #[allow(dead_code)]
     held: Option<std::fs::File>,
@@ -1271,21 +1275,36 @@ impl Live {
         let path = std::env::temp_dir().join(format!("fictty-state-{}.json", std::process::id()));
         std::fs::write(&path, serde_json::to_vec(&self.st)?)?;
         self.d.stop_streams();
-        let _ = std::fs::remove_file(&self.socket);
+        unbind(&self.socket, self.bound);
         use std::os::unix::process::CommandExt;
         let mut cmd = Command::new(bin);
         cmd.args(std::env::args_os().skip(1)).env("FICTTY_RESTORE", &path);
         // Only returns if the exec failed.
         let err = cmd.exec();
         self.st.status = Some(format!("upgrade to {bin} failed: {err}"));
-        serve(&self.socket, self.d.tx.clone())
+        self.bound = serve(&self.socket, self.d.tx.clone())?;
+        Ok(())
     }
 }
 
 impl Drop for Live {
     fn drop(&mut self) {
         self.d.stop_streams();
-        let _ = std::fs::remove_file(&self.socket);
+        unbind(&self.socket, self.bound);
+    }
+}
+
+/// A socket file's device and inode.
+fn identity(path: &Path) -> Option<(u64, u64)> {
+    use std::os::unix::fs::MetadataExt;
+    std::fs::symlink_metadata(path).ok().map(|m| (m.dev(), m.ino()))
+}
+
+/// Remove the socket file at `path` if it's still the one this screen made: a screen that
+/// started on the same path while this one was ending keeps its own.
+fn unbind(path: &Path, bound: (u64, u64)) {
+    if identity(path) == Some(bound) {
+        let _ = std::fs::remove_file(path);
     }
 }
 
@@ -1379,7 +1398,9 @@ fn mtime(p: &Path) -> Option<SystemTime> {
 }
 
 /// Listen for request lines; each gets one reply line.
-fn serve(path: &Path, tx: Sender<Event>) -> Result<()> {
+/// Listen on `path`, answering each request line through the engine's queue, and say which file
+/// that made (its device and inode).
+fn serve(path: &Path, tx: Sender<Event>) -> Result<(u64, u64)> {
     if UnixStream::connect(path).is_ok() {
         bail!("a screen is already running on {} (set FICTTY_SOCKET for another)", path.display());
     }
@@ -1411,7 +1432,7 @@ fn serve(path: &Path, tx: Sender<Event>) -> Result<()> {
             });
         }
     });
-    Ok(())
+    identity(path).with_context(|| format!("{} went as it was made", path.display()))
 }
 
 /// Send one request to a running screen.
