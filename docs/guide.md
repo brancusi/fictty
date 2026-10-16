@@ -70,7 +70,7 @@ fictty theme paper                                        # choose a loaded them
   `editor`, `input`, `button`; `tabs`; `sparkline`, `chart`, `bars` (up, or `horizontal`), `gauge`;
   and the pixel ones below. Every node can have `id`, `size` (`12` cells, `"48px"`, `"30%"`, `"*"`,
   `"2*"`; a terminal rounds pixels to its cells) with `min` and `max`, `title`, `border`,
-  `pad`, `margin`, `self`, `align`, `variant`, `tone`, `style`, `bind`, `keys`, `click`, `when`,
+  `pad`, `margin`, `self`, `aspect`, `align`, `variant`, `tone`, `style`, `bind`, `keys`, `click`, `when`,
   and in a stack `float` and `modal`.
 - **Lengths**: `pad`, `margin`, `gap`, `min` and `max` take cells (`1`), pixels (`"8px"`) or a
   name from the theme's `space` (`"s3"`), the same lengths a style's `pad` takes. `pad` (space
@@ -88,6 +88,12 @@ fictty theme paper                                        # choose a loaded them
   room along a container (a share takes it all): `{"type": "col", "justify": "center", "items":
   "center", "children": [{"type": "text", "size": 2, "max": 40, …}]}` sits in the middle both
   ways. An unknown word fails to parse, naming the ones it takes. All read back as written.
+- **Aspect** (the window's): `"aspect": "16/9"` (or a number, width over height) keeps a node's
+  shape. It takes the side it's given and works out the other: its `size` along its row or
+  column, else all the room across, less its `margin` (a picture as wide as its column, as tall
+  as that makes it). A node that has neither, one not stretched across and with no `size`, has
+  nothing to work from, so give it a `size`. Anything but a number above nothing or `"w/h"`
+  fails to parse.
 - **Lists and trees** share their row options: `item` (a template), `row_variant` and `variants`
   (a template per kind of row) with `skip` (rows that can't be selected), `mark` and `lead`,
   `selected` (a style), `lines` (rows of several lines), `keep` (cells the left side keeps before

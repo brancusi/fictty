@@ -383,6 +383,10 @@ pub struct Node {
     /// Where it sits across its row or column, over the container's `items`.
     #[serde(rename = "self", default, skip_serializing_if = "Option::is_none")]
     pub align_self: Option<Align>,
+    /// Width over height, a number (`1.5`) or `"16/9"`. With no `size`, its length along its
+    /// row or column comes from how big it is across.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub aspect: Option<Aspect>,
     #[serde(flatten)]
     pub kind: Kind,
 }
@@ -429,6 +433,7 @@ impl Default for Node {
             min: None,
             max: None,
             align_self: None,
+            aspect: None,
             kind: Kind::Text { text: String::new(), wrap: None, lines: None },
         }
     }
@@ -993,6 +998,39 @@ pub enum Justify {
     Around,
 }
 
+/// Width over height: a number (`1.5`), or `"16/9"`, kept as written.
+#[derive(Clone, Debug, PartialEq)]
+pub enum Aspect {
+    Number(f32),
+    Ratio(String),
+}
+
+// A whole number as an integer, as `Len`'s cells.
+impl Serialize for Aspect {
+    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Aspect::Number(n) => Len::Cells(*n).serialize(s),
+            Aspect::Ratio(r) => s.serialize_str(r),
+        }
+    }
+}
+
+impl Aspect {
+    pub fn ratio(&self) -> f32 {
+        match self {
+            Aspect::Number(n) => *n,
+            Aspect::Ratio(s) => ratio_of(s).unwrap_or(1.),
+        }
+    }
+}
+
+/// `"16/9"` as 16 over 9, both more than nothing.
+fn ratio_of(s: &str) -> Option<f32> {
+    let (w, h) = s.split_once('/')?;
+    let (w, h) = (w.trim().parse::<f32>().ok()?, h.trim().parse::<f32>().ok()?);
+    (w > 0. && h > 0. && (w / h).is_finite()).then_some(w / h)
+}
+
 impl Len {
     /// In pixels, a cell being `per` of them: cells, `"8px"`, or a number as text. A `space`
     /// name isn't one until the theme fills it in (`style::Theme::len`).
@@ -1060,6 +1098,16 @@ impl<'de> Deserialize<'de> for Gap {
             Value::Array(a) if a.len() == 2 => lens_of(a).map(Gap::XY),
             v @ Value::Array(_) => Err(wrong("a gap is one length or [x, y]", &v)),
             v => len_of(v).map(Gap::One),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for Aspect {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        match Value::deserialize(d)? {
+            Value::Number(n) if n.as_f64().is_some_and(|n| n > 0.) => Ok(Aspect::Number(n.as_f64().unwrap_or(1.) as f32)),
+            Value::String(s) if ratio_of(&s).is_some() => Ok(Aspect::Ratio(s)),
+            v => Err(wrong("an aspect is width over height, a number (1.5) or \"16/9\"", &v)),
         }
     }
 }
@@ -2141,6 +2189,20 @@ mod tests {
         ] {
             let e = serde_json::from_value::<Node>(v.clone()).unwrap_err().to_string();
             assert!(e.contains(says), "{v}: {e}");
+        }
+    }
+
+    #[test]
+    fn an_aspect_is_a_number_or_a_ratio_kept_as_written() {
+        for (v, ratio) in [(json!(1), 1.), (json!(1.5), 1.5), (json!("16/9"), 16. / 9.), (json!(" 4 / 3 "), 4. / 3.)] {
+            let n: Node = serde_json::from_value(json!({"type": "text", "text": "x", "aspect": v})).unwrap();
+            let a = n.aspect.as_ref().unwrap();
+            assert!((a.ratio() - ratio).abs() < 1e-6, "{v}");
+            assert_eq!(serde_json::to_value(&n).unwrap()["aspect"], v, "read back as written");
+        }
+        for v in [json!(0), json!(-1), json!("16:9"), json!("1/0"), json!("wide"), json!(true)] {
+            let e = serde_json::from_value::<Node>(json!({"type": "text", "text": "x", "aspect": v})).unwrap_err().to_string();
+            assert!(e.contains("an aspect is width over height"), "{v}: {e}");
         }
     }
 }

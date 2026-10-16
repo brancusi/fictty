@@ -723,6 +723,37 @@ fn an_each_keeps_its_justify_and_items() {
 }
 
 #[test]
+fn an_aspect_gives_a_node_its_length_from_how_big_it_is_across() {
+    // Columns are 8.4 px and rows 24: sixty columns at 7/2 are six rows; five rows at 1.4 are
+    // twenty columns.
+    let ui = json!({"root": {"type": "col", "id": "c", "children": [
+        {"type": "text", "id": "wide", "text": "W", "aspect": "7/2"},
+        {"type": "row", "id": "r", "size": 5, "children": [
+            {"type": "text", "id": "tall", "text": "T", "aspect": 1.4},
+            {"type": "text", "id": "rest", "text": "R"}]},
+        {"type": "text", "id": "after", "text": "A"}]}});
+    let mut s = window(ui, 62, 16);
+    let (c, wide, r, tall, rest) = ["c", "wide", "r", "tall", "rest"].map(|id| node(&mut s, id).rect.unwrap()).into();
+    assert_eq!(c.width, 60);
+    assert_eq!((wide.width, wide.height, r.y), (60, 6, wide.y + 6), "as tall as its width makes it: {wide:?}");
+    assert_eq!((tall.width, tall.height, rest.x), (20, 5, tall.x + 20), "as wide as its height makes it: {tall:?} {rest:?}");
+}
+
+#[test]
+fn an_aspect_takes_the_side_it_is_given_less_its_margin() {
+    let ui = json!({"root": {"type": "col", "id": "c", "children": [
+        {"type": "text", "id": "m", "text": "M", "aspect": "7/2", "margin": [5, 0]},
+        {"type": "text", "id": "z", "text": "Z", "aspect": "7/2", "size": 3, "self": "center"},
+        {"type": "text", "id": "after", "text": "A"}]}});
+    let mut s = window(ui, 62, 20);
+    let [c, m, z, after] = ["c", "m", "z", "after"].map(|id| node(&mut s, id).rect.unwrap());
+    assert_eq!((m.x - c.x, m.width, m.height), (5, 50, 5), "fifty columns across at 7/2 are five rows: {m:?}");
+    // Three rows are 72 px, at 7/2 252 px: thirty columns, in the middle.
+    assert_eq!((z.y, z.width, z.height, z.x - c.x), (m.y + 5, 30, 3, 15), "its size, and as wide as that makes it: {z:?}");
+    assert_eq!(after.y, z.y + 3);
+}
+
+#[test]
 fn a_floats_margin_takes_four_sides() {
     let ui = json!({"root": {"type": "stack", "id": "s", "children": [
         {"type": "list", "id": "under", "items": rows(20)},

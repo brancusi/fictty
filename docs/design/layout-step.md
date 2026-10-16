@@ -59,7 +59,12 @@ The Kestrel demo plays in a real window on it.
    node maps to Taffy's `align_self`; `justify` and `items` on `col`, `row` and `each` to
    `justify_content` and `align_items`. Unknown words fail to parse with a clear error, as
    `Lens` does. Read back as written. The guide's layout section.
-2. **`aspect`** (`"16/9"` or a number) to Taffy's `aspect_ratio`, on any node.
+2. **`aspect`** (`"16/9"` or a number) to Taffy's `aspect_ratio`, on any node. Done 16 October
+   2026. Taffy 0.9 turns only a side the style gives into the other, never one it stretched a
+   node to, so an aspect node sits in a place of its own (`place-<key>`, taking its share,
+   bounds, margin and `self`) and is 100% of the side it's given there: its `size` along, else
+   the room across. Neither (not stretched, no `size`) has nothing to work from; `fit` may give
+   it its content's size.
 3. **`size: "fit"`.** `Size` (`model.rs`, `Size::measure`) gains `Fit`; in the window it's
    Taffy's `auto` basis with no grow, and text is measured by GPUI's own layout. This is the
    risky one (GPUI's ellipsis broke under Taffy's measuring in step 2d): test a `fit` text, button,

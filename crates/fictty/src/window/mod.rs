@@ -17,7 +17,7 @@ mod text;
 use crate::engine::{Drawn, Hit, Live, Rect};
 use look::{Ink, Look, inked, padded};
 use crate::style;
-use crate::model::{Align, Fit, Float, Justify, Kind, Len, Lens, Md, Measure, Node, Size, md_roles};
+use crate::model::{Align, Aspect, Fit, Float, Justify, Kind, Len, Lens, Md, Measure, Node, Size, md_roles};
 use crate::state::{self, Msg, State};
 use anyhow::Result;
 use gpui::{
@@ -296,6 +296,12 @@ fn sized(el: gpui::Stateful<gpui::Div>, n: &Node, along_row: bool, cell: Cell, t
             el.style().flex_grow = Some(w as f32);
             el
         }
+        // An aspect with no size is as long as how big it is across makes it.
+        None if n.aspect.is_some() => {
+            let mut el = el.flex_shrink().min_w(px(0.)).min_h(px(0.));
+            el.style().flex_grow = Some(0.);
+            el
+        }
         None => el.flex_1().min_w(px(0.)).min_h(px(0.)),
     };
     if let Some(m) = n.min.as_ref().and_then(|m| th.px(m, per)) {
@@ -378,7 +384,20 @@ impl Portal {
         // Everything clips what it holds, rows and columns too: a squeezed row's children would
         // spill over each other otherwise. A card's shadow is clipped where its row ends, so a
         // card takes a `margin` to give its shadow room.
-        let mut el = sized(div().id(SharedString::from(format!("n-{key}"))).relative().flex().flex_col().overflow_hidden(), n, along_row, cell, &th);
+        let el = div().id(SharedString::from(format!("n-{key}"))).relative().flex().flex_col().overflow_hidden();
+        // A node with an `aspect` sits in a place of its own that takes its share, bounds,
+        // margin and `self`, and it's all of the side it's given there: its `size` along, else
+        // the room across. Taffy turns a side the style gives into the other, never a side it
+        // stretched the node to.
+        let (mut el, place) = match n.aspect.as_ref().map(Aspect::ratio) {
+            Some(ratio) => {
+                let place = sized(div().id(SharedString::from(format!("place-{key}"))).flex().flex_col(), n, along_row, cell, &th);
+                let mut el = if n.size.is_some() == along_row { el.w(relative(1.)) } else { el.h(relative(1.)) }.flex_none();
+                el.style().aspect_ratio = Some(ratio);
+                (el, Some(place))
+            }
+            None => (sized(el, n, along_row, cell, &th), None),
+        };
         // Where it was laid out, for the readback and the mouse: noted before its children, so
         // the innermost hit comes last.
         if !id.is_empty() {
@@ -608,7 +627,10 @@ impl Portal {
                 }),
             );
         }
-        el.into_any_element()
+        match place {
+            Some(place) => place.child(el).into_any_element(),
+            None => el.into_any_element(),
+        }
     }
 
     /// A node floating in its stack where its `float` says: its own size (the stack's by default),
