@@ -79,7 +79,7 @@ embedding apps depend on `fictty` alone.
 - `examples/`: UIs and their feeds. `showcase/` is the demo the one-liners run (the tour's chapters
   are written by `tour.py`; `autopilot.sh` is its agent); `window/` is the wringer (nine screens
   and six themes for the window, `open.sh`, the test of done for expressive.md); `demo/` is the public demo, an agent building an app live
-  in the window (`open.sh`, `agent.py`; see docs/design/demo.md); `journal/` is Daybook, a journal written as data after
+  in the window (`open.sh`, `agent.py`; see docs/design/demo.md); `nocturne/` is a listening room that shows how far the window goes (`open.sh`, `nocturne.py` draws its art); `journal/` is Daybook, a journal written as data after
   Thought Control's, used daily to find what fictty lacks (`open.sh`, `journal.py`; its flows are
   `tests/journal.rs`); `stress/` and
   `finance/` are standalone; `thc/` and `pixels/` need Thought Control installed (they move to
