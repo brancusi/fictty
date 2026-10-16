@@ -17,7 +17,7 @@ mod text;
 use crate::engine::{Drawn, Hit, Live, Rect};
 use look::{Ink, Look, inked, padded};
 use crate::style;
-use crate::model::{Fit, Float, Kind, Len, Lens, Md, Measure, Node, Size, md_roles};
+use crate::model::{Align, Fit, Float, Justify, Kind, Len, Lens, Md, Measure, Node, Size, md_roles};
 use crate::state::{self, Msg, State};
 use anyhow::Result;
 use gpui::{
@@ -308,7 +308,30 @@ fn sized(el: gpui::Stateful<gpui::Div>, n: &Node, along_row: bool, cell: Cell, t
     if [t, r, b, l] != [0.; 4] {
         el = el.mt(px(t)).mr(px(r)).mb(px(b)).ml(px(l));
     }
+    el.style().align_self = n.align_self.map(across);
     el
+}
+
+/// `self` and `items` as flexbox's alignment across.
+fn across(a: Align) -> gpui::AlignItems {
+    match a {
+        Align::Start => gpui::AlignItems::FlexStart,
+        Align::Center => gpui::AlignItems::Center,
+        Align::End => gpui::AlignItems::FlexEnd,
+        Align::Stretch => gpui::AlignItems::Stretch,
+        Align::Baseline => gpui::AlignItems::Baseline,
+    }
+}
+
+/// `justify` as flexbox's along.
+fn along(j: Justify) -> gpui::JustifyContent {
+    match j {
+        Justify::Start => gpui::JustifyContent::FlexStart,
+        Justify::Center => gpui::JustifyContent::Center,
+        Justify::End => gpui::JustifyContent::FlexEnd,
+        Justify::Between => gpui::JustifyContent::SpaceBetween,
+        Justify::Around => gpui::JustifyContent::SpaceAround,
+    }
 }
 
 /// A press on row `k` of `id`: ⌘ (or ⌥) picks it in or out, ⇧ picks the range to it, and
@@ -387,7 +410,7 @@ impl Portal {
             el = el.gap_1().child(div().flex_none().w_full().text_sm().child(text::line(&tx, t, v, lk.ink(ink), false)));
         }
         let body: AnyElement = match &n.kind {
-            Kind::Col { children, gap } | Kind::Row { children, gap } => {
+            Kind::Col { children, gap, justify, items } | Kind::Row { children, gap, justify, items } => {
                 let row = matches!(n.kind, Kind::Row { .. });
                 let kids: Vec<AnyElement> = children.iter().enumerate().map(|(k, c)| self.node(st, lk, c, row, &format!("{key}.{k}"), cx)).collect();
                 let [gx, gy] = gap.as_ref().map_or([0.; 2], |g| {
@@ -395,7 +418,8 @@ impl Portal {
                     [th.px(x, cell.w).unwrap_or(0.), th.px(y, cell.h).unwrap_or(0.)]
                 });
                 let d = div().relative().flex().size_full().min_h(px(0.)).min_w(px(0.)).gap_x(px(gx)).gap_y(px(gy));
-                let d = if row { d.flex_row() } else { d.flex_col() };
+                let mut d = if row { d.flex_row() } else { d.flex_col() };
+                (d.style().justify_content, d.style().align_items) = (justify.map(along), items.map(across));
                 // `$width` and `$height` in a child's `when` are this node's inner size.
                 let sized: Vec<String> = children.iter().filter(|c| c.when.as_deref().is_some_and(state::sized)).filter_map(|c| c.id.clone()).collect();
                 let d = if sized.is_empty() { d } else { d.child(measure(&self.laid, move |l, b| l.areas.extend(sized.into_iter().map(|id| (id, b))))) };

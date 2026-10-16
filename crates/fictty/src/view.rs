@@ -670,7 +670,7 @@ fn node(cx: &mut Cx, n: &Node, f: &mut Frame, area: Rect) {
     };
     let id = n.id.clone().unwrap_or_default();
     match &n.kind {
-        Kind::Col { children, gap } | Kind::Row { children, gap } => {
+        Kind::Col { children, gap, .. } | Kind::Row { children, gap, .. } => {
             // `$width` and `$height` in a child's `when` are this node's inner size.
             let here = (inner.width, inner.height);
             for c in children {

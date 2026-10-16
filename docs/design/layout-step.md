@@ -53,7 +53,9 @@ The Kestrel demo plays in a real window on it.
 
 **Next, 3b (fit and alignment), as these commits, each with its tests in `tests/window.rs`:**
 
-1. **`self`, `justify`, `items`.** No measuring, so it's the safe first commit: `self` on any
+1. **`self`, `justify`, `items`.** Done 16 October 2026: `Align` and `Justify` in the core,
+   `justify` and `items` beside `gap` on `col`, `row` and `each` (a node-level `items` would
+   take a list's), `self` on every node; four tests in the window. No measuring, so it's the safe first commit: `self` on any
    node maps to Taffy's `align_self`; `justify` and `items` on `col`, `row` and `each` to
    `justify_content` and `align_items`. Unknown words fail to parse with a clear error, as
    `Lens` does. Read back as written. The guide's layout section.

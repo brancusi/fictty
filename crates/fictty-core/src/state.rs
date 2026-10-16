@@ -160,10 +160,11 @@ fn has_each(n: &Node) -> bool {
 /// its bound array.
 fn expand_node(st: &State, n: &Node) -> Node {
     match &n.kind {
-        Kind::Each { template, row, gap } => {
+        Kind::Each { template, row, gap, justify, items: across } => {
             let items = n.bind.as_deref().and_then(|b| value_of(st, b)).and_then(Value::as_array).cloned().unwrap_or_default();
             let children: Vec<Node> = items.iter().map(|it| expand_node(st, &crate::model::instance(template, it))).collect();
-            let kind = if *row { Kind::Row { children, gap: gap.clone() } } else { Kind::Col { children, gap: gap.clone() } };
+            let (gap, justify, items) = (gap.clone(), *justify, *across);
+            let kind = if *row { Kind::Row { children, gap, justify, items } } else { Kind::Col { children, gap, justify, items } };
             Node { kind, ..n.clone() }
         }
         _ if !has_each(n) => n.clone(),

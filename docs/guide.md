@@ -70,8 +70,8 @@ fictty theme paper                                        # choose a loaded them
   `editor`, `input`, `button`; `tabs`; `sparkline`, `chart`, `bars` (up, or `horizontal`), `gauge`;
   and the pixel ones below. Every node can have `id`, `size` (`12` cells, `"48px"`, `"30%"`, `"*"`,
   `"2*"`; a terminal rounds pixels to its cells) with `min` and `max`, `title`, `border`,
-  `pad`, `margin`, `align`, `variant`, `tone`, `style`, `bind`, `keys`, `click`, `when`, and in
-  a stack `float` and `modal`.
+  `pad`, `margin`, `self`, `align`, `variant`, `tone`, `style`, `bind`, `keys`, `click`, `when`,
+  and in a stack `float` and `modal`.
 - **Lengths**: `pad`, `margin`, `gap`, `min` and `max` take cells (`1`), pixels (`"8px"`) or a
   name from the theme's `space` (`"s3"`), the same lengths a style's `pad` takes. `pad` (space
   inside, over its style's) and `margin` (space outside, between a node and what's beside it)
@@ -79,6 +79,15 @@ fictty theme paper                                        # choose a loaded them
   as CSS: `"pad": [1, 0]` is a cell either side. A `gap` is one length or `[x, y]`. A length
   that isn't one, or names a `space` the theme doesn't have, is a problem (`get --state`'s
   `problems`, the status line). The window takes every unit; a terminal takes cells only.
+- **Alignment** (the window's): a `col`, `row` or `each` puts its children along it with
+  `justify`, in the room they leave: `start` (the default), `center`, `end`, `between` (the room
+  between them) or `around` (around each). It puts them across with `items`: `stretch` (the
+  default, as wide as a column or as tall as a row), `start`, `center`, `end` or `baseline`. A
+  node's own `self` takes the same words and overrides its container's `items` for it. A node
+  that isn't stretched is as big across as its content. Only children with a fixed `size` leave
+  room along a container (a share takes it all): `{"type": "col", "justify": "center", "items":
+  "center", "children": [{"type": "text", "size": 2, "max": 40, …}]}` sits in the middle both
+  ways. An unknown word fails to parse, naming the ones it takes. All read back as written.
 - **Lists and trees** share their row options: `item` (a template), `row_variant` and `variants`
   (a template per kind of row) with `skip` (rows that can't be selected), `mark` and `lead`,
   `selected` (a style), `lines` (rows of several lines), `keep` (cells the left side keeps before

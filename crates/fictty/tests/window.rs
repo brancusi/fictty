@@ -670,6 +670,59 @@ fn min_max_and_gap_take_any_unit() {
 }
 
 #[test]
+fn justify_puts_children_along_a_row_in_the_room_they_leave() {
+    let ui = |justify: &str| json!({"root": {"type": "row", "id": "r", "justify": justify, "children": [
+        {"type": "text", "id": "a", "text": "A", "size": 10},
+        {"type": "text", "id": "b", "text": "B", "size": 10},
+        {"type": "text", "id": "c", "text": "C", "size": 10}]}});
+    // Thirty cells of children in a row of sixty leave thirty.
+    for (justify, [a, b, c]) in [("start", [0, 10, 20]), ("center", [15, 25, 35]), ("end", [30, 40, 50]), ("between", [0, 25, 50]), ("around", [5, 25, 45])] {
+        let mut s = window(ui(justify), 62, 3);
+        let r = node(&mut s, "r").rect.unwrap();
+        assert_eq!(r.width, 60);
+        let xs = ["a", "b", "c"].map(|id| node(&mut s, id).rect.unwrap().x - r.x);
+        assert_eq!(xs, [a, b, c], "justify {justify}");
+    }
+}
+
+#[test]
+fn items_puts_children_across_a_row_and_self_overrides_it() {
+    let ui = |items: &str| json!({"root": {"type": "row", "id": "r", "items": items, "children": [
+        {"type": "text", "id": "a", "text": "A", "size": 10},
+        {"type": "text", "id": "b", "text": "B", "size": 10, "self": "end"},
+        {"type": "text", "id": "c", "text": "C", "size": 10, "self": "stretch"}]}});
+    for (items, a_y, a_h) in [("start", 0, 1), ("center", 3, 1), ("end", 6, 1), ("stretch", 0, 7)] {
+        let mut s = window(ui(items), 30, 10);
+        let r = node(&mut s, "r").rect.unwrap();
+        assert_eq!(r.height, 7);
+        let (a, b, c) = (node(&mut s, "a").rect.unwrap(), node(&mut s, "b").rect.unwrap(), node(&mut s, "c").rect.unwrap());
+        assert_eq!((a.y - r.y, a.height), (a_y, a_h), "items {items}: {a:?} in {r:?}");
+        assert_eq!((b.y - r.y, b.height), (6, 1), "items {items}: self end sits at the bottom: {b:?}");
+        assert_eq!((c.y, c.height), (r.y, r.height), "items {items}: self stretch fills it: {c:?}");
+    }
+}
+
+#[test]
+fn a_column_centres_its_children_both_ways() {
+    let ui = json!({"root": {"type": "col", "id": "c", "justify": "center", "items": "center", "children": [
+        {"type": "text", "id": "t", "text": "middle", "size": 2, "max": 20}]}});
+    let mut s = window(ui, 40, 11);
+    let (c, t) = (node(&mut s, "c").rect.unwrap(), node(&mut s, "t").rect.unwrap());
+    assert_eq!((t.y - c.y, t.height), ((c.height - 2) / 2, 2), "down the middle: {t:?} in {c:?}");
+    assert_eq!(t.x - c.x + t.width / 2, c.width / 2, "across the middle: {t:?} in {c:?}");
+}
+
+#[test]
+fn an_each_keeps_its_justify_and_items() {
+    let ui = json!({"store": {"xs": [1, 2]}, "root": {"type": "each", "id": "e", "bind": "xs", "row": true, "justify": "end", "items": "end",
+        "template": {"type": "text", "id": "x{$item}", "text": "{$item}", "size": 5}}});
+    let mut s = window(ui, 30, 7);
+    let (e, x1, x2) = (node(&mut s, "e").rect.unwrap(), node(&mut s, "x1").rect.unwrap(), node(&mut s, "x2").rect.unwrap());
+    assert_eq!((e.x + e.width - x1.x, x2.x - x1.x), (10, 5), "at the row's end: {x1:?} {x2:?} in {e:?}");
+    assert_eq!((e.y + e.height - x1.y, x1.height), (1, 1), "at its bottom: {x1:?} in {e:?}");
+}
+
+#[test]
 fn a_floats_margin_takes_four_sides() {
     let ui = json!({"root": {"type": "stack", "id": "s", "children": [
         {"type": "list", "id": "under", "items": rows(20)},

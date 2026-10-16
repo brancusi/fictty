@@ -380,6 +380,9 @@ pub struct Node {
     pub min: Option<Len>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub max: Option<Len>,
+    /// Where it sits across its row or column, over the container's `items`.
+    #[serde(rename = "self", default, skip_serializing_if = "Option::is_none")]
+    pub align_self: Option<Align>,
     #[serde(flatten)]
     pub kind: Kind,
 }
@@ -425,6 +428,7 @@ impl Default for Node {
             modal: false,
             min: None,
             max: None,
+            align_self: None,
             kind: Kind::Text { text: String::new(), wrap: None, lines: None },
         }
     }
@@ -439,12 +443,20 @@ pub enum Kind {
         children: Vec<Node>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         gap: Option<Gap>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        justify: Option<Justify>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        items: Option<Align>,
     },
     /// Children side by side, `gap` apart (a length, or `[x, y]`).
     Row {
         children: Vec<Node>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         gap: Option<Gap>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        justify: Option<Justify>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        items: Option<Align>,
     },
     /// Children over each other, the last on top: each fills the stack, or floats where its
     /// `float` says (a dialog, a popup, a corner badge). With `when`, a layer comes and goes.
@@ -461,6 +473,10 @@ pub enum Kind {
         row: bool,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         gap: Option<Gap>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        justify: Option<Justify>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        items: Option<Align>,
     },
     /// Where toasts show, newest first, a line each, instead of the screen's corner (a bar of
     /// the UI's own). Each takes the theme part `toast.<tone>`, else `toast`.
@@ -951,6 +967,30 @@ impl Gap {
             Gap::XY(a) => a,
         }
     }
+}
+
+/// Where a node sits across its row or column (`self`), or where a container puts its children
+/// across (`items`): `start`, `center`, `end`, `stretch` (the default) or `baseline`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Align {
+    Start,
+    Center,
+    End,
+    Stretch,
+    Baseline,
+}
+
+/// Where a container puts its children along it, in the room they leave: `start` (the default),
+/// `center`, `end`, `between` (the room between them) or `around` (around each).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Justify {
+    Start,
+    Center,
+    End,
+    Between,
+    Around,
 }
 
 impl Len {
@@ -2085,5 +2125,22 @@ mod tests {
             assert!(e.contains(says), "{v}: {e}");
         }
         assert_eq!((c(2.).px(8.), Len::Spec(" 12px".into()).px(8.), Len::Spec("1.5".into()).px(8.), Len::Spec("s2".into()).px(8.)), (Some(16.), Some(12.), Some(12.), None));
+    }
+
+    #[test]
+    fn self_justify_and_items_read_back_as_written_and_say_what_they_take() {
+        let v = json!({"type": "row", "justify": "between", "items": "center", "children": [{"type": "text", "text": "x", "self": "end"}]});
+        let n: Node = serde_json::from_value(v.clone()).unwrap();
+        let Kind::Row { justify, items, children, .. } = &n.kind else { panic!() };
+        assert_eq!((*justify, *items, children[0].align_self), (Some(Justify::Between), Some(Align::Center), Some(Align::End)));
+        assert_eq!(serde_json::to_value(&n).unwrap(), v, "read back as written");
+        for (v, says) in [
+            (json!({"type": "row", "children": [], "justify": "middle"}), "`start`, `center`, `end`, `between`, `around`"),
+            (json!({"type": "col", "children": [], "items": "left"}), "`start`, `center`, `end`, `stretch`, `baseline`"),
+            (json!({"type": "text", "text": "x", "self": 1}), "expected"),
+        ] {
+            let e = serde_json::from_value::<Node>(v.clone()).unwrap_err().to_string();
+            assert!(e.contains(says), "{v}: {e}");
+        }
     }
 }
