@@ -65,7 +65,16 @@ The Kestrel demo plays in a real window on it.
    bounds, margin and `self`) and is 100% of the side it's given there: its `size` along, else
    the room across. Neither (not stretched, no `size`) has nothing to work from; `fit` may give
    it its content's size.
-3. **`size: "fit"`.** `Size` (`model.rs`, `Size::measure`) gains `Fit`; in the window it's
+3. **`size: "fit"`.** Done 16 October 2026: `Measure::Fit`, flexbox's `0 1 auto` in the
+   window. Text, buttons, titles, wrapped paragraphs and lists measured as they were; three
+   things needed more. A cut line is a canvas with no size, so inside a `fit` node it carries an
+   unseen, zero-height copy of the whole line to be measured (everywhere, it cost a 50k-row list
+   about a quarter of its frame, so `Portal::fitting` counts the `fit` nodes being built). An
+   editor's height is its wrapped rows from caretline's `Layout` at its view's width
+   (`wrapped_rows`), and since that width comes back from the frame before, `Headless` now draws
+   until the sizes settle (a `fit` editor takes two), up to four times. The fuzz has `fitted`: a
+   cut `fit` node with room past its row's children, or a share beside it holding some, fails.
+   A row template's `fit` is left to step 4. `Size` (`model.rs`, `Size::measure`) gains `Fit`; in the window it's
    Taffy's `auto` basis with no grow, and text is measured by GPUI's own layout. This is the
    risky one (GPUI's ellipsis broke under Taffy's measuring in step 2d): test a `fit` text, button,
    list and editor at many widths in `in_window`, and add a fuzz property that a `fit` node isn't

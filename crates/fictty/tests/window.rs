@@ -1069,3 +1069,82 @@ fn tabs_start_where_they_say_and_choosing_one_moves_the_focus_into_it() {
     s.mouse("press", x, y).mouse("release", x, y);
     assert_eq!(s.state().focus.as_deref(), Some("inbox"), "a click on a tab moves the focus into it too");
 }
+
+#[test]
+fn fit_makes_a_node_as_wide_as_what_it_shows_and_gives_way_when_there_isnt_room() {
+    let ui = json!({"root": {"type": "row", "id": "r", "children": [
+        {"type": "text", "id": "t", "text": "twelve chars", "size": "fit"},
+        {"type": "text", "id": "cut", "text": "twenty letters here.", "size": "fit", "wrap": false},
+        {"type": "button", "id": "b", "label": "Save", "size": "fit"},
+        {"type": "text", "id": "boxed", "text": "x", "title": "a long title", "size": "fit", "border": true},
+        {"type": "text", "id": "rest", "text": "rest"}]}});
+    for w in [30u16, 40, 50, 60, 70, 80, 100] {
+        let mut s = window(ui.clone(), w, 6);
+        let [r, t, cut, b, boxed, rest] = ["r", "t", "cut", "b", "boxed", "rest"].map(|id| node(&mut s, id));
+        let [r, t, c, b, x, rest] = [r.rect, t.rect, cut.rect, b.rect, boxed.rect, rest.rect].map(Option::unwrap);
+        // The texts' widths, the button's face (its label and padding) and the box's title
+        // inside its border: 12 + 20 + 7 + 14 = 53 columns.
+        if r.width >= 53 {
+            assert_eq!((t.width, c.width, b.width, x.width), (12, 20, 7, 14), "at {w}: as wide as they show");
+            assert!(!cut.cut, "at {w}: whole while there's room");
+            assert_eq!(rest.width, r.width - 53, "at {w}: a share takes what's left");
+        } else {
+            assert!(cut.cut && t.width + c.width + b.width + x.width <= r.width, "at {w}: they give way: {t:?} {c:?} {b:?} {x:?} in {r:?}");
+        }
+    }
+}
+
+#[test]
+fn a_fit_paragraph_is_as_tall_as_it_wraps_to() {
+    let text = "a paragraph that wraps over a few lines when the column is narrow enough to need it";
+    let mut was = u16::MAX;
+    for w in [20u16, 30, 44, 60, 100] {
+        let ui = json!({"root": {"type": "col", "children": [{"type": "text", "id": "p", "text": text, "size": "fit"}, {"type": "text", "id": "after", "text": "A"}]}});
+        let mut s = window(ui, w, 12);
+        let (p, after) = (node(&mut s, "p").rect.unwrap(), node(&mut s, "after").rect.unwrap());
+        assert!(p.height >= 1 && p.height <= was, "at {w}: no taller than narrower: {p:?}");
+        assert_eq!(after.y, p.y + p.height, "at {w}: what follows starts below it");
+        if w == 20 {
+            assert!(p.height >= 4, "narrow, it wraps: {p:?}");
+        }
+        if w == 100 {
+            assert_eq!(p.height, 1, "with room, one line");
+        }
+        was = p.height;
+    }
+}
+
+#[test]
+fn a_fit_list_is_as_tall_as_its_rows_up_to_its_max() {
+    let ui = json!({"root": {"type": "col", "children": [
+        {"type": "list", "id": "three", "items": rows(3), "size": "fit"},
+        {"type": "list", "id": "titled", "items": rows(3), "size": "fit", "title": "three", "border": true},
+        {"type": "list", "id": "long", "items": rows(50), "size": "fit", "max": 4},
+        {"type": "text", "id": "after", "text": "A"}]}});
+    let mut s = window(ui, 40, 30);
+    let [three, titled, long, after] = ["three", "titled", "long", "after"].map(|id| node(&mut s, id));
+    let [a, b, c] = [three.rect.unwrap(), titled.rect.unwrap(), long.rect.unwrap()];
+    // A title and a border take two rows between them.
+    assert_eq!((a.height, b.height, c.height, after.rect.unwrap().y), (3, 5, 4, c.y + 4), "{a:?} {b:?} {c:?}");
+    assert_eq!(long.scroll, Some((0., 50)), "a list held to its max scrolls");
+}
+
+#[test]
+fn a_fit_editor_is_as_tall_as_its_lines_and_grows_with_them() {
+    let text = "word ".repeat(30);
+    // Thirty words of five wrap to six rows of a 26-column editor (a column in either side of
+    // 28), five words a row, and three of 56, eleven a row.
+    for (w, rows) in [(30u16, 6), (60, 3)] {
+        let ui = json!({"root": {"type": "col", "children": [
+            {"type": "editor", "id": "e", "text": text.trim_end(), "size": "fit"}, {"type": "text", "id": "after", "text": "A"}]}, "focus": "e"});
+        let mut s = window(ui, w, 20);
+        assert_eq!(node(&mut s, "e").rect.unwrap().height, rows, "at {w}");
+    }
+    let ui = json!({"root": {"type": "col", "children": [
+        {"type": "editor", "id": "e", "text": "one", "size": "fit"}, {"type": "text", "id": "after", "text": "A"}]}, "focus": "e"});
+    let mut s = window(ui, 40, 20);
+    assert_eq!(node(&mut s, "e").rect.unwrap().height, 1);
+    s.keys(&["end", "enter", "t"]);
+    let (e, after) = (node(&mut s, "e").rect.unwrap(), node(&mut s, "after").rect.unwrap());
+    assert_eq!((e.height, after.y), (2, e.y + 2), "a new line makes it a row taller");
+}

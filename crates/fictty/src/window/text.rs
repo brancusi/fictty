@@ -33,6 +33,8 @@ pub struct Tx<'a> {
     pub id: &'a str,
     pub keep: f32,
     pub line_h: f32,
+    /// Inside a `fit` node, where a cut line must say how wide it would be.
+    pub fitting: bool,
 }
 
 /// Runs of one line, joined: the text and each run's highlight.
@@ -202,6 +204,20 @@ pub fn line(tx: &Tx, template: &str, v: &Value, base: Ink, wrap: bool) -> AnyEle
         }
         None => (Runs::default(), None),
     };
+    // Unseen and no height, the whole line as it would be with room: the canvas has no size of
+    // its own, so this is what a `fit` node around it measures. (Two spaces hold the gap.) Only
+    // inside one: it costs a list of cut rows about a quarter of its frame.
+    let mut whole = Runs { text: left.text.clone(), marks: left.marks.clone() };
+    for r in [&after, &right] {
+        if r.text.is_empty() {
+            continue;
+        }
+        whole.push(if std::ptr::eq(r, &right) { "  " } else { "" }, HighlightStyle::default());
+        let at = whole.text.len();
+        whole.text.push_str(&r.text);
+        whole.marks.extend(r.marks.iter().map(|(m, h)| (m.start + at..m.end + at, *h)));
+    }
+    let sizer = tx.fitting.then(|| div().h(px(0.)).overflow_hidden().whitespace_nowrap().child(whole.element()));
     let (laid, id, keep) = (tx.laid.clone(), tx.id.to_string(), tx.keep);
     let gap = if right.text.is_empty() { 0. } else { 8. };
     let el = canvas(
@@ -259,7 +275,7 @@ pub fn line(tx: &Tx, template: &str, v: &Value, base: Ink, wrap: bool) -> AnyEle
     .w_full()
     .min_w_0()
     .h(px(line_h));
-    typed(div().w_full().min_w_0().overflow_hidden().child(el), role.as_ref(), &fonts).into_any_element()
+    typed(div().w_full().min_w_0().overflow_hidden().child(el).children(sizer), role.as_ref(), &fonts).into_any_element()
 }
 
 /// A template's shown lines, filled from `v`: lines whose placeholders all came out empty go.

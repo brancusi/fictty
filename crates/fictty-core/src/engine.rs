@@ -1714,14 +1714,16 @@ impl Headless {
         let Drawn { hits, rects, sizes, areas, cut, fonts, .. } = f.draw(&self.st);
         (self.hits, self.rects, self.cut) = (hits, rects, cut);
         // What drawing sent (a window's cell size) and what it learned (an editor's size) change
-        // the state: once more, so the frame is the state's.
-        let changed = resize_editors(&mut self.d, &mut self.st, sizes) | report_areas(&mut self.d, &mut self.st, areas) | report_fonts(&mut self.d, &mut self.st, fonts) | self.absorb();
-        if changed && let Some(f) = &mut self.frame {
-            let Drawn { hits, rects, cut, .. } = f.draw(&self.st);
+        // the state: again until they don't, so the frame is the state's. A `fit` editor takes
+        // two: its width, then the rows its text wraps to at that width.
+        let mut changed = resize_editors(&mut self.d, &mut self.st, sizes) | report_areas(&mut self.d, &mut self.st, areas) | report_fonts(&mut self.d, &mut self.st, fonts) | self.absorb();
+        for _ in 0..4 {
+            let Some(f) = self.frame.as_mut().filter(|_| changed) else { break };
+            let Drawn { hits, rects, sizes, areas, cut, fonts, .. } = f.draw(&self.st);
             (self.hits, self.rects, self.cut) = (hits, rects, cut);
-            self.absorb();
-            self.drawn = true;
+            changed = resize_editors(&mut self.d, &mut self.st, sizes) | report_areas(&mut self.d, &mut self.st, areas) | report_fonts(&mut self.d, &mut self.st, fonts) | self.absorb();
         }
+        self.drawn = true;
     }
 }
 fn agent() -> String {

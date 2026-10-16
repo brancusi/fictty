@@ -19,6 +19,7 @@
 //! ```
 
 use crate::engine::Headless;
+use crate::state::State;
 use serde_json::Value;
 use std::collections::BTreeMap;
 use std::fmt;
@@ -602,6 +603,45 @@ fn plain_motion(key: &str) -> bool {
 /// whose children lie over each other by design (layers, dialogs, floats).
 pub fn laid_out() -> Check {
     check("laid out without overlap", |s| nested(&s.screen.readback()))
+}
+
+/// A `size: "fit"` node is as big as what it shows: none has its text cut while its row (or
+/// column) has room left past its children, or a share beside it holds some (a share only gets
+/// what's left). One with a `max` may be held to it, so it isn't asked.
+pub fn fitted() -> Check {
+    check("a fit node isn't cut while there's room", |s| {
+        let nodes = s.screen.readback();
+        unfitted(s.screen.state(), &nodes)
+    })
+}
+
+/// Whether a cut `fit` node has room it didn't take (see `fitted`): its parent's rectangle
+/// reaching past the span of the children, all laid out, along it, or a share among them (with
+/// no `min` to hold it open) taking some.
+pub fn unfitted(st: &State, nodes: &[crate::readback::Shown]) -> Result<(), String> {
+    use crate::model::Measure;
+    let measure = |id: &str| st.tree().find(id).map(|n| (n.size.as_ref().map(|s| s.measure()), n.min.is_some()));
+    let fit = |id: &str| matches!(measure(id), Some((Some(Measure::Fit), _))) && st.tree().find(id).is_some_and(|n| n.max.is_none());
+    let share = |id: &str| matches!(measure(id), Some((None | Some(Measure::Share(_)), false)));
+    for (p, parent) in nodes.iter().enumerate() {
+        let along_row = match parent.kind.as_str() {
+            "row" => true,
+            "col" => false,
+            _ => continue,
+        };
+        let Some(outer) = parent.rect else { continue };
+        let kids: Vec<&crate::readback::Shown> = nodes[p + 1..].iter().take_while(|n| n.depth > parent.depth).filter(|n| n.depth == parent.depth + 1).collect();
+        let Some(rects) = kids.iter().map(|k| k.rect).collect::<Option<Vec<_>>>() else { continue };
+        let span = |r: &crate::engine::Rect| if along_row { (r.x, r.x + r.width) } else { (r.y, r.y + r.height) };
+        let (Some(first), Some(last)) = (rects.first(), rects.last()) else { continue };
+        let (start, end) = span(&outer);
+        let shares: u16 = kids.iter().zip(&rects).filter(|(k, _)| k.id.as_deref().is_some_and(share)).map(|(_, r)| span(r).1 - span(r).0).sum();
+        let room = (end - start).saturating_sub(span(last).1 - span(first).0) + shares;
+        if let Some(k) = kids.iter().find(|k| k.cut && room > 0 && k.id.as_deref().is_some_and(fit)) {
+            return Err(format!("{} {} is cut with {room} cells left in {} {}", k.kind, k.id.as_deref().unwrap_or("?"), parent.kind, parent.id.as_deref().unwrap_or("?")));
+        }
+    }
+    Ok(())
 }
 
 /// Whether the readback's rectangles nest (see `laid_out`).

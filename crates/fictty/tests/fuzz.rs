@@ -219,6 +219,7 @@ mod window {
     fn checks() -> Vec<fuzz::Check> {
         let mut checks = fuzz::editing();
         checks.push(fuzz::laid_out());
+        checks.push(fuzz::fitted());
         checks
     }
 
@@ -229,6 +230,20 @@ mod window {
         if let Err(f) = fuzz::run(make, &mut checks(), &cfg) {
             panic!("{f}");
         }
+    }
+
+    #[test]
+    fn fit_nodes_in_the_window() {
+        let rows: Vec<String> = (0..30).map(|i| format!("row {i}")).collect();
+        fuzzed(json!({"root": {"type": "col", "id": "c", "children": [
+            {"type": "row", "id": "bar", "size": 2, "items": "center", "children": [
+                {"type": "text", "id": "name", "text": "a name that is long", "size": "fit", "wrap": false},
+                {"type": "button", "id": "save", "label": "Save", "size": "fit"},
+                {"type": "text", "id": "count", "text": "three hundred and twelve words, held to thirty", "size": "fit", "wrap": false, "max": 30},
+                {"type": "text", "id": "rest", "text": "rest"}]},
+            {"type": "list", "id": "l", "items": rows, "size": "fit", "max": 6, "border": true},
+            {"type": "editor", "id": "e", "text": "a note\nthat grows", "size": "fit", "max": 10, "border": true},
+            {"type": "text", "id": "after", "text": "after"}]}, "focus": "e"}), 50, 24);
     }
 
     #[test]

@@ -310,8 +310,8 @@ pub struct Node {
     /// focused (lists, tables) and can be replaced alone (`patch`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub id: Option<String>,
-    /// Its share of the parent row/col: `12` (cells), `"48px"`, `"30%"`, `"*"` (the default) or
-    /// `"2*"`.
+    /// Its share of the parent row/col: `12` (cells), `"48px"`, `"30%"`, `"*"` (the default),
+    /// `"2*"`, or `"fit"` (as big as what it shows).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub size: Option<Size>,
     /// A title draws a border with it.
@@ -845,6 +845,8 @@ pub enum Measure {
     Percent(f32),
     /// `"*"`, `"2*"`: a share of what's left (anything unreadable is one share).
     Share(u16),
+    /// `"fit"`: as big as what it shows, given way when there isn't room.
+    Fit,
 }
 
 impl Size {
@@ -853,6 +855,9 @@ impl Size {
             Size::Cells(n) => return Measure::Cells(*n),
             Size::Spec(s) => s.trim(),
         };
+        if s == "fit" {
+            return Measure::Fit;
+        }
         if let Some(p) = s.strip_suffix('%') {
             return p.trim().parse().map_or(Measure::Share(1), Measure::Percent);
         }

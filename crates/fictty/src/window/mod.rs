@@ -170,6 +170,9 @@ struct Portal {
     /// The font files the themes name, by path, and the family each loaded as (empty when it
     /// couldn't be).
     faces: HashMap<String, String>,
+    /// How many `fit` nodes the node being built is inside: their cut lines say how wide
+    /// they'd be.
+    fitting: usize,
 }
 
 impl Portal {
@@ -182,7 +185,7 @@ impl Portal {
         engine.send(Msg::Caps { caps: state::Caps { graphics: false, cell_w: cell.w, cell_h: cell.h }, text_sizing: false });
         let focus = cx.focus_handle();
         focus.focus(window);
-        Portal { engine, focus, cell, screen: (0, 0), laid: Shared::default(), shown: Rc::default(), drag: None, wheel: (String::new(), 0.0), wake: None, faces: HashMap::new() }
+        Portal { engine, focus, cell, screen: (0, 0), laid: Shared::default(), shown: Rc::default(), drag: None, wheel: (String::new(), 0.0), wake: None, faces: HashMap::new(), fitting: 0 }
     }
 
     fn send(&mut self, msg: Msg, cx: &mut Context<Self>) {
@@ -287,6 +290,12 @@ fn sized(el: gpui::Stateful<gpui::Div>, n: &Node, along_row: bool, cell: Cell, t
         el.style().flex_grow = Some(0.);
         el.flex_shrink().flex_basis(l).min_w(px(0.)).min_h(px(0.))
     };
+    // As big as what it shows, giving way when there isn't room.
+    let fit = |el: gpui::Stateful<gpui::Div>| {
+        let mut el = el.flex_shrink().min_w(px(0.)).min_h(px(0.));
+        el.style().flex_grow = Some(0.);
+        el
+    };
     let mut el = match n.size.as_ref().map(Size::measure) {
         Some(Measure::Cells(c)) => fixed(el, px(c as f32 * per).into()),
         Some(Measure::Px(p)) => fixed(el, px(p).into()),
@@ -297,11 +306,8 @@ fn sized(el: gpui::Stateful<gpui::Div>, n: &Node, along_row: bool, cell: Cell, t
             el
         }
         // An aspect with no size is as long as how big it is across makes it.
-        None if n.aspect.is_some() => {
-            let mut el = el.flex_shrink().min_w(px(0.)).min_h(px(0.));
-            el.style().flex_grow = Some(0.);
-            el
-        }
+        Some(Measure::Fit) => fit(el),
+        None if n.aspect.is_some() => fit(el),
         None => el.flex_1().min_w(px(0.)).min_h(px(0.)),
     };
     if let Some(m) = n.min.as_ref().and_then(|m| th.px(m, per)) {
@@ -367,7 +373,7 @@ fn float_side(s: Option<&Size>, per: f32) -> DefiniteLength {
         Some(Measure::Cells(c)) => px(c as f32 * per).into(),
         Some(Measure::Px(p)) => px(p).into(),
         Some(Measure::Percent(p)) => relative(p / 100.0),
-        None | Some(Measure::Share(_)) => relative(1.0),
+        None | Some(Measure::Share(_) | Measure::Fit) => relative(1.0),
     }
 }
 
@@ -392,7 +398,8 @@ impl Portal {
         let (mut el, place) = match n.aspect.as_ref().map(Aspect::ratio) {
             Some(ratio) => {
                 let place = sized(div().id(SharedString::from(format!("place-{key}"))).flex().flex_col(), n, along_row, cell, &th);
-                let mut el = if n.size.is_some() == along_row { el.w(relative(1.)) } else { el.h(relative(1.)) }.flex_none();
+                let given = n.size.as_ref().is_some_and(|s| s.measure() != Measure::Fit);
+                let mut el = if given == along_row { el.w(relative(1.)) } else { el.h(relative(1.)) }.flex_none();
                 el.style().aspect_ratio = Some(ratio);
                 (el, Some(place))
             }
@@ -407,6 +414,8 @@ impl Portal {
                 l.hits.push((b, hit(id, None, None, false)));
             }));
         }
+        let fits = n.size.as_ref().is_some_and(|s| s.measure() == Measure::Fit);
+        self.fitting += fits as usize;
         let rs = style::resolve(st, n);
         let v = state::bound(st, n).unwrap_or(&Value::Null);
         let c = (cell.w, cell.h);
@@ -424,7 +433,7 @@ impl Portal {
         el = text::typed(el, role, &lk.fonts());
         let laid = self.laid.clone();
         let keep = n.rows().and_then(|r| r.keep).map_or(0., |k| k as f32 * cell.w);
-        let tx = text::Tx { lk, laid: &laid, id: &id, keep, line_h: text::line_height(role, cell.h) };
+        let tx = text::Tx { lk, laid: &laid, id: &id, keep, line_h: text::line_height(role, cell.h), fitting: self.fitting > 0 };
         if let (Some(t), Some(ink)) = (&n.title, &rs.title) {
             el = el.gap_1().child(div().flex_none().w_full().text_sm().child(text::line(&tx, t, v, lk.ink(ink), false)));
         }
@@ -614,6 +623,7 @@ impl Portal {
             }
             _ => div().text_color(lk.dim).child(format!("[{}]", n.kind_name())).into_any_element(),
         };
+        self.fitting -= fits as usize;
         el = el.child(body);
         // A press on a node with an id that nothing inside it took (its rows, tabs, text and
         // buttons take their own): the core passes it on to the nearest `click`.
@@ -681,7 +691,7 @@ impl Portal {
             let body = match (&look.row, &look.item) {
                 (Some(t), _) => self.node(st, lk, &crate::model::row_instance(t, r), false, &format!("{id}/row{k}"), cx),
                 (None, Some(t)) => {
-                    let tx = text::Tx { lk, laid: &laid, id, keep: look.keep.map_or(0., |k| k as f32 * cell.w), line_h: cell.h };
+                    let tx = text::Tx { lk, laid: &laid, id, keep: look.keep.map_or(0., |k| k as f32 * cell.w), line_h: cell.h, fitting: self.fitting > 0 };
                     text::lines(&tx, t, r, Ink::default(), false, None)
                 }
                 (None, None) => div().child(crate::model::scalar(Some(r))).into_any_element(),
@@ -773,6 +783,10 @@ impl Portal {
         let mut text = div().relative().size_full().overflow_hidden();
         if single {
             text = text.h(px(cell.h)).flex_none();
+        } else if n.size.as_ref().is_some_and(|s| s.measure() == Measure::Fit) {
+            // As tall as its text wraps to at its width, a line at least.
+            let rows = doc.as_ref().map_or(1, |(_, d)| state::field_view(st, id).map_or(1, |(_, view)| wrapped_rows(d, view)));
+            text = text.h(px(rows.max(1) as f32 * cell.h)).flex_none();
         }
         let (fits, under) = (id.to_string(), id.to_string());
         text = text.child(measure(&self.laid, move |l, b| {
@@ -884,6 +898,19 @@ impl Portal {
             .child(text)
             .into_any_element()
     }
+}
+
+/// The rows a document wraps to in its view, as far as a thousand: a `fit` editor's height.
+fn wrapped_rows(doc: &caretline::Document, view: &caretline::View) -> usize {
+    let l = caretline::layout::Layout::of(doc, view);
+    let mut rows = 0;
+    for line in 0..=l.last_line() {
+        rows += l.line_rows(line);
+        if rows >= 1000 {
+            break;
+        }
+    }
+    rows
 }
 
 impl Render for Portal {

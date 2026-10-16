@@ -410,7 +410,7 @@ fn float_rect(fl: &Float, area: Rect, (cw, ch): (f32, f32)) -> Rect {
             Some(Measure::Cells(n)) => n,
             Some(Measure::Px(p)) => in_cells(p, cell),
             Some(Measure::Percent(p)) => (full as f32 * p / 100.0) as u16,
-            None | Some(Measure::Share(_)) => full,
+            None | Some(Measure::Share(_) | Measure::Fit) => full,
         };
         n.min(full)
     };
@@ -1486,6 +1486,7 @@ pub fn constraint(s: Option<&Size>, cell: f32) -> Constraint {
         Some(Measure::Px(p)) => Constraint::Length(in_cells(p, cell)),
         Some(Measure::Percent(p)) => Constraint::Percentage(p.round().clamp(0.0, 100.0) as u16),
         Some(Measure::Share(w)) => Constraint::Fill(w),
+        Some(Measure::Fit) => Constraint::Fill(1),
     }
 }
 
