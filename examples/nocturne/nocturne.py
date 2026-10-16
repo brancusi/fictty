@@ -1,16 +1,20 @@
 # Nocturne: a listening room, made to see how far the window can be pushed. Every album's cover
-# and backdrop are drawn here (PIL), and the theme and the UI written beside them, into a
+# and backdrop are drawn here (Pillow), and the theme and the UI written beside them, into a
 # folder outside the repo, so nothing binary is checked in. Every name, title and line is made
 # up.
-#   python3 examples/nocturne/nocturne.py [out]      # default: $TMPDIR/fictty-nocturne
+#   python3 examples/nocturne/nocturne.py [out] [--no-art]   # default out: $TMPDIR/fictty-nocturne
+# --no-art writes only the theme and the UI (the tests' way: no Pillow needed, pictures missing).
 import json, math, os, random, sys
-try:
-    from PIL import Image, ImageDraw, ImageEnhance, ImageFilter, ImageFont, ImageStat
-except ImportError:
-    sys.exit("Nocturne draws its covers with Pillow: python3 -m pip install pillow")
 
-OUT = sys.argv[1] if len(sys.argv) > 1 else os.path.join(os.environ.get("TMPDIR", "/tmp"), "fictty-nocturne")
+args = [a for a in sys.argv[1:] if not a.startswith("--")]
+ART = "--no-art" not in sys.argv
+OUT = args[0] if args else os.path.join(os.environ.get("TMPDIR", "/tmp"), "fictty-nocturne")
 os.makedirs(OUT, exist_ok=True)
+if ART:
+    try:
+        from PIL import Image, ImageDraw, ImageEnhance, ImageFilter, ImageFont, ImageStat
+    except ImportError:
+        sys.exit("Nocturne draws its covers with Pillow: python3 -m pip install pillow")
 BG = (11, 9, 16)
 SIZE = 640
 
@@ -150,6 +154,9 @@ def dots(img, c, rnd):
 
 
 def cover(slug, title, artist, c, motif, seed):
+    path, room_path = os.path.join(OUT, f"{slug}.png"), os.path.join(OUT, f"{slug}-room.png")
+    if not ART:
+        return path, room_path
     rnd = random.Random(seed)
     stops = [hexrgb(s) for s in c["sky"]]
     col = {k: hexrgb(v) for k, v in c.items() if k not in ("sky", "angle")}
@@ -170,7 +177,6 @@ def cover(slug, title, artist, c, motif, seed):
     ImageDraw.Draw(mask).rounded_rectangle((0, 0, SIZE * 4, SIZE * 4), radius=36 * 4, fill=255)
     out = img.convert("RGBA")
     out.putalpha(mask.resize((SIZE, SIZE), Image.LANCZOS))
-    path = os.path.join(OUT, f"{slug}.png")
     out.save(path)
     # The room behind it: the art's colours spread wide and blurred away, richer than the art,
     # lit from where the hero sits (top right of the sidebar) and sunk into the night at the
@@ -188,16 +194,19 @@ def cover(slug, title, artist, c, motif, seed):
     # Blurred at full size, then a little noise, so the dark steps don't band.
     room = room.resize((w, h), Image.BICUBIC).filter(ImageFilter.GaussianBlur(40))
     room = Image.blend(room, Image.effect_noise((w, h), 40).convert("RGB"), .035)
-    room_path = os.path.join(OUT, f"{slug}-room.png")
     room.save(room_path)
     return path, room_path
+
+
+def clock(s):
+    return f"{int(s) // 60}:{int(s) % 60:02}"
 
 
 def tracks(names, rnd):
     out = []
     for k, t in enumerate(names):
         s = rnd.randint(150, 330)
-        out.append({"id": str(k), "n": f"{k + 1:02}", "t": t, "d": f"{s // 60}:{s % 60:02}"})
+        out.append({"id": str(k), "n": f"{k + 1:02}", "t": t, "len": s, "d": clock(s)})
     return out
 
 
@@ -278,12 +287,15 @@ for k, (slug, title, artist, single, year, label, palette, motif, names, lines) 
         "l1": lines[0], "l2": lines[1], "l3": lines[2], "l4": lines[3], "note": NOTES[slug],
     })
 
-# The theme: a night room, warm white on plum-black, coral and amber for what's live.
+
+# The theme: a night room, warm white on plum-black, coral and amber for what's live, and glass
+# (colours with an alpha) for the cards that sit over the room.
 tokens = {
     "bg": "#0b0910", "fg": "#f4ede5", "dim": "#a99fb2", "faint": "#6e6579", "border": "#2b2533",
     "panel": "#15121c", "deep": "#0d0b13", "ring": "#2a2233", "hover": "#1d1925", "plate": "#221c2b",
     "accent": "#ff8a5c", "amber": "#ffc46b", "rose": "#ff6b8b", "violet": "#a283ff", "pos": "#7fe0a8",
-    "neg": "#ff6b8b", "warn": "#ffc46b", "track": "#3a3245", "scrim": "#07060a",
+    "neg": "#ff6b8b", "warn": "#ffc46b", "track": "#ffffff1f", "scrim": "#07060a",
+    "glass": "#1a1524b8", "glass2": "#0b0910d9", "rim": "#ffffff14", "veil": "#ffffff0d", "lift": "#ffffff1a",
 }
 theme = {
     "tokens": tokens,
@@ -306,40 +318,40 @@ theme = {
     "radius": {"r1": 8, "r2": 12, "r3": 18, "pill": 99},
     "depth": {
         "e1": [{"y": 1, "blur": 2, "color": "black", "alpha": 0.45}],
-        "e2": [{"y": 18, "blur": 48, "color": "black", "alpha": 0.55}, {"y": 2, "blur": 6, "color": "black", "alpha": 0.4}],
+        "e2": [{"y": 18, "blur": 48, "color": "black", "alpha": 0.45}, {"y": 2, "blur": 6, "color": "black", "alpha": 0.3}],
         "art": [{"y": 28, "blur": 70, "color": "black", "alpha": 0.7}, {"y": 0, "blur": 90, "color": "accent", "alpha": 0.22}],
         "card": [{"y": 12, "blur": 26, "color": "black", "alpha": 0.6}],
         "glow": [{"y": 8, "blur": 26, "color": "accent", "alpha": 0.45}, {"y": 1, "blur": 3, "color": "black", "alpha": 0.4}],
     },
     "parts": {
         "screen": {"type": "body"},
-        "panel": {"bg": {"from": "panel", "to": "deep", "angle": 180}, "radius": "r3", "pad": ["s5", "s4"], "border": {"color": "border"}, "shadow": "e2"},
+        "panel": {"bg": {"from": "glass", "to": "glass2", "angle": 180}, "radius": "r3", "pad": ["s5", "s4"], "border": {"color": "rim"}, "shadow": "e2"},
         "title": {"fg": "faint", "type": "label"}, "title.focused": {"fg": "accent", "type": "label"},
-        "border.focused": "border",
-        "button": {"fg": "fg", "bg": "plate", "radius": "pill", "pad": ["s4", 0], "type": "heading", "cursor": "pointer", "border": {"color": "border"}},
-        "button.hover": {"bg": "ring"},
+        "border.focused": "rim",
+        "button": {"fg": "fg", "bg": "veil", "radius": "pill", "pad": ["s4", 0], "type": "heading", "cursor": "pointer", "border": {"color": "rim"}},
+        "button.hover": {"bg": "lift"},
         "button.focused": {"ring": {"width": 2, "offset": 2, "color": "accent"}},
-        "input": {"bg": "deep", "radius": "pill", "pad": ["s4", 0], "border": {"color": "border"}},
+        "input": {"bg": "veil", "radius": "pill", "pad": ["s4", 0], "border": {"color": "rim"}},
         "input.focused": {"border": {"color": "accent"}, "ring": {"width": 3, "offset": 0, "color": "ring"}},
         "input.placeholder": "faint", "editor.caret": "on-accent", "editor.selection": "fg+on-ring",
         "row": {"radius": "r2", "pad": ["s3", 0], "cursor": "pointer"},
-        "row.hover": {"bg": "hover"},
-        "row.selected": {"fg": "fg", "bg": "plate"}, "row.selected.blur": {"fg": "fg", "bg": "hover"},
-        "row.active": {"fg": "fg", "bg": "plate"},
-        "tabs": {"shape": "pill"}, "tabs.selected": {"fg": "bg", "bg": "fg", "radius": "pill", "pad": ["s3", 0]}, "tabs.idle": {"fg": "dim", "radius": "pill", "pad": ["s3", 0]},
+        "row.hover": {"bg": "veil"},
+        "row.selected": {"fg": "fg", "bg": "lift"}, "row.selected.blur": {"fg": "fg", "bg": "veil"},
+        "row.active": {"fg": "fg", "bg": "lift"},
+        "gauge": {"bg": "track", "radius": "pill"},
+        "gauge.fill": {"bg": {"from": "amber", "to": "accent", "angle": 90}, "radius": "pill"},
         "scrollbar": {"shape": "overlay"}, "scrollbar.thumb": "faint",
-        "status": {"fg": "faint", "bg": "deep", "type": "caption"},
         "toast": {"fg": "fg", "bg": "plate", "radius": "r2", "border": {"color": "border"}, "shadow": "e2"},
         "empty": "faint+i", "spinner": "accent",
     },
     "variants": {
-        "card": {"style": {"bg": {"from": "panel", "to": "deep", "angle": 170}, "radius": "r3", "pad": ["s5", "s4"], "border": {"color": "border"}, "shadow": "e2"}, "title": "faint"},
-        "nav": {"style": {"fg": "dim"}},
+        "card": {"style": {"bg": {"from": "glass", "to": "glass2", "angle": 170}, "radius": "r3", "pad": ["s5", "s4"], "border": {"color": "rim"}, "shadow": "e2"}, "title": "faint"},
+        "mini": {"style": {"bg": {"from": "glass", "to": "glass2", "angle": 170}, "radius": "r2", "pad": "s3", "border": {"color": "rim"}}},
         "art": {"style": {"radius": "r3", "shadow": "art"}},
+        "thumb": {"style": {"radius": "r1", "shadow": "card"}},
         "play": {"style": {"fg": "#1a0f0a", "bg": {"from": "amber", "to": "accent", "angle": 135}, "border": {"color": "accent"}, "shadow": "glow", "pad": ["s6", 0]}},
-        "ghost": {"style": {"fg": "dim", "bg": "bg", "border": {"color": "bg"}}},
-        "fill": {"style": {"bg": {"from": "amber", "to": "accent", "angle": 90}, "radius": "pill"}},
-        "rail": {"style": {"bg": "track", "radius": "pill"}},
+        "ghost": {"style": {"fg": "dim", "bg": "#00000000", "border": {"color": "#00000000"}}},
+        "lit": {"style": {"fg": "accent", "bg": "#00000000", "border": {"color": "#00000000"}}},
     },
 }
 with open(os.path.join(OUT, "themes.json"), "w") as f:
@@ -353,38 +365,64 @@ def T(text, **k):
 def label(text, **k):
     return T(f"<label>{text}</>", tone="faint", size="fit", **k)
 
-sidebar = {"type": "col", "id": "side", "size": 25, "gap": 0, "children": [
-    T("<brand>Nocturne</>", size="fit", margin=[0, 0, "s6", 0]),
-    label("LISTEN", margin=[0, 0, "s1", 0]),
-    {"type": "list", "id": "nav", "size": "fit", "items": [{"id": "now", "t": "◉   Listen Now"}, {"id": "browse", "t": "▦   Browse"}, {"id": "radio", "t": "◎   Radio"}], "item": "{t}"},
-    label("LIBRARY", margin=["s6", 0, "s1", 0]),
-    T("<dim>Recently Added\nAlbums\nArtists\nSongs</>", size="fit", pad=[1, 0]),
-    label("PLAYLISTS", margin=["s6", 0, "s1", 0]),
-    T("<dim>Late Ferries\nSunday Kitchen\nDeep Work\nNight Swim</>", size="fit", pad=[1, 0]),
-    T(""),
-    T("<caption>12 albums · 96 songs · 6 hr 20 min</>", tone="faint", size="fit"),
+
+def button(id, face, click, **k):
+    return {"type": "button", "id": id, "label": face, "size": "fit", "click": click, **k}
+
+
+songs = sum(a["count"] for a in albums)
+secs = sum(t["len"] for a in albums for t in a["tracks"])
+WIDE, SLIM = "$screen.width>=230", "$screen.width<230"
+NOW, BROWSE = "@nav.id=now", "@nav.id=browse"
+PLAY = {"toggle": "store.playing"}
+# The playing track is the one Up Next has selected: ←/→ on it, a click, or these.
+NEXT = {"do": [{"focus": "tracks"}, "down", {"focus": "$prev"}]}
+PREV = {"do": [{"focus": "tracks"}, "up", {"focus": "$prev"}]}
+
+# What's playing, small, at the foot of the sidebar.
+mini = {"type": "row", "id": "mini", "variant": "mini", "size": "fit", "gap": 2, "items": "center", "children": [
+    {"type": "image", "id": "thumb", "src": "{art}", "bind": "@albums", "aspect": 1, "size": "52px", "variant": "thumb", "fit": "cover"},
+    {"type": "col", "gap": 0, "children": [
+        T("<heading>{t}</>", bind="@tracks", size="fit", wrap=False),
+        T("<caption>{artist}</>", bind="@albums", tone="dim", size="fit", wrap=False),
+        T("<caption>▶︎  playing</>", tone="accent", size="fit", when="playing"),
+        T("<caption>paused</>", tone="faint", size="fit", when="!playing"),
+    ]},
 ]}
 
-# The controls share one measure under the title: the bar, the times, then the buttons.
-controls = {"type": "row", "size": "fit", "children": [{"type": "col", "size": "560px", "gap": 0, "children": [
-    {"type": "row", "size": "5px", "children": [
-        {"type": "col", "size": "38%", "variant": "fill", "children": []},
-        {"type": "col", "variant": "rail", "children": []}]},
-    T("<num>1:38</>\t<num>−2:34</>", tone="faint", size="fit", margin=["s1", 0, "s4", 0]),
+sidebar = {"type": "col", "id": "side", "size": 25, "gap": 0, "when": WIDE, "children": [
+    T("<brand>Nocturne</>", size="fit", margin=[0, 0, "s6", 0]),
+    label("LISTEN", margin=[0, 0, "s1", 0]),
+    {"type": "list", "id": "nav", "size": "fit", "items": [{"id": "now", "t": "◉   Listen Now"}, {"id": "browse", "t": "▦   Browse"}], "item": "{t}"},
+    label("LIBRARY", margin=["s6", 0, "s1", 0]),
+    T(f"<dim>{len(albums)} albums\n{songs} songs\n{secs // 3600} hr {secs % 3600 // 60} min</>", size="fit", pad=[1, 0]),
+    T(""),
+    mini,
+]}
+
+# The controls share one measure under the title, at most 560 pixels: the bar, the times, the buttons.
+controls = {"type": "row", "size": "fit", "children": [{"type": "col", "max": "560px", "gap": 0, "children": [
+    {"type": "gauge", "id": "progress", "bind": "player", "value": "{at}", "of": "{len}", "size": "5px"},
+    T("<num>{el}</>\t<num>−{left}</>", bind="player", tone="faint", size="fit", margin=["s1", 0, "s4", 0]),
     {"type": "row", "size": 2, "gap": 2, "items": "center", "children": [
-        {"type": "button", "id": "prev", "label": "⏮\ufe0e", "size": "fit"},
-        {"type": "button", "id": "play", "label": "▶\ufe0e   Play", "size": "fit", "variant": "play"},
-        {"type": "button", "id": "next", "label": "⏭\ufe0e", "size": "fit"},
+        button("prev", "⏮︎", PREV),
+        button("play", "▶︎   Play", PLAY, variant="play", when="!playing"),
+        button("pause", "❚❚   Pause", PLAY, variant="play", when="playing"),
+        button("next", "⏭︎", NEXT),
         T(""),
-        {"type": "button", "id": "love", "label": "♡", "size": "fit", "variant": "ghost"},
-        {"type": "button", "id": "shuffle", "label": "⇄", "size": "fit", "variant": "ghost"}]},
+        button("love", "♡", {"toggle": "store.loved/{id}"}, bind="@albums", variant="ghost", when="!loved/{id}"),
+        button("loved", "♥", {"toggle": "store.loved/{id}"}, bind="@albums", variant="lit", when="loved/{id}"),
+        button("shuffle", "⇄", {"toggle": "store.shuffle"}, variant="ghost", when="!shuffle"),
+        button("shuffled", "⇄", {"toggle": "store.shuffle"}, variant="lit", when="shuffle"),
+    ]},
 ]}]}
 
-hero = {"type": "row", "id": "hero", "size": 16, "gap": 5, "items": "center", "children": [
-    {"type": "image", "id": "art", "src": "{art}", "bind": "@albums", "aspect": 1, "size": "360px", "variant": "art", "fit": "cover"},
+hero = {"type": "row", "id": "hero", "size": "36%", "min": 10, "max": 16, "gap": 5, "items": "center", "when": NOW, "children": [
+    {"type": "image", "id": "art", "src": "{art}", "bind": "@albums", "aspect": 1, "self": "stretch", "variant": "art", "fit": "cover"},
     {"type": "col", "id": "playing", "justify": "center", "gap": 0, "children": [
-        T("<label>NOW PLAYING</>     <caption>{label} · {year}</>", bind="@albums", tone="faint", size="fit", wrap=False),
-        T("<display>{single}</>", bind="@albums", size="fit", wrap=False),
+        T("<label>NOW PLAYING</>     <caption>{label} · {year}</>", bind="@albums", tone="faint", size="fit", wrap=False, when="playing"),
+        T("<label>PAUSED</>     <caption>{label} · {year}</>", bind="@albums", tone="faint", size="fit", wrap=False, when="!playing"),
+        T("<display>{t}</>", bind="@tracks", size="fit", wrap=False),
         T("<subtitle>{artist}</>    <dim>from</>   <subtitle><i>{title}</></>", bind="@albums", size="fit", wrap=False, margin=[0, 0, "s6", 0]),
         controls,
     ]},
@@ -396,25 +434,38 @@ card = {"type": "col", "gap": 0, "children": [
     T("<caption>{$item.artist}</>", tone="dim", size="fit", wrap=False),
 ]}
 
-def shelf(when, cols, rows):
-    return {"type": "list", "id": "albums", "bind": "albums", "row": {**card, "size": rows}, "cols": cols, "when": when}
+
+def shelves():
+    """The shelf as many covers to a line as its column holds at 200 to 270 pixels each: one
+    list per width (the same id, so the selection carries over), as tall as its widest cover."""
+    out, cell_w, cell_h = [], 8.4, 24
+    stops = [(3, 0), (4, 100), (5, 125), (6, 150), (7, 175), (8, 200)]
+    for k, (cols, lo) in enumerate(stops):
+        hi = stops[k + 1][1] if k + 1 < len(stops) else 260
+        widest = hi * cell_w / cols
+        rows = math.ceil((widest + 8) / cell_h + 2.2)
+        when = f"$width>={lo}" + (f" & $width<{hi}" if k + 1 < len(stops) else "")
+        out.append({"type": "list", "id": "albums", "bind": "albums", "filter": "find", "row": {**card, "size": rows}, "cols": cols, "when": when})
+    return out
 
 
 main = {"type": "col", "id": "main", "gap": 1, "children": [
-    {"type": "row", "size": 2, "items": "center", "gap": 2, "children": [
-        T("<headline>Listen Now</>", size="fit", wrap=False),
+    {"type": "row", "size": 2, "items": "center", "gap": 3, "children": [
+        T("<brand>Nocturne</>", size="fit", wrap=False, when=SLIM),
+        T("<headline>Listen Now</>", size="fit", wrap=False, when=NOW),
+        T("<headline>Browse</>", size="fit", wrap=False, when=BROWSE),
         T(""),
         {"type": "input", "id": "find", "size": 28, "placeholder": "Search"}]},
     hero,
     {"type": "row", "size": 1, "items": "center", "margin": ["s4", 0, 0, 0], "children": [
-        T("<heading>Recently played</>", size="fit"), T(""), T("<caption>See all  →</>", tone="faint", size="fit")]},
-    shelf("$screen.width>=230", 6, 14),
-    shelf("$screen.width<230", 4, 12),
+        T("<heading>Recently played</>", size="fit", when=NOW), T("<heading>Every album</>", size="fit", when=BROWSE),
+        T(""), T("<caption>arrows choose  ·  space plays  ·  n and p skip</>", tone="faint", size="fit", wrap=False)]},
+    *shelves(),
 ]}
 
-rail = {"type": "col", "id": "rail", "size": 44, "gap": 2, "children": [
+rail = {"type": "col", "id": "rail", "size": "24%", "min": 36, "max": 44, "gap": 2, "when": "$screen.width>=150", "children": [
     {"type": "list", "id": "tracks", "title": "UP NEXT", "variant": "card", "bind": "@albums.tracks", "size": "fit",
-     "item": "<num>{n}</>     {t}\t<num>{d}</>"},
+     "item": "<num>{n}</>     {t}\t<num>{d}</>", "click": {"put": "playing", "value": True}, "keys": {"enter": {"put": "playing", "value": True}}},
     {"type": "text", "id": "lyrics", "title": "LYRICS", "variant": "card", "size": "fit", "bind": "@albums",
      "text": "<lyric>{l1}</>\n<now>{l2}</>\n<lyric>{l3}</>\n<lyric>{l4}</>", "tone": "dim"},
     {"type": "text", "id": "about", "title": "ABOUT THE RECORD", "variant": "card", "size": "fit", "bind": "@albums",
@@ -422,12 +473,15 @@ rail = {"type": "col", "id": "rail", "size": 44, "gap": 2, "children": [
     T(""),
 ]}
 
+first = albums[0]["tracks"][0]
 ui = {
     "root": {"type": "stack", "children": [
         {"type": "image", "id": "room", "src": "{room}", "bind": "@albums", "fit": "cover"},
         {"type": "row", "gap": 4, "pad": [2, "s3"], "children": [sidebar, main, rail]},
     ]},
-    "store": {"albums": albums},
+    "keys": {"space": PLAY, "n": NEXT, "p": PREV},
+    "store": {"albums": albums, "playing": False, "shuffle": False,
+              "player": {"at": 98, "len": first["len"], "el": clock(98), "left": clock(first["len"] - 98)}},
     "focus": "albums",
     "status_bar": False,
 }

@@ -11,11 +11,23 @@ examples/nocturne/open.sh                  # needs Pillow (python3 -m pip instal
 fictty --socket /tmp/fnoct.sock screen --nodes
 ```
 
+←/→ and ↑/↓ (or a click) choose an album, space plays and pauses, n and p skip, a click on a
+track plays it, ♡ loves the album shown, ⇄ shuffles, the search narrows the shelf, and Browse
+gives the shelf the hero's room. `player.py` stands in for an audio engine: it plays no sound,
+but keeps time over the socket, reading the screen back as an agent does, moving the progress
+on while `playing` holds and selecting the next track at the end of one. `open.sh` starts it
+beside the window.
+
 `nocturne.py` draws every cover and room with Pillow, and writes the theme (`nocturne`) and the
 UI beside them, into `$TMPDIR/fictty-nocturne`, so nothing binary is checked in. Every artist,
 title, lyric and note is made up.
 
+It fits a big screen and a laptop's: the sidebar goes below 230 cells, the rail below 150,
+the hero shrinks with the height, and the shelf holds three to eight covers a line by its own
+width. `tests/nocturne.rs` drives it in the window, written with `--no-art` (no Pillow).
+
 What it leans on: type roles in three faces (Bodoni 72, Avenir Next, Big Caslon), gradients,
-shadows in two layers and in colour, `aspect` for the art, `fit` for titles, buttons and the
+shadows in two layers and in colour, glass (colours with an alpha) over the room, a gauge for
+the progress, `aspect` for the art, `fit` for titles, buttons and the
 rail's cards, `justify` and `items` for the hero, a list `row` template with `cols` for the
 shelf, and `when` on `$screen.width` for how many covers a line holds.
