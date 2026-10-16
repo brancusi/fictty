@@ -41,13 +41,14 @@ editor = {"type": "editor", "id": "page", "bind": "here", "doc": "{kind}/{id}",
           "syntax": "markdown", "tasks": "cycle", "tab": "indent", "caret": "end",
           "links": [{"kind": "wiki", "click": {"do": add_page("{$match}") + [open_page("{$match}")]}}]}
 
-# The writing column: the heading, the text and the hints share one centred measure.
-main = {"type": "row", "children": [T(""), {"type": "col", "size": 72, "gap": 1, "children": [
+# The writing column: the heading, the text and the hints share one measure, centred in what
+# the sidebar leaves.
+main = {"type": "row", "justify": "center", "children": [{"type": "col", "size": 72, "gap": 1, "children": [
     T("<dim>{kind|day=§;*=¶}</>  <heading>{title}</>", bind="here", size=2, when="!zen"),
     T("", size=6, when="zen"),
     editor,
     T("<dim>⌘T today · ⌘N new page · ⌥[ ⌥] days · ⌃T task · ⌥Z zen · esc leaves</>", size=1, when="!zen"),
-]}, T("")]}
+]}]}
 
 dialog = {"type": "input", "id": "newname", "bind": "newname", "title": "NEW PAGE", "border": True, "modal": True, "when": "naming",
           "float": {"width": 44, "height": 3, "at": "center"}, "placeholder": "A name, then Enter", "required": True,

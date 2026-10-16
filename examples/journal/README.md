@@ -61,8 +61,9 @@ Still open:
   host's, or an agent's.
 - **A map's catch-all can't use the value** (`{kind|done=✓;*=<accent>{kind}</>}` doesn't
   parse), found by the Kestrel demo.
-- **Centring is done with spacers** either side of a 72-cell column; `max-width` and margins
-  come with the layout step.
+- **Zen's top margin is an empty text** shown only in zen. The column is centred with
+  `justify` now, but a `margin` can't depend on the store, so the six rows above the text in
+  zen still come from a spacer.
 - **Two lists show a selection** (the open day and the last page); the theme's
   `row.selected.blur` decides how loud the unfocused one is.
 - **Open tasks from other days** ("also today" in thc) need a query across entries: a host's or

@@ -122,11 +122,8 @@
      },
      {
       "type": "row",
+      "justify": "center",
       "children": [
-       {
-        "type": "text",
-        "text": ""
-       },
        {
         "type": "col",
         "size": 72,
@@ -202,10 +199,6 @@
           "when": "!zen"
          }
         ]
-       },
-       {
-        "type": "text",
-        "text": ""
        }
       ]
      }

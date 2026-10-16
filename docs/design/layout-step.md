@@ -82,6 +82,12 @@ The Kestrel demo plays in a real window on it.
    as tall as its lines.
 4. **Daybook**: the spacers either side of the writing column go, replaced by `max` and
    `self: "center"`. (Zen's top margin is already possible with 3a's `margin`; do it here too.)
+   Done 16 October 2026, differently: `max` bounds a node along its parent and `self` places it
+   across, so neither gives a column a width in a column. The column is `size: 72` in a row
+   with `justify: "center"` (a fixed size gives way as `max` would), in the same place as the
+   spacers put it at three sizes, zen and not. Zen's margin stays an empty text shown `when:
+   "zen"`: a margin can't depend on the store. Filling `margin` (and `pad`) from the bound
+   value, as `when` is, would retire it; that, or a cross-axis `max`, is for 3f to decide.
 5. **Look** at the wringer's `landing` and `settings` and the Kestrel demo in a real window
    (ask Aram to bring it forward), and run `FUZZ_RUNS=400` in release.
 
