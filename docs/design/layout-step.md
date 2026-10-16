@@ -89,7 +89,9 @@ The Kestrel demo plays in a real window on it.
    "zen"`: a margin can't depend on the store. Filling `margin` (and `pad`) from the bound
    value, as `when` is, would retire it; that, or a cross-axis `max`, is for 3f to decide.
 5. **Look** at the wringer's `landing` and `settings` and the Kestrel demo in a real window
-   (ask Aram to bring it forward), and run `FUZZ_RUNS=400` in release.
+   (ask Aram to bring it forward), and run `FUZZ_RUNS=400` in release. The fuzz is clean at 400 runs in release
+   (16 October 2026, 315 s, `fitted` included, with a screen of `fit` nodes); the look is
+   still to do.
 
 **The baseline**, taken in a release build at 0300ead on an Apple M5 Max, in the window
 (`FICTTY_SOCKET=/tmp/fstress.sock fictty run --window …`, then `HOLD=6 examples/stress/play.sh`).
