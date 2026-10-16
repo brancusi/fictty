@@ -1224,3 +1224,13 @@ fn a_hidden_node_leaves_no_gap() {
     let y = |hidden: bool| node(&mut window(ui(hidden), 20, 12), "b").rect.unwrap().y;
     assert_eq!(y(true), y(false), "two hidden texts between them add nothing");
 }
+
+#[test]
+fn a_short_last_line_of_a_grid_keeps_its_rows_as_wide() {
+    let items: Vec<Value> = (0..4).map(|i| json!({"id": format!("p{i}"), "name": format!("pic {i}")})).collect();
+    let row = json!({"type": "col", "size": 2, "children": [{"type": "text", "size": 1, "text": "{$item.name}"}]});
+    let mut s = window(json!({"root": {"type": "list", "id": "g", "cols": 3, "row": row, "items": items}}), 60, 10);
+    let (x0, _) = s.at("g", Some(0), None).unwrap();
+    let (x3, _) = s.at("g", Some(3), None).unwrap();
+    assert_eq!(x3, x0, "the fourth row sits under the first, as wide");
+}

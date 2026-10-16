@@ -726,7 +726,8 @@ impl Portal {
                         this.send(row_press(&target, k, e), cx)
                     }),
                 )
-                .when(cols > 1, |d| d.flex_1().min_w_0())
+                // A fixed share of its line, so a short last line's rows are as wide as the rest.
+                .when(cols > 1, |d| d.flex_none().w(relative(1. / cols as f32)).min_w_0())
                 .child(body);
             shown.push(row.into_any_element());
         }
