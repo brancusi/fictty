@@ -190,7 +190,8 @@ fictty theme paper                                        # choose a loaded them
   matches), `toggle` (a true/false field of the selected row: a checkbox; `"store.zen"` flips a store
   entry instead, and `"store.remove/{id}"` an entry named from each picked row, all taking the
   selected row's new value, so a flag lives per row the way an editor's `doc` does; a row
-  template shows it with `"when": "remove/{$item.id}"`), `do`. An action's templates read the selected row's fields, `{store.key}` and
+  template shows it with `"when": "remove/{$item.id}"`), `do`. An action's templates read the selected row's fields (or, run from a node that isn't a list,
+the value it's bound to: a button bound to `@albums` acts on the album), `{store.key}` and
   the UI's sources by name (`{today.id}`). A node's `click`
   runs an action too, after the click selects the row; a `button` runs its click on Enter and
   Space. A focused node's keys win over the UI's, which win over the defaults; a binding of

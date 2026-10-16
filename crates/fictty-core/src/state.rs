@@ -2232,10 +2232,8 @@ fn act(st: &mut State, a: Action) -> Vec<Effect> {
             let template = &toggle["store.".len()..];
             let Some(id) = st.focus.clone() else { return vec![] };
             let Some(n) = tree!(st).find(&id) else { return vec![] };
-            let rows = items(st, n);
-            let keys: Vec<String> = picked(st, &id).into_iter().filter_map(|r| rows.get(r)).map(|r| crate::model::fill(template, r)).collect();
-            let lead = rows.get(selected(st, &id)).map(|r| crate::model::fill(template, r));
-            let Some(lead) = lead else { return vec![] };
+            let keys: Vec<String> = acted_on(st, n).iter().map(|r| crate::model::fill(template, r)).collect();
+            let Some(lead) = keys.first().cloned() else { return vec![] };
             let on = |st: &State, k: &str| matches!(st.store.get(k).map(|e| &e.body), Some(Body::Value { value: Value::Bool(true) }));
             let to = !on(st, &lead);
             for k in keys {
@@ -3347,7 +3345,22 @@ pub fn selected(st: &State, id: &str) -> usize {
 pub fn selected_item(st: &State) -> Option<Value> {
     let id = st.focus.as_ref()?;
     let n = tree!(st).find(id)?;
-    items(st, n).get(selected(st, id)).cloned()
+    acted_on(st, n).first().cloned()
+}
+
+/// What an action run from `n` reads its templates from, the selected row first: the selected
+/// and picked rows of a list, tree or table, else the value `n` is bound to (a button bound to
+/// `@albums` acts on the album it shows).
+fn acted_on(st: &State, n: &Node) -> Vec<Value> {
+    let Some(id) = n.id.as_deref() else { return vec![] };
+    if !matches!(n.kind, Kind::List { .. } | Kind::Tree { .. } | Kind::Table { .. } | Kind::Bars { .. }) {
+        return bound(st, n).cloned().into_iter().collect();
+    }
+    let rows = items(st, n);
+    let lead = selected(st, id);
+    let mut out: Vec<Value> = rows.get(lead).cloned().into_iter().collect();
+    out.extend(picked(st, id).into_iter().filter(|r| *r != lead).filter_map(|r| rows.get(r).cloned()));
+    out
 }
 
 /// A source's value from a command's stdout, narrowed by its `path`.

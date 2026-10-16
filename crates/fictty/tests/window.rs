@@ -1182,3 +1182,31 @@ fn a_gauge_fills_from_its_bound_value() {
     s.msg(Msg::Write { key: "play".into(), write: serde_json::from_value(json!({"write": "put", "value": {"at": 500, "len": 200}})).unwrap(), if_rev: None, by: "t".into(), for_ms: None });
     assert_eq!(node(&mut s, "g").text, "100%", "past its max it's full");
 }
+
+#[test]
+fn a_button_acts_on_the_value_it_is_bound_to() {
+    let mut s = window(
+        json!({"root": {"type": "col", "children": [
+            {"type": "list", "id": "albums", "bind": "albums", "item": "{title}", "size": 2},
+            {"type": "row", "size": 1, "children": [
+                {"type": "button", "id": "love", "label": "♡ {title}", "bind": "@albums", "when": "!loved/{id}", "click": {"toggle": "store.loved/{id}"}},
+                {"type": "button", "id": "loved", "label": "♥ {title}", "bind": "@albums", "when": "loved/{id}", "click": {"toggle": "store.loved/{id}"}},
+                {"type": "button", "id": "note", "label": "note", "bind": "@albums", "click": {"put": "last", "value": "{title}"}},
+            ]},
+        ]}, "store": {"albums": [{"id": "a", "title": "Harbour Lights"}, {"id": "b", "title": "Copper Weather"}]}, "focus": "albums"}),
+        60,
+        8,
+    );
+    let press = |s: &mut fictty::Headless, id: &str| {
+        let (x, y) = s.at(id, None, None).unwrap();
+        s.mouse("press", x, y).mouse("release", x, y);
+    };
+    s.keys(&["down"]);
+    press(&mut s, "love");
+    assert_eq!(s.state().store["loved/b"].read()["value"], true, "the album the button shows");
+    assert_eq!(node(&mut s, "loved").text, "♥ Copper Weather");
+    press(&mut s, "note");
+    assert_eq!(s.state().store["last"].read()["value"], "Copper Weather", "a put fills from it too");
+    press(&mut s, "loved");
+    assert_eq!(s.state().store["loved/b"].read()["value"], false, "and back");
+}
