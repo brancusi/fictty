@@ -17,7 +17,7 @@ and the machine. The terminal is what's in the way:
 - one font, one size, whole cells: no real typography, layout or motion;
 - a terminal emulator sits between the grid we test and what's shown.
 
-The spike (branch `spike/native`, 11 October) answered the questions that could have stopped it:
+The spike (11 October, on a branch since removed; its `Live` became the engine on `main`) answered the questions that could have stopped it:
 
 | | GPUI window (spike) | terminal (guide's numbers) |
 |---|---|---|
