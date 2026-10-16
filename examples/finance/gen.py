@@ -53,7 +53,7 @@ detail = box("Selected", col(
     {"type": "big", "bind": "@pos.sym", "text": "{.}", "size": 3, "style": {"fg": "accent"}} if False else
     text("{sym}  {name}", "@pos", 1, style={"bold": True, "fg": "accent"}),
     text("last {px_s}   qty {qty_s}\nmkt value {mv_s}   weight {w}\nday {±day_s}   P&L {±dpnl_s}\ntotal {±ret_s}   stop {stop}", "@pos", 5),
-    {"type": "gauge", "bind": "@pos", "value": "{w}", "max": 25, "label": "weight {w} of 25% cap", "size": 1, "style": {"fg": "gold"}},
+    {"type": "gauge", "bind": "@pos", "value": "{w}", "of": 25, "label": "weight {w} of 25% cap", "size": 1, "style": {"fg": "gold"}},
 ), size=11, id="detail")
 
 budget = box("Budget used · Q3", col(

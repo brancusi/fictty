@@ -17,10 +17,10 @@ use std::collections::BTreeMap;
 pub const STATES: [&str; 6] = ["hover", "focused", "active", "selected", "disabled", "blur"];
 
 /// The parts the runtime draws inside a node, besides each component's own (its `type`).
-const INNER: [&str; 29] = [
+const INNER: [&str; 30] = [
     "screen", "panel", "border", "title", "row", "empty", "status", "status.error", "toast", "table.header", "table.total", "tabs.selected", "tabs.idle",
     "tabs.underline", "editor.caret", "editor.selection", "input.placeholder", "md.heading", "md.bullet", "md.quote", "md.code",
-    "md.task", "md.done", "md.link", "scrollbar", "scrollbar.thumb", "tree.guide", "bars.label", "spinner",
+    "md.task", "md.done", "md.link", "scrollbar", "scrollbar.thumb", "tree.guide", "bars.label", "gauge.fill", "spinner",
 ];
 
 /// The components that draw something of their own, so have a part: every `type` but the
@@ -43,6 +43,8 @@ const DEFAULT_PARTS: &str = r#"{
     "border": "border",
     "border.focused": "accent",
     "spinner": "accent",
+    "gauge": {"bg": "ring", "radius": 99},
+    "gauge.fill": {"bg": "accent", "radius": 99},
     "tabs.selected": {"fg": "bg", "bg": "accent", "bold": true, "pad": ["8px", 0], "radius": 6, "cursor": "pointer"},
     "tabs.idle": {"fg": "dim", "pad": ["8px", 0], "radius": 6, "cursor": "pointer"},
     "tabs.underline": "accent",

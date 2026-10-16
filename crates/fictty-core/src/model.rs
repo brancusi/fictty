@@ -569,11 +569,12 @@ pub enum Kind {
         #[serde(default, skip_serializing_if = "std::ops::Not::not")]
         horizontal: bool,
     },
-    /// A filled bar: `value` (a template giving a number) out of `max` (default 1).
+    /// A filled bar: `value` (a template giving a number) out of `of` (a number or a template,
+    /// default 1). Not `max`, which is every node's own: how big it can grow.
     Gauge {
         value: String,
         #[serde(default, skip_serializing_if = "Option::is_none")]
-        max: Option<f64>,
+        of: Option<Value>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         label: Option<String>,
     },
@@ -2028,6 +2029,23 @@ pub fn fill(template: &str, v: &Value) -> String {
 pub fn number(s: &str) -> Option<f64> {
     let t: String = s.chars().filter(|c| c.is_ascii_digit() || matches!(c, '-' | '.' | '+')).collect();
     t.parse().ok()
+}
+
+/// How full a `gauge` is, 0 to 1: its `value` filled from `v`, over `of` (a number, or a
+/// template filled from `v`; default 1).
+pub fn gauge_ratio(value: &str, of: Option<&Value>, v: &Value) -> f64 {
+    let of = match of {
+        Some(Value::String(t)) => number(&fill(t, v)),
+        Some(o) => o.as_f64(),
+        None => Some(1.),
+    };
+    let r = number(&fill(value, v)).unwrap_or(0.) / of.unwrap_or(1.);
+    if r.is_finite() { r.clamp(0., 1.) } else { 0. }
+}
+
+/// What a `gauge` says: its `label` filled from `v`, else how full it is in percent.
+pub fn gauge_label(value: &str, of: Option<&Value>, label: Option<&str>, v: &Value) -> String {
+    label.map(|l| fill(l, v)).unwrap_or_else(|| format!("{:.0}%", gauge_ratio(value, of, v) * 100.))
 }
 
 /// A dotted path into a value (`items`, `a.b`, `rows.0`); `.` or empty is the value itself.

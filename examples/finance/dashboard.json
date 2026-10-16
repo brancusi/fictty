@@ -313,7 +313,7 @@
               "type": "gauge",
               "bind": "@pos",
               "value": "{w}",
-              "max": 25,
+              "of": 25,
               "label": "weight {w} of 25% cap",
               "size": 1,
               "style": {

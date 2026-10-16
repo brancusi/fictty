@@ -621,6 +621,18 @@ impl Portal {
                     None => div().into_any_element(),
                 }
             }
+            Kind::Gauge { value, of, label } => {
+                // The node's own box is the track; the `gauge.fill` part fills it from the start.
+                let ratio = crate::model::gauge_ratio(value, of.as_ref(), v) as f32;
+                let bar = lk.boxed(div().flex_none().h_full().w(relative(ratio)), &style::inner(st, "gauge.fill", &[]), c, [0.; 4]);
+                let track = div().relative().size_full().flex().flex_row().child(bar);
+                match label {
+                    Some(l) => track
+                        .child(div().absolute().inset_0().flex().items_center().justify_center().child(text::line(&tx, l, v, Ink::default(), false)))
+                        .into_any_element(),
+                    None => track.into_any_element(),
+                }
+            }
             _ => div().text_color(lk.dim).child(format!("[{}]", n.kind_name())).into_any_element(),
         };
         self.fitting -= fits as usize;

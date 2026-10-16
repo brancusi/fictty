@@ -68,7 +68,9 @@ fictty theme paper                                        # choose a loaded them
 - **Components** (a closed set): layout `col`, `row` (both with a `gap`) and `stack` (children
   over each other); `text`, `big`, `spinner`; `list`, `tree`, `table` (with column `total`s);
   `editor`, `input`, `button`; `tabs`; `sparkline`, `chart`, `bars` (up, or `horizontal`), `gauge`;
-  and the pixel ones below. Every node can have `id`, `size` (`12` cells, `"48px"`, `"30%"`, `"*"`,
+  and the pixel ones below. A `gauge` fills to its `value` out of `of` (a number or a template,
+  `"value": "{at}", "of": "{length}"`; default 1), saying its `label` or the percent; in the window
+  its own style is the track and the `gauge.fill` part the bar, so `"size": "4px"` is a progress line. Every node can have `id`, `size` (`12` cells, `"48px"`, `"30%"`, `"*"`,
   `"2*"`, `"fit"`; a terminal rounds pixels to its cells) with `min` and `max`, `title`, `border`,
   `pad`, `margin`, `self`, `aspect`, `align`, `variant`, `tone`, `style`, `bind`, `keys`, `click`, `when`,
   and in a stack `float` and `modal`.

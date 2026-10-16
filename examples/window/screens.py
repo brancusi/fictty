@@ -24,7 +24,7 @@ save("settings", {
     T("<b>Density</>   <dim>(a radio group: tabs as a segmented control)</>", size=1),
     {"type": "tabs", "id": "density", "size": 1, "tabs": ["Compact", "Comfortable", "Spacious"], "children": [T(""), T(""), T("")]},
     T("<b>Volume</>  {vol}%   <dim>(a slider: ←/→ can't add 5 without the host)</>", bind="ui", size=1),
-    {"type": "gauge", "id": "vol", "size": 1, "bind": "ui", "value": "{vol}", "max": 100},
+    {"type": "gauge", "id": "vol", "size": 1, "bind": "ui", "value": "{vol}", "of": 100},
     T("<b>Region</>", size=1),
     {"type": "button", "id": "region", "label": "{region}  ▾", "bind": "ui", "size": 1, "click": {"put": "picking", "value": True}},
     T(""),

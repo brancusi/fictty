@@ -1164,3 +1164,21 @@ fn a_fit_editor_is_as_tall_as_its_lines_and_grows_with_them() {
     let (e, after) = (node(&mut s, "e").rect.unwrap(), node(&mut s, "after").rect.unwrap());
     assert_eq!((e.height, after.y), (2, e.y + 2), "a new line makes it a row taller");
 }
+
+#[test]
+fn a_gauge_fills_from_its_bound_value() {
+    let mut s = window(
+        json!({"root": {"type": "col", "children": [
+            {"type": "gauge", "id": "g", "bind": "play", "value": "{at}", "of": 200, "size": "6px"},
+            {"type": "gauge", "id": "l", "bind": "play", "value": "{at}", "of": "{len}", "label": "{at} of 200", "size": 1},
+        ]}, "store": {"play": {"at": 80, "len": 200}}}),
+        30,
+        4,
+    );
+    assert_eq!(node(&mut s, "g").text, "40%");
+    assert_eq!(node(&mut s, "l").text, "80 of 200", "a label says what it's told");
+    let g = node(&mut s, "g");
+    assert_eq!((g.style.part.as_deref(), g.style.ink.bg.is_some()), (Some("gauge"), true), "the track is the gauge part's");
+    s.msg(Msg::Write { key: "play".into(), write: serde_json::from_value(json!({"write": "put", "value": {"at": 500, "len": 200}})).unwrap(), if_rev: None, by: "t".into(), for_ms: None });
+    assert_eq!(node(&mut s, "g").text, "100%", "past its max it's full");
+}

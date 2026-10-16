@@ -1076,11 +1076,10 @@ fn node(cx: &mut Cx, n: &Node, f: &mut Frame, area: Rect) {
         }
         Kind::Bars { label, value, horizontal: true, .. } => across(cx, n, f, inner, label, value, style, &id),
         Kind::Bars { label, value, width, .. } => bars(cx, n, f, inner, label, value, *width, style, &id),
-        Kind::Gauge { value, max, label } => {
+        Kind::Gauge { value, of, label } => {
             let v = bound(st, n).unwrap_or(&Value::Null);
-            let x = number(&fill(value, v)).unwrap_or(0.0);
-            let ratio = (x / max.unwrap_or(1.0)).clamp(0.0, 1.0);
-            let text = label.as_ref().map(|l| fill(l, v)).unwrap_or_else(|| format!("{:.0}%", ratio * 100.0));
+            let ratio = crate::model::gauge_ratio(value, of.as_ref(), v);
+            let text = crate::model::gauge_label(value, of.as_ref(), label.as_deref(), v);
             let fg = style.fg.unwrap_or(cx.th.accent);
             let g = Gauge::default()
                 .gauge_style(Style::default().fg(fg).bg(cx.th.panel))
