@@ -326,7 +326,8 @@ role it names. `tabular` lines numbers up; `tracking` reads back but isn't drawn
 wraps; `"wrap": false` keeps each line on one, and `"lines": 2` shows at most two. A line that
 doesn't fit ends in `…`: a row keeps the part after its tab (a time, a count) whole while it
 can, and `keep` (cells) holds room for the left before the right is cut too. The readback marks
-a node whose text was cut, `(cut)` in the outline and `"cut": true` in the JSON.
+a node whose text was cut, `(cut)` in the outline and `"cut": true` in the JSON, with or without
+an `id`.
 
 **Cards and the status line.** A `backdrop` (`fill`, `fill2` for a gradient down, `border`,
 `radius` and `shadow` as fractions of a cell's height, `glow` for a lit edge) draws as a card in

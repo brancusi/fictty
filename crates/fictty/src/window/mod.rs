@@ -433,7 +433,7 @@ impl Portal {
         el = text::typed(el, role, &lk.fonts());
         let laid = self.laid.clone();
         let keep = n.rows().and_then(|r| r.keep).map_or(0., |k| k as f32 * cell.w);
-        let tx = text::Tx { lk, laid: &laid, id: &id, keep, line_h: text::line_height(role, cell.h), fitting: self.fitting > 0 };
+        let tx = text::Tx { lk, laid: &laid, id: &key, keep, line_h: text::line_height(role, cell.h), fitting: self.fitting > 0 };
         if let (Some(t), Some(ink)) = (&n.title, &rs.title) {
             el = el.gap_1().child(div().flex_none().w_full().text_sm().child(text::line(&tx, t, v, lk.ink(ink), false)));
         }

@@ -1025,6 +1025,22 @@ fn wrap_false_and_lines_keep_text_to_its_lines_and_cut_it() {
 }
 
 #[test]
+fn a_cut_shows_in_the_readback_without_an_id() {
+    let long = "a title far too long for twenty cells";
+    let mut s = window(
+        json!({"root": {"type": "col", "id": "c", "children": [
+            {"type": "text", "text": "short"},
+            {"type": "tabs", "tabs": ["One"], "children": [{"type": "row", "children": [{"type": "text", "text": long, "wrap": false}]}]},
+        ]}}),
+        20,
+        6,
+    );
+    let cut: Vec<(String, bool)> = s.readback().into_iter().filter(|n| n.kind == "text").map(|n| (n.text, n.cut)).collect();
+    assert_eq!(cut, [("short".to_string(), false), (long.to_string(), true)], "named by where they sit, inside tabs too");
+    assert!(s.screen().contains("(cut)"), "the outline says so");
+}
+
+#[test]
 fn a_type_role_sets_a_nodes_text_and_a_bigger_one_takes_more_room() {
     let theme = json!({"type": {"display": {"size": 40, "weight": 800, "line": 48}, "body": {"size": 14}}, "fonts": {"ui": "Helvetica"}});
     let cut = |role: &str| {

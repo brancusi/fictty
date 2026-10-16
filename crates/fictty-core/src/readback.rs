@@ -62,26 +62,30 @@ fn plain(r: &Resolved) -> bool {
 /// whether it cut their text.
 pub fn readback(st: &State, rects: &[(String, Rect)], cut: &[String]) -> Vec<Shown> {
     let mut out = Vec::new();
-    walk(st, st.tree(), 0, (rects, cut), &mut out);
+    walk(st, st.tree(), 0, "root", (rects, cut), &mut out);
     out
 }
 
 type Frame<'a> = (&'a [(String, Rect)], &'a [String]);
 
-fn walk(st: &State, n: &Node, depth: usize, frame: Frame, out: &mut Vec<Shown>) {
+fn walk(st: &State, n: &Node, depth: usize, key: &str, frame: Frame, out: &mut Vec<Shown>) {
     if !state::shown(st, n) {
         return;
     }
-    out.push(shown(st, n, depth, frame));
+    // A node without an id goes by where it sits, as the window names it: the nearest id (or
+    // `root`) and the way down from there, so a cut in it shows too.
+    let key = n.id.as_deref().unwrap_or(key);
+    out.push(shown(st, n, depth, key, frame));
     match &n.kind {
         Kind::Tabs { children, .. } => {
-            if let Some(c) = children.get(state::tab_of(st, n).min(children.len().saturating_sub(1))) {
-                walk(st, c, depth + 1, frame, out);
+            let at = state::tab_of(st, n).min(children.len().saturating_sub(1));
+            if let Some(c) = children.get(at) {
+                walk(st, c, depth + 1, &format!("{key}.{at}"), frame, out);
             }
         }
         _ => {
-            for c in n.children() {
-                walk(st, c, depth + 1, frame, out);
+            for (k, c) in n.children().iter().enumerate() {
+                walk(st, c, depth + 1, &format!("{key}.{k}"), frame, out);
             }
         }
     }
@@ -94,7 +98,7 @@ fn lines(template: &str, v: &Value) -> String {
     shown.join("\n")
 }
 
-fn shown(st: &State, n: &Node, depth: usize, (rects, cut): Frame) -> Shown {
+fn shown(st: &State, n: &Node, depth: usize, key: &str, (rects, cut): Frame) -> Shown {
     let v = state::bound(st, n).unwrap_or(&Value::Null);
     let id = n.id.clone();
     let mut s = Shown {
@@ -111,7 +115,7 @@ fn shown(st: &State, n: &Node, depth: usize, (rects, cut): Frame) -> Shown {
         mixed: state::doc_key(st, n).is_some_and(|k| k.starts_with(state::MIXED)),
         rect: id.as_deref().and_then(|i| rects.iter().find(|(r, _)| r == i)).map(|(_, r)| *r),
         style: style::resolve(st, n),
-        cut: id.as_deref().is_some_and(|i| cut.iter().any(|c| c == i)),
+        cut: cut.iter().any(|c| c == key),
         id,
     };
     match &n.kind {
