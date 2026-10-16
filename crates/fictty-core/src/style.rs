@@ -762,6 +762,10 @@ pub fn problems(st: &State, nodes: &[&Node]) -> Vec<String> {
                 out.push(format!("theme {name}: font {k}: {f} didn't load ({why})"));
             }
         }
+        // `edge` is no colour: it's the shape of every node's corners and border.
+        if let Some(e) = active.tokens.get("edge").filter(|e| !["rounded", "square", "plain", "thick", "double"].contains(&e.as_str())) {
+            out.push(format!("theme {name}: token edge {e:?} isn't rounded, square, plain, thick or double (it shapes every border)"));
+        }
         // In a template `<title>` names a part and a type role alike, so it would take both.
         for r in active.types.keys().filter(|r| active.parts.contains_key(*r) || defaults().contains_key(*r)) {
             out.push(format!("theme {name}: type role {r} is also a part's name, so <{r}> takes the part's ink too"));
@@ -983,9 +987,9 @@ mod tests {
     #[test]
     fn wrong_names_in_a_theme_are_problems() {
         let st = screen(
-            json!({"tokens": {"warn": "#ffbd4f"},
-                   "space": {"s1": "8px", "big": "huge"},
+            json!({"space": {"s1": "8px", "big": "huge"},
                    "type": {"title": {"size": 30}, "link": {"size": 12}, "body": {"size": 14}},
+                   "tokens": {"warn": "#ffbd4f", "edge": "#ffffff14"},
                    "parts": {"button.focsed": "fg", "button.focused": "acent+b", "md.heding": "b", "row.selected.blur": "d", "toast.warn": "warn", "link": "u",
                              "tabs": {"shape": "pills", "pad": "s9", "radius": "r9", "shadow": "e9", "type": "huge", "colour": "red", "border": {"style": "dotted", "color": "bordr"}}},
                    "variants": {"card": {"title": "brite", "style": {"bg": "pannel"}}}}),
@@ -1009,6 +1013,7 @@ mod tests {
             "theme t: part tabs: a style has no \"colour\"",
             "theme t: variant card's title: \"brite\" isn't a token, a colour, a part or b, d, i, u, r, s",
             "theme t: variant card: \"pannel\" isn't a token or a colour",
+            "theme t: token edge \"#ffffff14\" isn't rounded, square, plain, thick or double (it shapes every border)",
             "theme t: type role link is also a part's name, so <link> takes the part's ink too",
             "theme t: type role title is also a part's name, so <title> takes the part's ink too",
             "theme t: space big: \"huge\" isn't cells or pixels",

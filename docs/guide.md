@@ -285,7 +285,7 @@ every theme. A colour is `#rgb`, `#rrggbb` or a name; `#rrggbbaa` (or `#rgba`) i
 the window, glass over a picture, and solid in a terminal. `examples/showcase/themes.json` has three: glass, paper and phosphor. In the window, a
 token `edge` sets the border of every node that doesn't name its own: anything but `rounded`
 squares the corners of panels, buttons, fields, tabs, rows and toasts, and `thick` or `double`
-draws them heavier. `examples/window/themes.json` has six more for the window, written by
+draws them heavier. Any other value is a problem: `edge` is a shape, never a colour. `examples/window/themes.json` has six more for the window, written by
 `themes.py` and worn by the wringer's nine screens and the demo (`examples/window/open.sh`). They
 share one vocabulary, so a screen can name it and wear any of them: type roles `display` and
 `stat` (sized in pixels), `heading`, `label`, `body`, `caption`, `num`, `mono`; scales `s1`–`s6`,
