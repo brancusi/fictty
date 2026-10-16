@@ -440,7 +440,9 @@ impl Portal {
         let body: AnyElement = match &n.kind {
             Kind::Col { children, gap, justify, items } | Kind::Row { children, gap, justify, items } => {
                 let row = matches!(n.kind, Kind::Row { .. });
-                let kids: Vec<AnyElement> = children.iter().enumerate().map(|(k, c)| self.node(st, lk, c, row, &format!("{key}.{k}"), cx)).collect();
+                // A hidden child takes no room, its gap neither.
+                let kids: Vec<AnyElement> =
+                    children.iter().enumerate().filter(|(_, c)| state::shown(st, c)).map(|(k, c)| self.node(st, lk, c, row, &format!("{key}.{k}"), cx)).collect();
                 let [gx, gy] = gap.as_ref().map_or([0.; 2], |g| {
                     let [x, y] = g.xy();
                     [th.px(x, cell.w).unwrap_or(0.), th.px(y, cell.h).unwrap_or(0.)]

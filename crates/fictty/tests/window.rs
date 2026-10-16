@@ -1210,3 +1210,17 @@ fn a_button_acts_on_the_value_it_is_bound_to() {
     press(&mut s, "loved");
     assert_eq!(s.state().store["loved/b"].read()["value"], false, "and back");
 }
+
+#[test]
+fn a_hidden_node_leaves_no_gap() {
+    let ui = |hidden: bool| {
+        let mut kids = vec![json!({"type": "text", "id": "a", "text": "a", "size": 1})];
+        if hidden {
+            kids.extend([json!({"type": "text", "text": "x", "size": 1, "when": "never"}), json!({"type": "text", "text": "y", "size": 1, "when": "never"})]);
+        }
+        kids.push(json!({"type": "text", "id": "b", "text": "b", "size": 1}));
+        json!({"root": {"type": "col", "gap": 2, "children": kids}})
+    };
+    let y = |hidden: bool| node(&mut window(ui(hidden), 20, 12), "b").rect.unwrap().y;
+    assert_eq!(y(true), y(false), "two hidden texts between them add nothing");
+}
