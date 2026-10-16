@@ -509,14 +509,17 @@ pub fn is_font_file(f: &str) -> bool {
     [".ttf", ".otf", ".ttc", ".woff", ".woff2"].iter().any(|e| f.ends_with(e))
 }
 
-/// A colour by itself as `#rrggbb`: `#rgb`, `#rrggbb`, or one of the named colours.
+/// A colour by itself as `#rrggbb`, or `#rrggbbaa` when it's see-through: `#rgb`, `#rgba`,
+/// `#rrggbb`, `#rrggbbaa`, or one of the named colours. An opaque alpha (`ff`) is dropped.
 pub fn hex(name: &str) -> Option<String> {
     if let Some(h) = name.strip_prefix('#') {
         let h: String = match h.len() {
-            3 => h.chars().flat_map(|c| [c, c]).collect(),
+            3 | 4 => h.chars().flat_map(|c| [c, c]).collect(),
             _ => h.to_string(),
         };
-        return (h.len() == 6 && h.chars().all(|c| c.is_ascii_hexdigit())).then(|| format!("#{}", h.to_ascii_lowercase()));
+        let h = h.to_ascii_lowercase();
+        let h = h.strip_suffix("ff").filter(|_| h.len() == 8).unwrap_or(&h);
+        return (matches!(h.len(), 6 | 8) && h.chars().all(|c| c.is_ascii_hexdigit())).then(|| format!("#{h}"));
     }
     let c = match name.to_ascii_lowercase().replace(['-', '_'], "").as_str() {
         "black" => 0x000000,
@@ -841,6 +844,18 @@ mod tests {
 
     fn of(st: &State, id: &str) -> Resolved {
         resolve(st, st.tree().find(id).unwrap())
+    }
+
+    #[test]
+    fn a_colour_can_be_see_through() {
+        assert_eq!(hex("#FFF"), Some("#ffffff".into()));
+        assert_eq!(hex("#ffffff40"), Some("#ffffff40".into()), "an alpha is kept");
+        assert_eq!(hex("#fff4"), Some("#ffffff44".into()), "short too");
+        assert_eq!(hex("#123456ff"), Some("#123456".into()), "an opaque alpha is no alpha");
+        assert_eq!(hex("#12345"), None);
+        let st = screen(json!({"tokens": {"glass": "#ffffff1a"}}), json!({"type": "text", "id": "t", "text": "x", "style": {"bg": "glass"}}));
+        assert_eq!(Theme::of(&st).colour("glass").as_deref(), Some("#ffffff1a"), "a token takes one");
+        assert!(st.problems.is_empty(), "and it's no problem: {:?}", st.problems);
     }
 
     #[test]

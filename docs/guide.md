@@ -278,7 +278,8 @@ a key cycles, `fictty theme <name>` picks one. A push doesn't change them. A the
 `title`, `editor.caret`, `input.placeholder`, `status` and the rest, as style specs like
 `accent+b`) and `variants` (named looks: a style, an edge, a backdrop, a title style). Nodes ask
 for a `variant` and a `tone`, never a colour. A UI's own `theme` map still works, as tokens under
-every theme. `examples/showcase/themes.json` has three: glass, paper and phosphor. In the window, a
+every theme. A colour is `#rgb`, `#rrggbb` or a name; `#rrggbbaa` (or `#rgba`) is see-through in
+the window, glass over a picture, and solid in a terminal. `examples/showcase/themes.json` has three: glass, paper and phosphor. In the window, a
 token `edge` sets the border of every node that doesn't name its own: anything but `rounded`
 squares the corners of panels, buttons, fields, tabs, rows and toasts, and `thick` or `double`
 draws them heavier. `examples/window/themes.json` has six more for the window, written by

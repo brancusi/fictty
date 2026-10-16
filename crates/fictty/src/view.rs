@@ -88,7 +88,10 @@ pub struct Out {
 impl Cx<'_> {
     /// A colour by theme name, CSS-ish name or `#rrggbb`.
     fn color(&self, name: &str) -> Option<Color> {
-        token(self.st, self.active, name).unwrap_or(name).parse().ok()
+        let c = token(self.st, self.active, name).unwrap_or(name);
+        // A terminal has no see-through colours: `#rrggbbaa` is drawn solid.
+        let c = if c.starts_with('#') && c.len() == 9 { &c[..7] } else { c };
+        c.parse().ok()
     }
 
     /// A part of a component, styled by the active theme (`table.header`, `row.selected`), or

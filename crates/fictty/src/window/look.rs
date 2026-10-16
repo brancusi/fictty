@@ -6,7 +6,7 @@ use crate::model::Len;
 use crate::state::State;
 use crate::style::{self, Resolved, Role, Theme};
 use std::collections::HashMap;
-use gpui::{BoxShadow, CursorStyle, FontStyle, FontWeight, HighlightStyle, Hsla, StrikethroughStyle, Styled, UnderlineStyle, linear_color_stop, linear_gradient, point, px, rgb};
+use gpui::{BoxShadow, CursorStyle, FontStyle, FontWeight, HighlightStyle, Hsla, StrikethroughStyle, Styled, UnderlineStyle, linear_color_stop, linear_gradient, point, px, rgb, rgba};
 
 /// How a run of text looks: colours and the `b d i u r s` modifiers of a spec.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -42,7 +42,8 @@ pub struct Look<'a> {
 /// A colour by name: `#rrggbb`, `#rgb`, or one of the named colours.
 pub fn parse(name: &str) -> Option<Hsla> {
     let hex = style::hex(name)?;
-    u32::from_str_radix(&hex[1..], 16).ok().map(|c| rgb(c).into())
+    let c = u32::from_str_radix(&hex[1..], 16).ok()?;
+    Some(if hex.len() == 9 { rgba(c).into() } else { rgb(c).into() })
 }
 
 impl<'a> Look<'a> {
