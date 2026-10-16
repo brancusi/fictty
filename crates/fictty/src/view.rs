@@ -1602,7 +1602,7 @@ fn specs(st: &State) -> Vec<LayerSpec> {
     let mut out: Vec<LayerSpec> = st.ui.layers.iter().filter(|l| l.when.as_deref().is_none_or(|w| crate::state::holds(st, w))).cloned().collect();
     if let Some(h) = &st.hover
         && let Some(row) = h.row.filter(|r| *r < 1000)
-        && let Some(n) = st.tree().find(&h.id)
+        && let Some(n) = st.node(&h.id)
         && let Some(tip) = &n.tip
     {
         let rows = items(st, n);
