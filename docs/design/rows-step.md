@@ -78,10 +78,30 @@ use it looked at.
   action wrote the store sent the selection back to the row it left (`step` already guarded
   against that). `a_click_that_writes_keeps_the_row_it_chose` covers it.
 
-### 4c · Trees and tables (M)
+### 4c · Trees and tables (M) · next
 
-- A tree's `row` template, with its indent and fold glyph drawn by the runtime around it.
-- A table's cells as templates per column (`cell`), with column widths and alignment.
+Where it starts (found in the demo audit, [building-blocks.md](building-blocks.md)): the window
+draws a tree as a flat list, with no indent or fold glyph, and folds it by key only; a table's
+columns are equal shares, `size`, `align`, `heat` and `total` ignored, so the wringer's `sheet`
+shows placeholders.
+
+- **A tree's rows**, item text or a `row` template, each drawn by the runtime after its indent
+  (`$depth` × two cells) and its fold glyph (`▾` open, `▸` closed, the tree's `leaf` for a row
+  without children, as the terminal drew them; a theme part `tree.fold` styles the glyph). A
+  press on the glyph folds that row (its hit's `part` is `fold`); a press on the rest selects.
+  The readback shows each row's indent and glyph, as its text.
+- **A table's columns:** `size` in any unit (cells, `px`, `%`, shares; `fit` as wide as its
+  widest shown cell and title), the same widths for the header, every row and the footer;
+  `align` (`right`, `center`) for the title and the cells; `heat` as a cell's background from the
+  theme's `neg` to `pos` (a part `table.heat`); `total` as a footer under its column (the part
+  `table.total`), its sum read back.
+- **A column's `cell`:** a node template for that column's cells, filled from `$item` as a list's
+  `row` (a chip, a badge, a button with its own click, as 4b).
+- Tests: `a_tree_shows_nested_rows_and_folds_them` (indent, glyphs, a press on the glyph folds),
+  a tree with a `row` template, a table's widths line up over header, rows and footer, `align`,
+  `heat` colours from the theme, totals read back, a `cell` template's button takes its click.
+  The wringer's `sheet` rebuilt without placeholders in `tests/wringer.rs`; Kestrel's Stock
+  (`tests/demo.rs`) right-aligned and whole.
 
 ### 4d · Rebuild (M) · chat and kanban done; Kestrel next
 
@@ -107,6 +127,9 @@ use it looked at.
     as wide as it is with `self`. Fixing it for real is a Taffy change (or measuring `fit` nodes
     ourselves); it's written here so the next screen that meets it knows why.
 - Still to do in 4d: Kestrel's inbox and Jobs board.
+- The demo audit of 17 October ([building-blocks.md](building-blocks.md)) went through every
+  demo for workarounds and added `on`, `{$store.key}`, `select` next and prev, a variant's
+  `parts`, tabs without pages and `{$rows}`; read a rebuilt screen against its list of signs.
 
 ## Done when
 

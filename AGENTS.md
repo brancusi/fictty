@@ -8,7 +8,9 @@ Guidance for agents (and people) working on fictty. Read [README.md](README.md) 
 dropped: don't extend the terminal's grid view (`view.rs`), `sim` or anything terminal-only. The
 work list is "Next, step by step" in [docs/design/native.md](docs/design/native.md) (the step marked
 Next; step 3's plan is [docs/design/layout-step.md](docs/design/layout-step.md), step 4's is
-[docs/design/rows-step.md](docs/design/rows-step.md)), shaped by
+[docs/design/rows-step.md](docs/design/rows-step.md); what a demo may and may not do, and the
+next steps in order, are in [docs/design/building-blocks.md](docs/design/building-blocks.md)),
+shaped by
 [docs/design/expressive.md](docs/design/expressive.md) (the layout and style stack) and measured
 against the wringer in [examples/window/](examples/window/README.md).
 

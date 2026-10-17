@@ -125,6 +125,7 @@ hours = [f"{h:02d}:00" for h in range(9, 18)]
 ev = {0: [(1, 2, "Standup"), (4, 3, "Design review")], 1: [(0, 1, "1:1 Grace"), (5, 1, "Lunch")], 2: [(2, 4, "Focus: themes")], 3: [(1, 1, "Hiring"), (6, 2, "Demo prep")], 4: [(3, 2, "Ship v0.3")]}
 event = T("<b>{$item.title}</>\n<dim>{$item.at}</>", id="ev-{$item.id}", variant="card", border=True, pad=[1, 0],
           float={"y": "{$item.y}", "height": "{$item.h}", "width": "100%"})
+# The hours' column starts a row down, as each day's events start under its bordered title.
 def day(i): return {"type": "col", "title": days[i], "border": True, "children": [{"type": "each", "id": f"day{i}", "bind": f"day{i}", "stack": True, "template": event}]}
 save("calendar", {
  "root": {"type": "col", "gap": 1, "children": [
