@@ -811,6 +811,8 @@ pub struct App {
     restore: Option<PathBuf>,
     store: Option<PathBuf>,
     themes: BTreeMap<String, ThemeSpec>,
+    /// The file the themes came from, reloaded with the UI's when it's watched.
+    themes_path: Option<PathBuf>,
     theme: Option<String>,
     host: Arc<dyn Host>,
     commands: bool,
@@ -846,12 +848,13 @@ impl App {
             commands: true,
             store: None,
             themes: BTreeMap::new(),
+            themes_path: None,
             theme: None,
             host: Arc::new(NoHost),
         }
     }
 
-    /// Reload the UI file whenever it changes.
+    /// Reload the UI file whenever it changes, and the themes file too.
     pub fn watch(mut self, on: bool) -> App {
         self.watch = on;
         self
@@ -882,8 +885,10 @@ impl App {
         self
     }
 
-    /// Add the themes in a JSON file (theme specs by name).
-    pub fn themes_file(self, path: &Path) -> Result<App> {
+    /// Add the themes in a JSON file (theme specs by name). A watched screen reloads them when
+    /// the file changes.
+    pub fn themes_file(mut self, path: &Path) -> Result<App> {
+        self.themes_path = Some(path.to_path_buf());
         Ok(self.themes(load_themes(path)?))
     }
 
@@ -1024,6 +1029,10 @@ impl App {
         let sock = std::fs::canonicalize(&self.socket).unwrap_or_else(|_| self.socket.clone());
         d.apply(&mut st, Msg::Host { bin, socket: sock.display().to_string(), dir: here.display().to_string() });
         let seen = self.file.as_deref().filter(|_| self.watch).and_then(mtime);
+        let themes_file = self.themes_path.filter(|_| self.watch).map(|p| {
+            let seen = mtime(&p);
+            (p, seen)
+        });
         Ok(Live {
             st,
             d,
@@ -1039,6 +1048,7 @@ impl App {
             last_tick: Instant::now(),
             file: self.file.filter(|_| self.watch),
             seen,
+            themes_file,
             store: self.store,
             saved_writes,
             held,
@@ -1113,6 +1123,8 @@ pub struct Live {
     /// The UI file, when it's watched, and when it last changed.
     file: Option<PathBuf>,
     seen: Option<SystemTime>,
+    /// The themes file, when the UI's is watched, and when it last changed.
+    themes_file: Option<(PathBuf, Option<SystemTime>)>,
     /// The store's file, and the writes it holds.
     store: Option<PathBuf>,
     saved_writes: u64,
@@ -1160,6 +1172,19 @@ impl Live {
                 self.seen = now;
                 match load(p) {
                     Ok(ui) => self.d.apply(&mut self.st, Msg::Push { ui }),
+                    Err(e) => self.st.status = Some(format!("{e:#}")),
+                }
+                changed = true;
+            }
+        }
+        // The themes are reloaded the same way, replacing those of the same names; the one
+        // shown stays chosen, so a theme being tuned redraws in place.
+        if let Some((p, seen)) = &mut self.themes_file {
+            let now = mtime(p);
+            if now != *seen {
+                *seen = now;
+                match load_themes(p) {
+                    Ok(add) => self.d.apply(&mut self.st, Msg::Theme { add, choose: None }),
                     Err(e) => self.st.status = Some(format!("{e:#}")),
                 }
                 changed = true;

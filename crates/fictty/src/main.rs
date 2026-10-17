@@ -20,7 +20,7 @@ enum Cmd {
     /// Run a screen in this terminal (optionally starting from a UI file).
     Run {
         file: Option<PathBuf>,
-        /// Reload the file whenever it changes.
+        /// Reload the file whenever it changes, and the --themes file too.
         #[arg(long)]
         watch: bool,
         /// Start from a saved state (what `upgrade` hands the new binary).

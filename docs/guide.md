@@ -276,7 +276,9 @@ document with its undo history), each with a revision (`rev`) and who wrote it l
 ## Themes
 
 `fictty run --themes themes.json` loads named themes; the first is chosen, `{"theme": "next"}` on
-a key cycles, `fictty theme <name>` picks one. A push doesn't change them. A theme has `tokens`
+a key cycles, `fictty theme <name>` picks one. A push doesn't change them; `fictty theme --load
+themes.json` does, and `run --watch` reloads the themes file whenever it changes, keeping the
+one shown, so a theme being tuned redraws in place. A theme has `tokens`
 (colours), `parts` (how the runtime draws `table.header`, `row.selected`, `border.focused`,
 `title`, `editor.caret`, `input.placeholder`, `status` and the rest, as style specs like
 `accent+b`) and `variants` (named looks: a style, an edge, a backdrop, a title style). Nodes ask

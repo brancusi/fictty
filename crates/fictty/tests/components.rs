@@ -676,6 +676,33 @@ fn a_live_screen_runs_its_engine_on_its_own_thread() {
     drop(live);
 }
 
+/// A watched screen reloads its themes file as it does its UI's: a theme being tuned redraws in
+/// place, still chosen.
+#[test]
+fn a_watched_screen_reloads_its_themes() {
+    let dir = std::env::temp_dir().join(format!("fth-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let (ui, themes) = (dir.join("ui.json"), dir.join("themes.json"));
+    std::fs::write(&ui, r#"{"root": {"type": "text", "text": "hi"}}"#).unwrap();
+    let write = |accent: &str, at: u64| {
+        std::fs::write(&themes, json!({"dusk": {"tokens": {"accent": accent}}, "dawn": {}}).to_string()).unwrap();
+        let f = std::fs::File::options().write(true).open(&themes).unwrap();
+        f.set_modified(std::time::UNIX_EPOCH + std::time::Duration::from_secs(at)).unwrap();
+    };
+    write("#112233", 1_000);
+    let sock = dir.join("s.sock");
+    let mut live = fictty::engine::App::file(&ui).watch(true).socket(&sock).themes_file(&themes).unwrap().theme("dawn").live(40, 5).unwrap();
+    live.pump();
+    let accent = |live: &fictty::engine::Live| live.state().themes["dusk"].tokens.get("accent").cloned();
+    assert_eq!(accent(&live).as_deref(), Some("#112233"));
+    write("#445566", 2_000);
+    assert!(live.pump(), "a changed themes file is a change");
+    assert_eq!(accent(&live).as_deref(), Some("#445566"));
+    assert_eq!(live.state().theme.as_deref(), Some("dawn"), "the theme shown stays chosen");
+    drop(live);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
 /// Every example screen, under every theme meant for it, names nothing its theme lacks: type
 /// roles, variants, tokens, parts.
 #[test]
