@@ -693,7 +693,7 @@ impl Portal {
         let cell = self.cell;
         let rows = state::items(st, n);
         let per = look.height();
-        let cols = look.per_line();
+        let cols = state::per_line(st, n);
         let laid = self.laid.clone();
         if rows.is_empty() {
             return lk.boxed(div(), &style::inner(st, "empty", &[]), (cell.w, cell.h), [0., 8., 0., 8.]).child(look.empty.clone().unwrap_or_else(|| "(nothing)".into())).into_any_element();

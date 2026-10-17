@@ -435,18 +435,15 @@ card = {"type": "col", "gap": 0, "children": [
 ]}
 
 
-def shelves():
-    """The shelf as many covers to a line as its column holds at 200 to 270 pixels each: one
-    list per width (the same id, so the selection carries over), as tall as its widest cover."""
-    out, cell_w, cell_h = [], 8.4, 24
-    stops = [(3, 0), (4, 100), (5, 125), (6, 150), (7, 175), (8, 200)]
-    for k, (cols, lo) in enumerate(stops):
-        hi = stops[k + 1][1] if k + 1 < len(stops) else 260
-        widest = hi * cell_w / cols
-        rows = math.ceil((widest + 8) / cell_h + 2.2)
-        when = f"$width>={lo}" + (f" & $width<{hi}" if k + 1 < len(stops) else "")
-        out.append({"type": "list", "id": "albums", "bind": "albums", "filter": "find", "row": {**card, "size": rows}, "cols": cols, "when": when})
-    return out
+def shelf():
+    """The shelf: as many covers to a line as fit at 200 pixels or more each, so a cover is
+    under 4/3 of that wide wherever three or more fit (the main column always holds three). A
+    row is as tall as the widest cover and its two lines; rows as tall as what they show are
+    step 4's."""
+    cell_h, least = 24, 200
+    rows = math.ceil((least * 4 / 3 + 8) / cell_h + 2.2)
+    return {"type": "list", "id": "albums", "bind": "albums", "filter": "find", "row": {**card, "size": rows},
+            "cols": {"min": f"{least}px"}}
 
 
 main = {"type": "col", "id": "main", "gap": 1, "children": [
@@ -460,7 +457,7 @@ main = {"type": "col", "id": "main", "gap": 1, "children": [
     {"type": "row", "size": 1, "items": "center", "margin": ["s4", 0, 0, 0], "children": [
         T("<heading>Recently played</>", size="fit", when=NOW), T("<heading>Every album</>", size="fit", when=BROWSE),
         T(""), T("<caption>arrows choose  ·  space plays  ·  n and p skip</>", tone="faint", size="fit", wrap=False)]},
-    *shelves(),
+    shelf(),
 ]}
 
 rail = {"type": "col", "id": "rail", "size": "24%", "min": 36, "max": 44, "gap": 2, "when": "$screen.width>=150", "children": [

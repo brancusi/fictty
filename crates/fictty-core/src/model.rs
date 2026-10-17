@@ -732,13 +732,14 @@ fn yes() -> bool {
 ///   filled from the row as an `each` template's are: a picture, a name, a badge. It's as tall
 ///   as its `size` in cells (else `lines`). A press anywhere in it is a press on the row, so
 ///   its nodes take no clicks or focus of their own.
-/// - `cols`: rows to a line, a grid of them; ↑/↓ move a line, ←/→ a row.
+/// - `cols`: rows to a line, a grid of them; ↑/↓ move a line, ←/→ a row. A number, or
+///   `{"min": "180px"}` for as many as fit with each at least that wide (`state::per_line`).
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct Rows {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub row: Option<Box<Node>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub cols: Option<u16>,
+    pub cols: Option<Cols>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub item: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -1004,6 +1005,28 @@ pub enum Justify {
     Around,
 }
 
+/// How many to a line: a number, or as many as fit at least `min` wide each (a length), which
+/// depends on the width a frame lays them out across.
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[serde(untagged)]
+pub enum Cols {
+    Count(u16),
+    Fill { min: Len },
+}
+
+impl Cols {
+    /// How many to a line across `width` pixels, a length resolving to pixels by `px`.
+    pub fn count(&self, width: f32, px: impl Fn(&Len) -> Option<f32>) -> usize {
+        match self {
+            Cols::Count(n) => (*n).max(1) as usize,
+            Cols::Fill { min } => match px(min) {
+                Some(m) if m > 0. => ((width / m).floor() as usize).max(1),
+                _ => 1,
+            },
+        }
+    }
+}
+
 /// Width over height: a number (`1.5`), or `"16/9"`, kept as written.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Aspect {
@@ -1104,6 +1127,16 @@ impl<'de> Deserialize<'de> for Gap {
             Value::Array(a) if a.len() == 2 => lens_of(a).map(Gap::XY),
             v @ Value::Array(_) => Err(wrong("a gap is one length or [x, y]", &v)),
             v => len_of(v).map(Gap::One),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for Cols {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        match Value::deserialize(d)? {
+            Value::Number(n) if n.as_u64().is_some_and(|n| (1..=u16::MAX as u64).contains(&n)) => Ok(Cols::Count(n.as_u64().unwrap_or(1) as u16)),
+            Value::Object(mut o) if o.len() == 1 && o.contains_key("min") => len_of(o.remove("min").unwrap_or_default()).map(|min| Cols::Fill { min }),
+            v => Err(wrong("cols is a count (3) or as many as fit, each at least a length ({\"min\": \"180px\"})", &v)),
         }
     }
 }
@@ -1724,11 +1757,6 @@ pub fn row_instance(template: &Node, item: &Value) -> Node {
 }
 
 impl Rows {
-    /// How many rows to a line (1 unless `cols` says more).
-    pub fn per_line(&self) -> usize {
-        self.cols.unwrap_or(1).max(1) as usize
-    }
-
     /// How many cells tall a row is: its template's `size` in cells, else `lines`, else one.
     pub fn height(&self) -> u16 {
         match self.row.as_ref().and_then(|r| r.size.as_ref()).map(Size::measure) {

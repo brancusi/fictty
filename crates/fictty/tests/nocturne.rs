@@ -41,6 +41,10 @@ fn it_fits_a_laptop_and_a_big_screen_with_nothing_cut() {
         assert!(cut.is_empty(), "{w}x{h} cut {cut:?}");
         assert!(has(&mut s, "tracks") && has(&mut s, "hero") && has(&mut s, "albums"), "{w}x{h}");
         assert_eq!(has(&mut s, "side"), w >= 230, "the sidebar only where there's room for it");
+        // One shelf, as many covers to a line as fit at 200 px each.
+        let albums = shown(&mut s).into_iter().find(|n| n.id.as_deref() == Some("albums")).unwrap();
+        let fit = (albums.rect.unwrap().width as f32 * 8.4 / 200.) as usize;
+        assert!(albums.cols.is_some_and(|c| c >= 3 && c.abs_diff(fit) <= 1), "{w}x{h}: {:?} to a line, about {fit} fit", albums.cols);
     }
 }
 
@@ -63,9 +67,13 @@ fn space_plays_love_loves_and_search_narrows_the_shelf() {
     assert!(has(&mut s, "pause"), "space plays");
     assert_eq!(text(&mut s, "progress"), "40%", "1:38 of 4:08, as seeded");
     s.keys(&["down"]);
+    let line = shown(&mut s).into_iter().find(|n| n.id.as_deref() == Some("albums")).and_then(|n| n.cols).unwrap();
+    assert_eq!(s.state().local["albums"].selected, line, "↓ goes a line of covers");
+    let room = text(&mut s, "room");
+    let slug = room.rsplit('/').next().unwrap().trim_end_matches("-room.png");
     press(&mut s, "love");
     assert!(has(&mut s, "loved"), "the album shown is loved");
-    assert_eq!(s.state().store["loved/copper-weather"].read()["value"], true, "the one a line down");
+    assert_eq!(s.state().store[&format!("loved/{slug}")].read()["value"], true, "the one a line down");
     press(&mut s, "next");
     assert!(text(&mut s, "tracks").starts_with("02"), "next moves Up Next on");
     assert_eq!(s.state().focus.as_deref(), Some("albums"), "and gives the focus back to the shelf");

@@ -2,7 +2,7 @@
 //! the terminal, the socket and child processes; it feeds messages in and carries effects out.
 //! `State` serializes, so `fictty get --state` shows exactly what is drawn.
 
-use crate::model::{Action, Kind, LayerSpec, Node, Rows, ThemeSpec, Ui, lookup};
+use crate::model::{Action, Kind, LayerSpec, Node, ThemeSpec, Ui, lookup};
 use crate::store::{Body, Entry, Write};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -321,6 +321,10 @@ pub struct Local {
     /// How many rows it showed in the last frame (the view reports it), for the wheel.
     #[serde(default, skip_serializing_if = "is_zero")]
     pub rows: u16,
+    /// The cells its rows were laid out across in the last frame (the view reports it), for
+    /// `cols` that fit as many as there's room for.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub width: u16,
     /// A `multi` node's picked rows, by key, in the order they were picked; empty while only
     /// the selected row is.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -373,7 +377,7 @@ pub fn view_offset(local: Option<&Local>, len: usize, fit: usize, cols: usize) -
 fn pan(st: &mut State, id: &str, lines: f32) {
     let Some(n) = st.node(id) else { return };
     let len = items(st, n).len();
-    let cols = per_line(n);
+    let cols = per_line(st, n);
     let fit = st.local.get(id).map(|l| l.rows).unwrap_or(0) as usize;
     let at = view_offset(st.local.get(id), len, fit, cols);
     let most = len.div_ceil(cols).saturating_sub((fit / cols).max(1)) as f32;
@@ -388,9 +392,13 @@ fn in_view(local: &Local, to: usize, cols: usize) -> bool {
     line >= top.floor() && line < top.floor() + lines as f32
 }
 
-/// How many rows to a line node `n` lays out (a list's `cols`).
-fn per_line(n: &Node) -> usize {
-    n.rows().map_or(1, Rows::per_line)
+/// How many rows to a line node `n` lays out: a list's `cols`, a count or as many as fit across
+/// the width the last frame laid its rows out in. Keys, the view and the readback all ask here.
+pub fn per_line(st: &State, n: &Node) -> usize {
+    let Some(cols) = n.rows().and_then(|r| r.cols.as_ref()) else { return 1 };
+    let width = n.id.as_deref().and_then(|id| st.local.get(id)).map_or(0., |l| l.width as f32 * st.caps.cell_w);
+    let th = crate::style::Theme::of(st);
+    cols.count(width, |l| th.px(l, st.caps.cell_w))
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -985,7 +993,8 @@ fn apply(st: &mut State, msg: Msg) -> Vec<Effect> {
             if st.node(&id).is_some_and(|n| n.field().is_some()) {
                 on_doc(st, &id, caretline::Msg::resize(width.max(1), height.max(1)), "person");
             } else {
-                st.local.entry(id).or_default().rows = height;
+                let local = st.local.entry(id).or_default();
+                (local.rows, local.width) = (height, width);
             }
             vec![]
         }
@@ -2026,7 +2035,7 @@ fn resolve(st: &State, key: &str) -> Option<Action> {
         return Some(Action::Named("leave".into()));
     }
     // Rows in a grid: ←/→ go a row, as ↑/↓ go a line.
-    if focused.is_some_and(|n| per_line(n) > 1) {
+    if focused.is_some_and(|n| per_line(st, n) > 1) {
         match key {
             "h" | "left" => return Some(Action::Named("prev_row".into())),
             "l" | "right" => return Some(Action::Named("next_row".into())),
@@ -2476,7 +2485,7 @@ fn pick(st: &mut State, id: &str, row: usize, how: Pick) {
             ((from.min(row)..=from.max(row)).collect(), row)
         }
     };
-    let cols = per_line(n);
+    let cols = per_line(st, n);
     let local = st.local.entry(id.to_string()).or_default();
     local.picked = if set.len() > 1 { set.iter().filter_map(|r| keys.get(*r).cloned().flatten()).collect() } else { vec![] };
     local.anchor = if how == Pick::Toggle { Some(key) } else { anchor };
@@ -2489,7 +2498,7 @@ fn pick(st: &mut State, id: &str, row: usize, how: Pick) {
 
 /// How many rows to a line the focused node lays out.
 fn focused_cols(st: &State) -> usize {
-    st.focus.as_deref().and_then(|f| st.node(f)).map_or(1, per_line)
+    st.focus.as_deref().and_then(|f| st.node(f)).map_or(1, |n| per_line(st, n))
 }
 
 /// ⇧↓ and ⇧↑ on a `multi` list: the range from the anchor grows or shrinks by a row.
@@ -2738,7 +2747,7 @@ fn step(st: &mut State, f: impl Fn(usize, usize) -> usize) -> Vec<Effect> {
     // Its key now, not once the message is done: a store write later in the same `do` would
     // have the selection follow the row it left.
     let key = rows.get(to).and_then(|r| key_of(n, r));
-    let cols = per_line(n);
+    let cols = per_line(st, n);
     let local = st.local.entry(id).or_default();
     local.selected = to;
     local.key = key;

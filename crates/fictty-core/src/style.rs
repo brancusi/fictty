@@ -798,6 +798,10 @@ pub fn problems(st: &State, nodes: &[&Node]) -> Vec<String> {
             ("max", n.max.as_ref().map(std::slice::from_ref)),
             ("gap", gap.map(Gap::written)),
             ("float margin", n.float.as_ref().and_then(|f| f.margin.as_ref()).map(Lens::written)),
+            ("cols min", match n.rows().and_then(|r| r.cols.as_ref()) {
+                Some(crate::model::Cols::Fill { min }) => Some(std::slice::from_ref(min)),
+                _ => None,
+            }),
         ];
         for (field, ls) in lens {
             out.extend(th.len_problems(field, ls.unwrap_or_default()).into_iter().map(|p| format!("{who}: {p}")));

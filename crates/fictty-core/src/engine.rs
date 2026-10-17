@@ -1823,10 +1823,11 @@ fn resize_editors(d: &mut Driver, st: &mut State, sizes: Vec<(String, u16, u16)>
     let mut changed = false;
     for (id, width, height) in sizes {
         let own = crate::state::field_view(st, &id).map(|(_, v)| (v.viewport.width, v.viewport.height));
-        // An editor's size, or the rows a list showed (for the wheel).
+        // An editor's size, or the rows a list showed (for the wheel) and the width it laid
+        // them out across (for `cols` that fit what there's room for).
         let differs = match own {
             Some(o) => o != (width.max(1), height.max(1)),
-            None => st.local.get(&id).map(|l| l.rows) != Some(height) && st.node(&id).is_some_and(|n| n.field().is_none()),
+            None => st.local.get(&id).map(|l| (l.rows, l.width)) != Some((height, width)) && st.node(&id).is_some_and(|n| n.field().is_none()),
         };
         if differs {
             d.apply(st, Msg::Size { id, width, height });

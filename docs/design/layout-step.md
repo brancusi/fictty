@@ -223,7 +223,9 @@ and the screens that use it looked at in a real window.
   lays its rows out as cards). Keys need the count (↓ moves a line of cards), so it can't live
   in the view: the window hands each list's laid-out width back with the frame, as it does
   rectangles, and the state works the count out from it. Nocturne's shelf, today one list per
-  width stop, becomes one list; it's the first test.
+  width stop, becomes one list; it's the first test. Done 17 October 2026: `Cols` (a count or
+  `{"min": len}`), `Local::width` from `Msg::Size`, `state::per_line` the one place the count
+  is worked out, `(N to a line)` in the readback, and Nocturne's shelf one list.
 - The readback gives each child's rectangle as now, so an agent sees the reflow.
 
 ### 3d · Scroll (M, the one new behaviour)

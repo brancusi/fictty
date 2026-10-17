@@ -35,6 +35,10 @@ pub struct Shown {
     /// scrolled past (fractions too) and the lines in all.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub scroll: Option<(f32, usize)>,
+    /// How many rows a list lays out to a line, while it's more than one (its `cols`, counted
+    /// for the width it had when they fit as many as there's room for).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cols: Option<usize>,
     /// How many entries an editor over a multi-selection edits, and whether they differ.
     #[serde(default, skip_serializing_if = "is_zero")]
     pub entries: usize,
@@ -111,6 +115,7 @@ fn shown(st: &State, n: &Node, depth: usize, key: &str, (rects, cut): Frame) -> 
         selected: None,
         picked: s_picked(st, n),
         scroll: s_scroll(st, n),
+        cols: Some(state::per_line(st, n)).filter(|c| *c > 1),
         entries: if n.field().is_some() { state::doc_keys(st, n).len() } else { 0 },
         mixed: state::doc_key(st, n).is_some_and(|k| k.starts_with(state::MIXED)),
         rect: id.as_deref().and_then(|i| rects.iter().find(|(r, _)| r == i)).map(|(_, r)| *r),
@@ -194,9 +199,9 @@ fn is_zero(n: &usize) -> bool {
 
 /// A list's view and its lines, while it has more lines than it shows.
 fn s_scroll(st: &State, n: &Node) -> Option<(f32, usize)> {
-    let rows = n.rows()?;
+    n.rows()?;
     let local = st.local.get(n.id.as_deref()?)?;
-    let cols = rows.per_line();
+    let cols = state::per_line(st, n);
     let (len, fit) = (state::items(st, n).len(), local.rows as usize);
     let total = len.div_ceil(cols);
     (fit > 0 && total > (fit / cols).max(1)).then(|| (state::view_offset(Some(local), len, fit, cols), total))
@@ -241,6 +246,9 @@ fn outline_with(shown: &[Shown], styled: bool) -> String {
             (Some(k), Some(n)) => line.push_str(&format!(" ({}/{n})", k + 1)),
             (None, Some(n)) => line.push_str(&format!(" (0/{n})")),
             _ => {}
+        }
+        if let Some(c) = s.cols {
+            line.push_str(&format!(" ({c} to a line)"));
         }
         if let Some((at, of)) = s.scroll {
             line.push_str(&format!(" (scroll {at}/{of})"));

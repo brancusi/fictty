@@ -137,7 +137,10 @@ fictty theme paper                                        # choose a loaded them
   cells. A press anywhere in it is a press on the row, so selection, `multi` picking, keys and
   scrolling are the list's as ever; its nodes take no ids or clicks of their own. `cols: 3`
   lays rows three to a line: a grid, where ↑/↓ move a line and ←/→ a row, and the view scrolls
-  by whole lines. The readback's text for such a row is what its nodes show (`/thumbs/a.png ·
+  by whole lines. `cols: {"min": "180px"}` fits as many to a line as there's room for, each at
+  least that wide (a length: cells, pixels or a `space` name): a shelf of covers that reflows
+  with the window, with keys moving by the count it has now. The readback says `(5 to a line)`
+  and `cols` in the JSON. The readback's text for such a row is what its nodes show (`/thumbs/a.png ·
   a name`). The window draws them; a terminal shows the row's value.
 - **Repeating**: `{"type": "each", "bind": "open", "template": {…}}` draws the template once per
   item of the bound array, top to bottom (`"row": true` side by side). In the template,

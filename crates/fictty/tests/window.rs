@@ -1225,6 +1225,37 @@ fn a_hidden_node_leaves_no_gap() {
     assert_eq!(y(true), y(false), "two hidden texts between them add nothing");
 }
 
+/// `cols: {"min": …}` fits as many rows to a line as the list has room for, each at least that
+/// wide: the count follows the window's width, keys move by it, and the readback says it.
+#[test]
+fn a_list_fits_as_many_cols_as_there_is_room_for() {
+    let items: Vec<Value> = (0..20).map(|i| json!({"id": format!("p{i}"), "name": format!("pic {i}")})).collect();
+    let row = json!({"type": "col", "size": 2, "children": [{"type": "text", "size": 1, "text": "{$item.name}"}]});
+    // A row at least 10 cells wide (84 px at the window's 8.4 a cell).
+    let ui = json!({"root": {"type": "list", "id": "g", "cols": {"min": "84px"}, "row": row, "items": items}, "focus": "g"});
+    let mut s = window(ui, 60, 12);
+    let per = |s: &mut fictty::Headless| node(s, "g").cols.unwrap_or(1);
+    let wide = per(&mut s);
+    assert!((5..=6).contains(&wide), "about 60 cells take five or six, not {wide}");
+    let (x0, y0) = s.at("g", Some(0), None).unwrap();
+    let (_, y_last) = s.at("g", Some(wide - 1), None).unwrap();
+    let (x_next, y_next) = s.at("g", Some(wide), None).unwrap();
+    assert_eq!(y_last, y0, "the first {wide} share a line");
+    assert!(y_next > y0 && x_next == x0, "the next starts the second line, under the first");
+    s.keys(&["down"]);
+    assert_eq!(s.state().local["g"].selected, wide, "↓ goes a line of {wide}");
+    assert!(fictty::readback::outline(&s.readback()).contains(&format!("({wide} to a line)")));
+    // Narrower, fewer fit.
+    s.resize(31, 12);
+    let narrow = per(&mut s);
+    assert!((2..=3).contains(&narrow), "31 cells take two or three, not {narrow}");
+    s.keys(&["down"]);
+    assert_eq!(s.state().local["g"].selected, wide + narrow);
+    // Never none: a list narrower than its minimum still shows one to a line.
+    s.resize(8, 12);
+    assert_eq!(per(&mut s), 1);
+}
+
 #[test]
 fn a_short_last_line_of_a_grid_keeps_its_rows_as_wide() {
     let items: Vec<Value> = (0..4).map(|i| json!({"id": format!("p{i}"), "name": format!("pic {i}")})).collect();

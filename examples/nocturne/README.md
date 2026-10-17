@@ -25,11 +25,12 @@ UI beside them, into `$TMPDIR/fictty-nocturne`, so nothing binary is checked in.
 title, lyric and note is made up.
 
 It fits a big screen and a laptop's: the sidebar goes below 230 cells, the rail below 150,
-the hero shrinks with the height, and the shelf holds three to eight covers a line by its own
-width. `tests/nocturne.rs` drives it in the window, written with `--no-art` (no Pillow).
+the hero shrinks with the height, and the shelf holds as many covers a line as fit at 200
+pixels or more each (`cols: {"min": "200px"}`). `tests/nocturne.rs` drives it in the window,
+written with `--no-art` (no Pillow).
 
 What it leans on: type roles in three faces (Bodoni 72, Avenir Next, Big Caslon), gradients,
 shadows in two layers and in colour, glass (colours with an alpha) over the room, a gauge for
-the progress, `aspect` for the art, `fit` for titles, buttons and the
-rail's cards, `justify` and `items` for the hero, a list `row` template with `cols` for the
-shelf, and `when` on `$screen.width` for how many covers a line holds.
+the progress, `aspect` for the art, `fit` for titles, buttons and the rail's cards, `justify`
+and `items` for the hero, and a list `row` template with `cols` that fit what there's room for,
+for the shelf.
