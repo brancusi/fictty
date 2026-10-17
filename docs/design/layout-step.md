@@ -55,7 +55,7 @@ The Kestrel demo plays in a real window on it.
 it on 17 October as a test of how far the window goes. What it found in fictty was fixed then
 (hidden nodes leave no gap, lookups by id prefer the shown node, gauges and `of`, alpha colours,
 actions on a bound node's value, a grid's short last line); what's left for step 3 is in 3c, 3d
-and 3f below. **Next is 3c.**
+and 3f below. **3c is done too (17 October); next is 3d.**
 
 **3b (fit and alignment), as it landed, each with its tests in `tests/window.rs`:**
 
@@ -214,7 +214,7 @@ and the screens that use it looked at in a real window.
   widths in `in_window`, and add a fuzz check that a `fit` node is never cut while its parent
   has room.
 
-### 3c · Wrap and grid (M) · next
+### 3c · Wrap and grid (M) · done 17 October 2026
 
 - `wrap: true` on a row: children flow onto the next line.
 - `{"type": "grid", "cols": 3}` or `"cols": ["200px", "*", "2*"]`, with `span` on children.
@@ -227,8 +227,16 @@ and the screens that use it looked at in a real window.
   `{"min": len}`), `Local::width` from `Msg::Size`, `state::per_line` the one place the count
   is worked out, `(N to a line)` in the readback, and Nocturne's shelf one list.
 - The readback gives each child's rectangle as now, so an agent sees the reflow.
+- Done 17 October 2026: `wrap` on `row`, `col` and `each`; `grid` with `cols` (a count, `{"min"}`
+  or a size per column) and `span`; an `each` with `cols` is a grid. GPUI's grid only takes equal
+  columns, so a grid is lines of flex slots, each a column's (or span's) basis and shares, the
+  same on every line: the core places the children (`model::grid_lines`), the window sizes the
+  slots (`track_slot`). A list's `cols` takes per-column sizes the same way. Grid's drawing is
+  its own method (`grid`, as `list` is): inside `node`, which recurses as deep as the tree, its
+  locals overflowed a debug build's test-thread stack on Nocturne. Left: a grid isn't fuzzed
+  yet (3f's rebuilt screens will carry it), and `span` outside a grid is quietly ignored.
 
-### 3d · Scroll (M, the one new behaviour)
+### 3d · Scroll (M, the one new behaviour) · next
 
 - `scroll: true` on a row or column: it scrolls along its direction, with its offset in `State`
   (decision 3).

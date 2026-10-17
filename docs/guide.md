@@ -73,7 +73,7 @@ fictty theme paper                                        # choose a loaded them
   its own style is the track and the `gauge.fill` part the bar, so `"size": "4px"` is a progress line. Every node can have `id`, `size` (`12` cells, `"48px"`, `"30%"`, `"*"`,
   `"2*"`, `"fit"`; a terminal rounds pixels to its cells) with `min` and `max`, `title`, `border`,
   `pad`, `margin`, `self`, `aspect`, `align`, `variant`, `tone`, `style`, `bind`, `keys`, `click`, `when`,
-  and in a stack `float` and `modal`.
+  in a stack `float` and `modal`, and in a grid `span`.
 - **Lengths**: `pad`, `margin`, `gap`, `min` and `max` take cells (`1`), pixels (`"8px"`) or a
   name from the theme's `space` (`"s3"`), the same lengths a style's `pad` takes. `pad` (space
   inside, over its style's) and `margin` (space outside, between a node and what's beside it)
@@ -99,6 +99,21 @@ fictty theme paper                                        # choose a loaded them
   does. Shares take what's left, so `[{"size": "fit"}, {}]` is a label and the rest. A cut
   line in a `fit` node only says how wide it would be inside one, so it costs nothing
   elsewhere.
+- **Wrap** (the window's): `"wrap": true` on a `row` (or `col`, or `each`) sends the children
+  that don't fit on to the next line, each line as tall as its tallest, packed from the start.
+  Children wrap by their own size, so give them one: `fit` (tags as wide as their text), cells
+  or pixels, or a share with a `min`. A share alone starts at nothing and never wraps. With
+  `"size": "fit"` in a column the row is as tall as its lines.
+- **Grid** (the window's): `{"type": "grid", "cols": 3, "children": […]}` lays its children out
+  a line at a time in columns that line up from line to line. `cols` is a count of equal
+  columns, `{"min": "200px"}` for as many equal ones as fit at least that wide (the count
+  follows the window; it needs an `id`), or a size per column, `["200px", "*", "2*"]`: cells
+  and pixels as written, shares of what's left (a percentage or `fit` is a problem). A child
+  takes `span` columns (one by default); one that doesn't fit on the line starts the next. A
+  line is as tall as its tallest child, the others stretched to it (or placed by `items`), and
+  `gap` is one length or `[x, y]`. A slot lays its child out as a column would, so a child's
+  `size` is its height. An `each` with `cols` is a grid of its instances: cards from data. The
+  readback says `(4 to a line)`.
 - **Aspect** (the window's): `"aspect": "16/9"` (or a number, width over height) keeps a node's
   shape. It takes the side it's given and works out the other: its `size` along its row or
   column, else all the room across, less its `margin` (a picture as wide as its column, as tall

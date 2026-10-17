@@ -173,11 +173,15 @@ fn has_each(n: &Node) -> bool {
 /// its bound array.
 fn expand_node(st: &State, n: &Node) -> Node {
     match &n.kind {
-        Kind::Each { template, row, gap, justify, items: across } => {
+        Kind::Each { template, row, wrap, cols, gap, justify, items: across } => {
             let items = n.bind.as_deref().and_then(|b| value_of(st, b)).and_then(Value::as_array).cloned().unwrap_or_default();
             let children: Vec<Node> = items.iter().map(|it| expand_node(st, &crate::model::instance(template, it))).collect();
-            let (gap, justify, items) = (gap.clone(), *justify, *across);
-            let kind = if *row { Kind::Row { children, gap, justify, items } } else { Kind::Col { children, gap, justify, items } };
+            let (gap, justify, items, wrap) = (gap.clone(), *justify, *across, *wrap);
+            let kind = match cols {
+                Some(cols) => Kind::Grid { children, cols: cols.clone(), gap, items },
+                None if *row => Kind::Row { children, gap, justify, items, wrap },
+                None => Kind::Col { children, gap, justify, items, wrap },
+            };
             Node { kind, ..n.clone() }
         }
         _ if !has_each(n) => n.clone(),
@@ -392,10 +396,11 @@ fn in_view(local: &Local, to: usize, cols: usize) -> bool {
     line >= top.floor() && line < top.floor() + lines as f32
 }
 
-/// How many rows to a line node `n` lays out: a list's `cols`, a count or as many as fit across
-/// the width the last frame laid its rows out in. Keys, the view and the readback all ask here.
+/// How many to a line node `n` lays out: a list's rows or a grid's children by its `cols`, a
+/// count, a column each, or as many as fit across the width the last frame laid it out in.
+/// Keys, the view and the readback all ask here.
 pub fn per_line(st: &State, n: &Node) -> usize {
-    let Some(cols) = n.rows().and_then(|r| r.cols.as_ref()) else { return 1 };
+    let Some(cols) = n.cols() else { return 1 };
     let width = n.id.as_deref().and_then(|id| st.local.get(id)).map_or(0., |l| l.width as f32 * st.caps.cell_w);
     let th = crate::style::Theme::of(st);
     cols.count(width, |l| th.px(l, st.caps.cell_w))

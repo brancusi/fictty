@@ -228,6 +228,13 @@ fn len_text(l: &Len) -> String {
     }
 }
 
+fn size_text(s: &crate::model::Size) -> String {
+    match s {
+        crate::model::Size::Cells(n) => format!("{n}"),
+        crate::model::Size::Spec(s) => s.clone(),
+    }
+}
+
 /// Four sides as briefly as they go: one length, `x y`, or all four.
 fn sides_text([t, r, b, l]: &[Len; 4]) -> String {
     if t == r && r == b && b == l {
@@ -798,13 +805,24 @@ pub fn problems(st: &State, nodes: &[&Node]) -> Vec<String> {
             ("max", n.max.as_ref().map(std::slice::from_ref)),
             ("gap", gap.map(Gap::written)),
             ("float margin", n.float.as_ref().and_then(|f| f.margin.as_ref()).map(Lens::written)),
-            ("cols min", match n.rows().and_then(|r| r.cols.as_ref()) {
+            ("cols min", match n.cols() {
                 Some(crate::model::Cols::Fill { min }) => Some(std::slice::from_ref(min)),
                 _ => None,
             }),
         ];
         for (field, ls) in lens {
             out.extend(th.len_problems(field, ls.unwrap_or_default()).into_iter().map(|p| format!("{who}: {p}")));
+        }
+        match n.cols() {
+            Some(crate::model::Cols::Fill { .. }) if n.id.is_none() => {
+                out.push(format!("{} {who}: cols {{\"min\": …}} counts from the width it was laid out across, kept by id, so it needs an id", n.kind_name()));
+            }
+            Some(crate::model::Cols::Tracks(t)) => {
+                for c in t.iter().filter(|c| matches!(c.measure(), crate::model::Measure::Percent(_) | crate::model::Measure::Fit)) {
+                    out.push(format!("{} {who}: column {:?} isn't cells, pixels or a share (\"*\", \"2*\")", n.kind_name(), size_text(c)));
+                }
+            }
+            _ => {}
         }
         if let Some(Rows { variants, skip, .. }) = n.rows() {
             for s in skip.iter().filter(|s| !variants.contains_key(*s)) {

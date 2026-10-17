@@ -324,6 +324,26 @@ fn sized(el: gpui::Stateful<gpui::Div>, n: &Node, along_row: bool, cell: Cell, t
     el
 }
 
+/// A slot on a line of columns, as wide as `tracks` (a column, or the columns a child spans) and
+/// the `gap`s between them: its cells and pixels as a basis, its shares growing into what's left.
+/// Every line's slots add up to the same columns, so each grows alike and they line up. A slot
+/// lays its child out as a column would. A percentage or `fit` is no column size (a problem), so
+/// it's taken as a share.
+fn track_slot(tracks: &[Measure], gap: f32, cell: Cell) -> gpui::Div {
+    let (mut basis, mut grow) = (gap * tracks.len().saturating_sub(1) as f32, 0.);
+    for t in tracks {
+        match *t {
+            Measure::Cells(c) => basis += c as f32 * cell.w,
+            Measure::Px(p) => basis += p,
+            Measure::Share(w) => grow += w as f32,
+            Measure::Percent(_) | Measure::Fit => grow += 1.,
+        }
+    }
+    let mut slot = div().flex().flex_col().flex_basis(px(basis)).flex_shrink().min_w(px(0.)).min_h(px(0.));
+    slot.style().flex_grow = Some(grow);
+    slot
+}
+
 /// `self` and `items` as flexbox's alignment across.
 fn across(a: Align) -> gpui::AlignItems {
     match a {
@@ -438,7 +458,7 @@ impl Portal {
             el = el.gap_1().child(div().flex_none().w_full().text_sm().child(text::line(&tx, t, v, lk.ink(ink), false)));
         }
         let body: AnyElement = match &n.kind {
-            Kind::Col { children, gap, justify, items } | Kind::Row { children, gap, justify, items } => {
+            Kind::Col { children, gap, justify, items, wrap } | Kind::Row { children, gap, justify, items, wrap } => {
                 let row = matches!(n.kind, Kind::Row { .. });
                 // A hidden child takes no room, its gap neither.
                 let kids: Vec<AnyElement> =
@@ -450,11 +470,16 @@ impl Portal {
                 let d = div().relative().flex().size_full().min_h(px(0.)).min_w(px(0.)).gap_x(px(gx)).gap_y(px(gy));
                 let mut d = if row { d.flex_row() } else { d.flex_col() };
                 (d.style().justify_content, d.style().align_items) = (justify.map(along), items.map(across));
+                // Wrapped lines pack from the start, each as tall (or wide) as its biggest child.
+                if *wrap {
+                    d = d.flex_wrap().content_start();
+                }
                 // `$width` and `$height` in a child's `when` are this node's inner size.
                 let sized: Vec<String> = children.iter().filter(|c| c.when.as_deref().is_some_and(state::sized)).filter_map(|c| c.id.clone()).collect();
                 let d = if sized.is_empty() { d } else { d.child(measure(&self.laid, move |l, b| l.areas.extend(sized.into_iter().map(|id| (id, b))))) };
                 d.children(kids).into_any_element()
             }
+            Kind::Grid { .. } => self.grid(st, lk, n, &id, &key, &th, cx),
             Kind::Stack { children } => {
                 let shown: Vec<(usize, Node)> = children.iter().enumerate().filter(|(_, c)| state::shown(st, c)).map(|(k, c)| (k, c.clone())).collect();
                 let mut kids: Vec<AnyElement> = Vec::new();
@@ -686,6 +711,45 @@ impl Portal {
         wrap.child(face).into_any_element()
     }
 
+    /// A grid: lines of columns. The core places each child (`grid_lines`), and each line is a
+    /// row of slots, one a column or a child's span of them, the same sizes on every line, so the
+    /// columns line up. A slot lays its child out as a column would. (Its own method, as
+    /// `list` is, so `node`'s frame stays small: it recurses as deep as the tree.)
+    #[allow(clippy::too_many_arguments)]
+    fn grid(&mut self, st: &State, lk: &Look, n: &Node, id: &str, key: &str, th: &style::Theme, cx: &mut Context<Self>) -> AnyElement {
+        let Kind::Grid { children, cols, gap, items } = &n.kind else { unreachable!("a grid") };
+        let cell = self.cell;
+        let kids: Vec<(usize, &Node)> = children.iter().enumerate().filter(|(_, c)| state::shown(st, c)).collect();
+        let tracks = cols.tracks(state::per_line(st, n));
+        let [gx, gy] = gap.as_ref().map_or([0.; 2], |g| {
+            let [x, y] = g.xy();
+            [th.px(x, cell.w).unwrap_or(0.), th.px(y, cell.h).unwrap_or(0.)]
+        });
+        let spans: Vec<usize> = kids.iter().map(|(_, c)| c.span.unwrap_or(1) as usize).collect();
+        let mut lines = Vec::new();
+        for line in crate::model::grid_lines(&spans, tracks.len()) {
+            let end = line.last().map_or(0, |(_, from, span)| from + span);
+            let mut slots: Vec<AnyElement> = Vec::new();
+            for (i, from, span) in line {
+                let (k, c) = kids[i];
+                let shown = self.node(st, lk, c, false, &format!("{key}.{k}"), cx);
+                slots.push(track_slot(&tracks[from..from + span], gx, cell).child(shown).into_any_element());
+            }
+            slots.extend((end..tracks.len()).map(|t| track_slot(&tracks[t..t + 1], gx, cell).into_any_element()));
+            let mut line = div().flex().flex_row().flex_none().w_full().gap_x(px(gx));
+            line.style().align_items = items.map(across);
+            lines.push(line.children(slots).into_any_element());
+        }
+        // The width it was laid out across, for `cols` that fit as many as there's room for.
+        let width = (!id.is_empty() && matches!(cols, crate::model::Cols::Fill { .. })).then(|| {
+            let fits = id.to_string();
+            measure(&self.laid, move |l, b| l.sizes.push((fits, b, 1, 1)))
+        });
+        let sized: Vec<String> = children.iter().filter(|c| c.when.as_deref().is_some_and(state::sized)).filter_map(|c| c.id.clone()).collect();
+        let areas = (!sized.is_empty()).then(|| measure(&self.laid, move |l, b| l.areas.extend(sized.into_iter().map(|id| (id, b)))));
+        div().relative().flex().flex_col().size_full().min_h(px(0.)).min_w(px(0.)).overflow_hidden().gap_y(px(gy)).children(width).children(areas).children(lines).into_any_element()
+    }
+
     /// A list's rows, from where the state says it's scrolled: as many as fit, each the rows its
     /// item template takes. The wheel scrolls the state, as the terminal's does.
     fn list(&mut self, st: &State, lk: &Look, n: &Node, id: &str, cx: &mut Context<Self>) -> AnyElement {
@@ -694,6 +758,7 @@ impl Portal {
         let rows = state::items(st, n);
         let per = look.height();
         let cols = state::per_line(st, n);
+        let tracks = look.cols.as_ref().map_or_else(|| vec![Measure::Share(1)], |c| c.tracks(cols));
         let laid = self.laid.clone();
         if rows.is_empty() {
             return lk.boxed(div(), &style::inner(st, "empty", &[]), (cell.w, cell.h), [0., 8., 0., 8.]).child(look.empty.clone().unwrap_or_else(|| "(nothing)".into())).into_any_element();
@@ -726,10 +791,11 @@ impl Portal {
                         this.send(row_press(&target, k, e), cx)
                     }),
                 )
-                // A fixed share of its line, so a short last line's rows are as wide as the rest.
-                .when(cols > 1, |d| d.flex_none().w(relative(1. / cols as f32)).min_w_0())
                 .child(body);
-            shown.push(row.into_any_element());
+            // In its column's slot on the line, a plain box: a slot's own padding would count
+            // before the shares, so a short last line's rows would come out wider.
+            let row = if cols > 1 { track_slot(&tracks[k % cols..k % cols + 1], 0., cell).child(row).into_any_element() } else { row.into_any_element() };
+            shown.push(row);
         }
         // Rows `cols` to a line, each line as tall as a row and each row an equal share of it.
         if cols > 1 {
@@ -737,8 +803,8 @@ impl Portal {
             let mut it = shown.into_iter().peekable();
             while it.peek().is_some() {
                 let mut line: Vec<AnyElement> = it.by_ref().take(cols).collect();
-                while line.len() < cols {
-                    line.push(div().flex_1().into_any_element());
+                for t in line.len()..cols {
+                    line.push(track_slot(&tracks[t..t + 1], 0., cell).into_any_element());
                 }
                 lines.push(div().flex().flex_row().flex_none().w_full().children(line).into_any_element());
             }

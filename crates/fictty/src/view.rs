@@ -673,7 +673,9 @@ fn node(cx: &mut Cx, n: &Node, f: &mut Frame, area: Rect) {
     };
     let id = n.id.clone().unwrap_or_default();
     match &n.kind {
-        Kind::Col { children, gap, .. } | Kind::Row { children, gap, .. } => {
+        // The terminal is being dropped (docs/design/native.md): a grid stacks its children
+        // as a column does here; the window lays it out.
+        Kind::Col { children, gap, .. } | Kind::Row { children, gap, .. } | Kind::Grid { children, gap, .. } => {
             // `$width` and `$height` in a child's `when` are this node's inner size.
             let here = (inner.width, inner.height);
             for c in children {
@@ -684,11 +686,12 @@ fn node(cx: &mut Cx, n: &Node, f: &mut Frame, area: Rect) {
                 }
             }
             let showing: Vec<&Node> = children.iter().filter(|c| shown_in(st, c, Some(here))).collect();
-            let along = if matches!(n.kind, Kind::Col { .. }) { inner.height } else { inner.width };
-            let cell = if matches!(n.kind, Kind::Col { .. }) { if st.caps.cell_h > 0.0 { st.caps.cell_h } else { 16.0 } } else { st.caps.cell_w };
+            let down = !matches!(n.kind, Kind::Row { .. });
+            let along = if down { inner.height } else { inner.width };
+            let cell = if down { if st.caps.cell_h > 0.0 { st.caps.cell_h } else { 16.0 } } else { st.caps.cell_w };
             let cs: Vec<Constraint> = showing.iter().map(|c| bounded(constraint(c.size.as_ref(), cell), c.min.as_ref().and_then(len_cells), c.max.as_ref().and_then(len_cells), along)).collect();
-            let areas = match n.kind {
-                Kind::Col { .. } => Layout::vertical(cs).spacing(gap.as_ref().map_or(0, |g| len_cells(g.xy()[1]).unwrap_or(0))).split(inner),
+            let areas = match down {
+                true => Layout::vertical(cs).spacing(gap.as_ref().map_or(0, |g| len_cells(g.xy()[1]).unwrap_or(0))).split(inner),
                 _ => Layout::horizontal(cs).spacing(gap.as_ref().map_or(0, |g| len_cells(g.xy()[0]).unwrap_or(0))).split(inner),
             };
             for (c, a) in showing.into_iter().zip(areas.iter()) {

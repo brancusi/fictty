@@ -1225,6 +1225,105 @@ fn a_hidden_node_leaves_no_gap() {
     assert_eq!(y(true), y(false), "two hidden texts between them add nothing");
 }
 
+/// A grid lays its children out a line at a time in columns that line up from line to line: a
+/// child spanning two is as wide as two and the gap between, a line is as tall as its tallest
+/// child, and a short last line keeps its columns.
+#[test]
+fn a_grid_lines_its_children_up_in_columns() {
+    let cell = |id: &str, text: &str| json!({"type": "text", "id": id, "text": text});
+    let ui = json!({"root": {"type": "col", "children": [
+        {"type": "grid", "id": "g", "cols": 3, "gap": [2, 1], "size": "fit", "children": [
+            cell("a", "a"), cell("b", "b"), cell("c", "c"),
+            {"type": "text", "id": "wide", "span": 2, "text": "two columns"}, cell("d", "a longer text that wraps onto more lines in its column"),
+            cell("e", "e"),
+        ]},
+        {"type": "text", "id": "below", "text": "below"},
+    ]}});
+    let mut s = window(ui, 62, 20);
+    let r = |s: &mut fictty::Headless, id: &str| node(s, id).rect.unwrap_or_else(|| panic!("{id} laid out"));
+    let (a, b, c, wide, d, e) = (r(&mut s, "a"), r(&mut s, "b"), r(&mut s, "c"), r(&mut s, "wide"), r(&mut s, "d"), r(&mut s, "e"));
+    assert!(a.y == b.y && b.y == c.y && a.x < b.x && b.x < c.x, "a, b, c on the first line: {a:?} {b:?} {c:?}");
+    assert!(a.width.abs_diff(b.width) <= 1 && b.width.abs_diff(c.width) <= 1, "equal columns");
+    assert!(b.x.abs_diff(a.x + a.width + 2) <= 1, "two cells apart: {a:?} {b:?}");
+    assert_eq!(wide.x, a.x, "the span starts the second line");
+    assert!(wide.width.abs_diff(a.width + 2 + b.width) <= 1, "as wide as two columns and the gap: {wide:?}");
+    assert_eq!(d.x, c.x, "and d sits in the third column");
+    assert!(d.height >= 3, "d wraps: {d:?}");
+    assert!(wide.height.abs_diff(d.height) <= 1, "a line is as tall as its tallest, its others stretched: {wide:?} {d:?}");
+    assert_eq!((e.x, e.width), (a.x, a.width), "a short last line keeps its columns");
+    assert_eq!(e.y, d.y + d.height + 1, "a line gap below the second line");
+    let below = r(&mut s, "below");
+    assert!(below.y > e.y, "a fit grid is as tall as its lines");
+    assert!(s.state().problems.is_empty(), "{:?}", s.state().problems);
+}
+
+/// `wrap` on a row sends what doesn't fit to the next line: tags as wide as their text, the
+/// row (`fit`) as tall as its lines, and in a wider window fewer lines.
+#[test]
+fn a_wrapping_row_flows_its_children_onto_lines() {
+    let tags: Vec<Value> = ["rust", "layout", "flexbox", "a native window", "agents", "themes", "grids"].iter().enumerate()
+        .map(|(i, t)| json!({"type": "text", "id": format!("t{i}"), "text": t, "size": "fit", "wrap": false, "pad": [0, 1]})).collect();
+    let ui = json!({"root": {"type": "col", "children": [
+        {"type": "row", "id": "tags", "wrap": true, "gap": [1, 1], "size": "fit", "children": tags},
+        {"type": "text", "id": "below", "text": "below"},
+    ]}});
+    let lines = |s: &mut fictty::Headless| {
+        let ys: std::collections::BTreeSet<u16> = (0..7).map(|i| node(s, &format!("t{i}")).rect.unwrap().y).collect();
+        ys.len()
+    };
+    let mut s = window(ui, 24, 20);
+    let narrow = lines(&mut s);
+    assert!(narrow >= 3, "seven tags in 24 cells take three lines or more, not {narrow}");
+    let cut: Vec<String> = s.readback().into_iter().filter(|n| n.cut).map(|n| n.text).collect();
+    assert!(cut.is_empty(), "no tag is cut: {cut:?}");
+    let (tags, below) = (node(&mut s, "tags").rect.unwrap(), node(&mut s, "below").rect.unwrap());
+    assert!(tags.height as usize >= narrow * 2 - 1 && below.y >= tags.y + tags.height, "the row is as tall as its lines: {tags:?}, below at {below:?}");
+    s.resize(120, 20);
+    assert_eq!(lines(&mut s), 1, "all on one line when there's room");
+}
+
+/// An `each` with `cols` lays its instances out as a grid's children: cards from data.
+#[test]
+fn an_each_with_cols_is_a_grid_of_its_items() {
+    let ui = json!({"root": {"type": "each", "bind": "cards", "cols": 3, "gap": 1,
+        "template": {"type": "text", "id": "c-{$item.id}", "text": "{$item.name}"}},
+        "data": {"cards": {"value": [{"id": "a", "name": "A"}, {"id": "b", "name": "B"}, {"id": "c", "name": "C"}, {"id": "d", "name": "D"}]}}});
+    let mut s = window(ui, 40, 8);
+    let (a, c, d) = (node(&mut s, "c-a").rect.unwrap(), node(&mut s, "c-c").rect.unwrap(), node(&mut s, "c-d").rect.unwrap());
+    assert!(a.y == c.y && c.x > a.x, "three to a line");
+    assert!(d.x == a.x && d.y > a.y, "the fourth under the first");
+    assert!(d.width.abs_diff(a.width) <= 1, "as wide");
+}
+
+/// A grid's columns can each have a size: cells and pixels as written, shares of what's left.
+#[test]
+fn a_grids_columns_take_sizes_and_shares() {
+    let ui = json!({"root": {"type": "grid", "id": "g", "cols": [10, "*", "2*"], "children": [
+        {"type": "text", "id": "a", "text": "a"}, {"type": "text", "id": "b", "text": "b"}, {"type": "text", "id": "c", "text": "c"},
+    ]}});
+    let mut s = window(ui, 70, 6);
+    let (a, b, c) = (node(&mut s, "a").rect.unwrap(), node(&mut s, "b").rect.unwrap(), node(&mut s, "c").rect.unwrap());
+    assert_eq!(a.width, 10, "ten cells");
+    assert!((c.width as i32 - 2 * b.width as i32).abs() <= 1, "two shares to one: {b:?} {c:?}");
+    let g = node(&mut s, "g").rect.unwrap();
+    assert!((a.width + b.width + c.width).abs_diff(g.width) <= 1, "{a:?} {b:?} {c:?} in {g:?}");
+}
+
+/// A grid fits as many columns as there's room for with `{"min": …}`, and the readback says
+/// how many; a percentage is no column size, and a fitting grid needs an id.
+#[test]
+fn a_grid_fits_as_many_columns_as_there_is_room_for() {
+    let kids: Vec<Value> = (0..7).map(|i| json!({"type": "text", "id": format!("k{i}"), "text": format!("{i}")})).collect();
+    let mut s = window(json!({"root": {"type": "grid", "id": "g", "cols": {"min": 12}, "children": kids}}), 50, 10);
+    assert_eq!(node(&mut s, "g").cols, Some(4), "50 cells hold four of twelve");
+    assert_eq!(node(&mut s, "k4").rect.unwrap().x, node(&mut s, "k0").rect.unwrap().x, "the fifth starts the next line");
+    s.resize(30, 10);
+    assert_eq!(node(&mut s, "g").cols, Some(2));
+    let bad = window(json!({"root": {"type": "grid", "cols": {"min": 12}, "children": [{"type": "grid", "id": "h", "cols": ["50%", "*"], "children": []}]}}), 30, 6).state().problems.clone();
+    assert!(bad.iter().any(|p| p.contains("needs an id")), "{bad:?}");
+    assert!(bad.iter().any(|p| p.contains("column \"50%\" isn't cells, pixels or a share")), "{bad:?}");
+}
+
 /// `cols: {"min": …}` fits as many rows to a line as the list has room for, each at least that
 /// wide: the count follows the window's width, keys move by it, and the readback says it.
 #[test]

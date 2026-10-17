@@ -387,6 +387,9 @@ pub struct Node {
     /// row or column comes from how big it is across.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub aspect: Option<Aspect>,
+    /// In a `grid`, how many of its columns it takes (default one).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub span: Option<u16>,
     #[serde(flatten)]
     pub kind: Kind,
 }
@@ -434,6 +437,7 @@ impl Default for Node {
             max: None,
             align_self: None,
             aspect: None,
+            span: None,
             kind: Kind::Text { text: String::new(), wrap: None, lines: None },
         }
     }
@@ -443,7 +447,8 @@ impl Default for Node {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "lowercase")]
 pub enum Kind {
-    /// Children stacked top to bottom, `gap` apart (a length, or `[x, y]`).
+    /// Children stacked top to bottom, `gap` apart (a length, or `[x, y]`). With `wrap`, those
+    /// that don't fit go on in a column beside.
     Col {
         children: Vec<Node>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -452,14 +457,31 @@ pub enum Kind {
         justify: Option<Justify>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         items: Option<Align>,
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        wrap: bool,
     },
-    /// Children side by side, `gap` apart (a length, or `[x, y]`).
+    /// Children side by side, `gap` apart (a length, or `[x, y]`). With `wrap`, those that don't
+    /// fit go on to the next line, each line as tall as its tallest.
     Row {
         children: Vec<Node>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         gap: Option<Gap>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         justify: Option<Justify>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        items: Option<Align>,
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        wrap: bool,
+    },
+    /// Children in columns, a line at a time: `cols` is a count, as many as fit at least
+    /// `{"min": len}` wide, or a size per column (`["200px", "*", "2*"]`); a child takes `span`
+    /// columns. Lines are as tall as their tallest child, `gap` apart (a length, or `[x, y]`),
+    /// and the columns line up from line to line.
+    Grid {
+        children: Vec<Node>,
+        cols: Cols,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        gap: Option<Gap>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         items: Option<Align>,
     },
@@ -471,11 +493,16 @@ pub enum Kind {
     /// The `template` node once for each item of the bound array, top to bottom (side by side
     /// with `row`), `gap` apart. In the template, `{$item}` and `{$item.path}` are filled from the
     /// item (ids, binds, `doc`, `size`: `"id": "panel-{$item.id}"`); every other placeholder is
-    /// left for the node itself. An instance's share is its `size`, else an equal one.
+    /// left for the node itself. An instance's share is its `size`, else an equal one. `wrap` is
+    /// a row's or column's; with `cols` the instances are a `grid`'s children instead.
     Each {
         template: Box<Node>,
         #[serde(default, skip_serializing_if = "std::ops::Not::not")]
         row: bool,
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        wrap: bool,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        cols: Option<Cols>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         gap: Option<Gap>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -1005,13 +1032,15 @@ pub enum Justify {
     Around,
 }
 
-/// How many to a line: a number, or as many as fit at least `min` wide each (a length), which
-/// depends on the width a frame lays them out across.
+/// How many to a line, and how wide each is: a number of equal columns, as many equal ones as
+/// fit at least `min` wide (a length; how many depends on the width a frame lays them out
+/// across), or a size per column (`["200px", "*", "2*"]`, as a node's `size`).
 #[derive(Clone, Debug, PartialEq, Serialize)]
 #[serde(untagged)]
 pub enum Cols {
     Count(u16),
     Fill { min: Len },
+    Tracks(Vec<Size>),
 }
 
 impl Cols {
@@ -1023,8 +1052,35 @@ impl Cols {
                 Some(m) if m > 0. => ((width / m).floor() as usize).max(1),
                 _ => 1,
             },
+            Cols::Tracks(t) => t.len().max(1),
         }
     }
+
+    /// Each column's size, `count` of them: its own, or an equal share.
+    pub fn tracks(&self, count: usize) -> Vec<Measure> {
+        match self {
+            Cols::Tracks(t) if !t.is_empty() => t.iter().map(Size::measure).collect(),
+            _ => vec![Measure::Share(1); count.max(1)],
+        }
+    }
+}
+
+/// Lines of a grid of `cols` columns, each child taking `spans[k]` of them (at least one, at
+/// most all): each line its children as (child, first column, columns), a child that doesn't
+/// fit on the line going to the next.
+pub fn grid_lines(spans: &[usize], cols: usize) -> Vec<Vec<(usize, usize, usize)>> {
+    let cols = cols.max(1);
+    let mut lines: Vec<Vec<(usize, usize, usize)>> = Vec::new();
+    let mut at = cols;
+    for (k, span) in spans.iter().map(|s| (*s).clamp(1, cols)).enumerate() {
+        if at + span > cols {
+            lines.push(Vec::new());
+            at = 0;
+        }
+        lines.last_mut().expect("a line").push((k, at, span));
+        at += span;
+    }
+    lines
 }
 
 /// Width over height: a number (`1.5`), or `"16/9"`, kept as written.
@@ -1136,7 +1192,8 @@ impl<'de> Deserialize<'de> for Cols {
         match Value::deserialize(d)? {
             Value::Number(n) if n.as_u64().is_some_and(|n| (1..=u16::MAX as u64).contains(&n)) => Ok(Cols::Count(n.as_u64().unwrap_or(1) as u16)),
             Value::Object(mut o) if o.len() == 1 && o.contains_key("min") => len_of(o.remove("min").unwrap_or_default()).map(|min| Cols::Fill { min }),
-            v => Err(wrong("cols is a count (3) or as many as fit, each at least a length ({\"min\": \"180px\"})", &v)),
+            Value::Array(a) if !a.is_empty() && a.iter().all(|t| t.is_string() || t.is_u64()) => serde_json::from_value(Value::Array(a)).map(Cols::Tracks).map_err(serde::de::Error::custom),
+            v => Err(wrong("cols is a count (3), as many as fit at least a length wide ({\"min\": \"180px\"}) or a size per column ([\"200px\", \"*\", \"2*\"])", &v)),
         }
     }
 }
@@ -1572,15 +1629,23 @@ impl Node {
 
     pub fn children(&self) -> &[Node] {
         match &self.kind {
-            Kind::Col { children, .. } | Kind::Row { children, .. } | Kind::Stack { children } | Kind::Tabs { children, .. } => children,
+            Kind::Col { children, .. } | Kind::Row { children, .. } | Kind::Grid { children, .. } | Kind::Stack { children } | Kind::Tabs { children, .. } => children,
             _ => &[],
         }
     }
 
     pub fn children_mut(&mut self) -> Option<&mut Vec<Node>> {
         match &mut self.kind {
-            Kind::Col { children, .. } | Kind::Row { children, .. } | Kind::Stack { children } | Kind::Tabs { children, .. } => Some(children),
+            Kind::Col { children, .. } | Kind::Row { children, .. } | Kind::Grid { children, .. } | Kind::Stack { children } | Kind::Tabs { children, .. } => Some(children),
             _ => None,
+        }
+    }
+
+    /// How many to a line a list, tree or grid lays out (see `state::per_line`).
+    pub fn cols(&self) -> Option<&Cols> {
+        match &self.kind {
+            Kind::Grid { cols, .. } => Some(cols),
+            _ => self.rows()?.cols.as_ref(),
         }
     }
 
@@ -1616,6 +1681,7 @@ impl Node {
         match &self.kind {
             Kind::Col { .. } => "col",
             Kind::Row { .. } => "row",
+            Kind::Grid { .. } => "grid",
             Kind::Stack { .. } => "stack",
             Kind::Button { .. } => "button",
             Kind::Spinner { .. } => "spinner",
@@ -2110,6 +2176,29 @@ pub fn is_colour(name: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_grid_places_children_a_line_at_a_time_by_their_spans() {
+        // Three columns: a, b; c spanning two doesn't fit after them, so starts the next line.
+        assert_eq!(grid_lines(&[1, 1, 2, 1, 5], 3), vec![vec![(0, 0, 1), (1, 1, 1)], vec![(2, 0, 2), (3, 2, 1)], vec![(4, 0, 3)]]);
+        assert!(grid_lines(&[], 3).is_empty());
+        assert_eq!(grid_lines(&[1, 1], 0), vec![vec![(0, 0, 1)], vec![(1, 0, 1)]], "no columns is one");
+    }
+
+    #[test]
+    fn cols_read_as_a_count_a_minimum_or_a_size_per_column() {
+        let c = |v: Value| serde_json::from_value::<Cols>(v);
+        assert_eq!(c(json!(3)).unwrap(), Cols::Count(3));
+        assert_eq!(c(json!({"min": "180px"})).unwrap(), Cols::Fill { min: Len::Spec("180px".into()) });
+        assert_eq!(c(json!(["200px", "*", 12])).unwrap(), Cols::Tracks(vec![Size::Spec("200px".into()), Size::Spec("*".into()), Size::Cells(12)]));
+        for bad in [json!(0), json!("3"), json!({"max": 3}), json!([])] {
+            assert!(c(bad.clone()).unwrap_err().to_string().contains("cols is a count"), "{bad}");
+        }
+        // Read back as written.
+        assert_eq!(serde_json::to_value(c(json!({"min": 10})).unwrap()).unwrap(), json!({"min": 10}));
+        assert_eq!(Cols::Fill { min: Len::Cells(10.) }.count(250., |l| l.px(8.)), 3, "250 px at 80 a column");
+        assert_eq!(Cols::Fill { min: Len::Cells(10.) }.count(50., |l| l.px(8.)), 1, "never none");
+    }
+
     use super::*;
     use serde_json::json;
 
