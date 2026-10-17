@@ -82,9 +82,9 @@ fn walk(st: &State, n: &Node, depth: usize, key: &str, frame: Frame, out: &mut V
     let key = n.id.as_deref().unwrap_or(key);
     out.push(shown(st, n, depth, key, frame));
     match &n.kind {
-        Kind::Tabs { children, .. } => {
-            let at = state::tab_of(st, n).min(children.len().saturating_sub(1));
-            if let Some(c) = children.get(at) {
+        Kind::Tabs { tabs, .. } => {
+            let at = state::tab_of(st, n).min(tabs.len().saturating_sub(1));
+            if let Some(c) = n.page(at) {
                 walk(st, c, depth + 1, &format!("{key}.{at}"), frame, out);
             }
         }

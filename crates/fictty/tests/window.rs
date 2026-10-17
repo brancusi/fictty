@@ -1624,6 +1624,54 @@ fn a_template_reads_the_store_beside_its_bound_value() {
     assert_eq!(node(&mut s, "t").text, "NOW PLAYING · Night Ferry");
 }
 
+/// Tabs without pages are a bar of choices (a radio group): the titles are the choices, → and a
+/// press pick one, and nothing shows under them. More pages than tabs is a problem.
+#[test]
+fn tabs_without_pages_are_a_bar_of_choices() {
+    let ui = json!({"root": {"type": "col", "children": [
+        {"type": "tabs", "id": "density", "size": 1, "tabs": ["Compact", "Comfortable", "Spacious"]},
+        {"type": "text", "id": "below", "text": "below"},
+    ]}, "focus": "density"});
+    let mut s = window(ui, 60, 6);
+    assert_eq!(s.state().problems, Vec::<String>::new());
+    s.keys(&["right", "right"]);
+    assert_eq!(s.state().local["density"].tab, 2, "→ walks the three choices");
+    s.keys(&["right"]);
+    assert_eq!(s.state().local["density"].tab, 0, "and wraps");
+    let (x, y) = s.at("density", None, Some(1)).unwrap();
+    s.mouse("press", x, y).mouse("release", x, y);
+    assert_eq!(node(&mut s, "density").selected, Some(1));
+    let pages = json!({"root": {"type": "tabs", "id": "t", "tabs": ["One"], "children": [{"type": "text", "text": "a"}, {"type": "text", "text": "b"}]}});
+    assert_eq!(window(pages, 40, 4).state().problems, vec!["tabs t: 2 pages for 1 tabs, so the last 1 never show".to_string()]);
+}
+
+/// A list's title can say how many rows it shows, `{$rows}`, after its filter; inside an `each`
+/// that's still the list's own count, not the `each`'s.
+#[test]
+fn a_lists_title_counts_its_rows() {
+    let ui = json!({"root": {"type": "col", "children": [
+        {"type": "input", "id": "find", "size": 1},
+        {"type": "list", "id": "l", "title": "PARTS · {$rows}", "filter": "find", "items": ["chain", "chain checker", "brake pads"]},
+        {"type": "each", "bind": "cols", "row": true, "template":
+            {"type": "list", "id": "col-{$item.id}", "title": "{$item.id} · {$rows}", "bind": "cards.{$item.id}", "item": "{t}"}},
+    ]}, "store": {"cols": [{"id": "todo"}, {"id": "done"}], "cards": {"todo": [{"id": "a", "t": "x"}, {"id": "b", "t": "y"}], "done": [{"id": "c", "t": "z"}]}},
+        "focus": "find"});
+    let mut s = window(ui, 80, 14);
+    assert_eq!(node(&mut s, "l").title.as_deref(), Some("PARTS · 3"));
+    s.request(json!({"op": "write", "write": "put", "key": "find", "value": "chain"}));
+    assert_eq!(node(&mut s, "l").title.as_deref(), Some("PARTS · 2"), "what the filter leaves");
+    assert_eq!(node(&mut s, "col-todo").title.as_deref(), Some("todo · 2"));
+    assert_eq!(node(&mut s, "col-done").title.as_deref(), Some("done · 1"));
+}
+
+/// Tabs' titles read the store as a text does.
+#[test]
+fn tab_titles_read_the_store() {
+    let ui = json!({"root": {"type": "tabs", "id": "t", "tabs": ["Inbox {$store.unread}", "Jobs"]}, "store": {"unread": 4}});
+    let mut s = window(ui, 40, 4);
+    assert_eq!(node(&mut s, "t").text, "Inbox 4 | Jobs");
+}
+
 /// `{"select": "next", "in": id}` moves another list's selection a row, the focus where it was.
 #[test]
 fn select_next_moves_a_list_without_the_focus() {

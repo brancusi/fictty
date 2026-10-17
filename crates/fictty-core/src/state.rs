@@ -631,7 +631,7 @@ pub fn scrollers_around(st: &State, id: &str) -> Vec<String> {
             return true;
         }
         let found = match &n.kind {
-            Kind::Tabs { children, .. } => children.get(tab_of(st, n).min(children.len().saturating_sub(1))).is_some_and(|c| find(st, c, id, path)),
+            Kind::Tabs { .. } => n.page(tab_of(st, n)).is_some_and(|c| find(st, c, id, path)),
             _ => n.children().iter().any(|c| find(st, c, id, path)),
         };
         if !found {
@@ -2493,7 +2493,7 @@ fn act(st: &mut State, a: Action) -> Vec<Effect> {
         }
         Action::ShowTab { tab, of } => {
             match st.node(&of).map(|n| &n.kind) {
-                Some(Kind::Tabs { children, .. }) if tab < children.len() => {
+                Some(Kind::Tabs { tabs, .. }) if tab < tabs.len() => {
                     st.local.entry(of.clone()).or_default().tab = tab;
                     settle(st);
                     into_tab(st, &of);
@@ -3049,8 +3049,7 @@ fn derive_rows(st: &mut State, only: Option<&str>) -> bool {
 /// keys go to what the person just chose to see.
 fn into_tab(st: &mut State, id: &str) {
     let Some(n) = st.node(id) else { return };
-    let Kind::Tabs { children, .. } = &n.kind else { return };
-    let Some(child) = children.get(tab_of(st, n).min(children.len().saturating_sub(1))) else { return };
+    let Some(child) = n.page(tab_of(st, n)) else { return };
     let mut inside = Vec::new();
     child.walk_shown(&|n| tab_of(st, n), &|n| shown(st, n), &mut inside);
     let order = focus_order(st);
@@ -3063,7 +3062,7 @@ fn into_tab(st: &mut State, id: &str) {
 fn switch(st: &mut State, dir: isize) -> Vec<Effect> {
     let Some(id) = st.focus.clone() else { return vec![] };
     let n = match st.node(&id).map(|n| &n.kind) {
-        Some(Kind::Tabs { children, .. }) => children.len() as isize,
+        Some(Kind::Tabs { tabs, .. }) => tabs.len() as isize,
         _ => return vec![],
     };
     let local = st.local.entry(id).or_default();
@@ -3500,6 +3499,11 @@ pub fn problems(st: &State) -> Vec<String> {
         {
             out.push(format!("input {name}: accept {a:?} isn't known (only \"number\")"));
         }
+        if let Kind::Tabs { tabs, children, .. } = &n.kind
+            && children.len() > tabs.len()
+        {
+            out.push(format!("tabs {name}: {} pages for {} tabs, so the last {} never show", children.len(), tabs.len(), children.len() - tabs.len()));
+        }
         // `span` is a grid's: anywhere else it would be quietly ignored.
         if !matches!(n.kind, Kind::Grid { .. }) {
             for c in n.children().iter().filter(|c| c.span.is_some()) {
@@ -3585,12 +3589,15 @@ pub fn is_on(st: &State, n: &Node) -> bool {
     holds(st, &c)
 }
 
-/// The value node `n`'s templates fill from: its bound value, and under `$store` the store
-/// entries they name (`{$store.playing}`), so a text can say what it shows and how things stand.
+/// The value node `n`'s templates fill from: its bound value, under `$store` the store entries
+/// they name (`{$store.playing}`), so a text can say what it shows and how things stand, and for
+/// a list, table or tree `$rows`, how many rows it shows (after its filter: `"TO DO · {$rows}"`).
 pub fn scope<'a>(st: &'a State, n: &Node) -> std::borrow::Cow<'a, Value> {
     let v = bound(st, n).unwrap_or(&Value::Null);
     let mut named: Vec<&str> = Vec::new();
+    let mut rows = false;
     for t in n.templates() {
+        rows |= t.contains("{$rows");
         let mut rest = t;
         while let Some(i) = rest.find("{$store.") {
             rest = &rest[i + "{$store.".len()..];
@@ -3598,7 +3605,8 @@ pub fn scope<'a>(st: &'a State, n: &Node) -> std::borrow::Cow<'a, Value> {
             named.push(&rest[..end]);
         }
     }
-    if named.is_empty() {
+    let rows = rows && matches!(n.kind, Kind::List { .. } | Kind::Table { .. } | Kind::Tree { .. });
+    if named.is_empty() && !rows {
         return std::borrow::Cow::Borrowed(v);
     }
     let mut out = match v {
@@ -3606,18 +3614,23 @@ pub fn scope<'a>(st: &'a State, n: &Node) -> std::borrow::Cow<'a, Value> {
         Value::Null => serde_json::Map::new(),
         other => [("$".to_string(), other.clone())].into_iter().collect(),
     };
-    let entries: serde_json::Map<String, Value> = named
-        .into_iter()
-        .map(|k| {
-            let value = match st.store.get(k).map(|e| &e.body) {
-                Some(Body::Value { value }) => value.clone(),
-                Some(Body::Text { doc }) => Value::String(doc.text.to_string()),
-                None => Value::Null,
-            };
-            (k.to_string(), value)
-        })
-        .collect();
-    out.insert("$store".into(), Value::Object(entries));
+    if !named.is_empty() {
+        let entries: serde_json::Map<String, Value> = named
+            .into_iter()
+            .map(|k| {
+                let value = match st.store.get(k).map(|e| &e.body) {
+                    Some(Body::Value { value }) => value.clone(),
+                    Some(Body::Text { doc }) => Value::String(doc.text.to_string()),
+                    None => Value::Null,
+                };
+                (k.to_string(), value)
+            })
+            .collect();
+        out.insert("$store".into(), Value::Object(entries));
+    }
+    if rows {
+        out.insert("$rows".into(), items(st, n).len().into());
+    }
     std::borrow::Cow::Owned(Value::Object(out))
 }
 

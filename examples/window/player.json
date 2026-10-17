@@ -36,11 +36,8 @@
       "type": "row",
       "size": 1,
       "gap": 2,
+      "justify": "center",
       "children": [
-       {
-        "type": "text",
-        "text": ""
-       },
        {
         "type": "button",
         "id": "prev",
@@ -58,10 +55,6 @@
         "id": "next",
         "label": "\u23ed",
         "size": 6
-       },
-       {
-        "type": "text",
-        "text": ""
        }
       ]
      },

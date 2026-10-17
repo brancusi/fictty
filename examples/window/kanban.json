@@ -31,7 +31,7 @@
     "template": {
      "type": "list",
      "id": "col-{$item.id}",
-     "title": "{$item.title} \u00b7 {$item.n}",
+     "title": "{$item.title} \u00b7 {$rows}",
      "bind": "cards.{$item.id}",
      "row": {
       "type": "col",
@@ -84,23 +84,19 @@
   "cols": [
    {
     "id": "todo",
-    "title": "TO DO",
-    "n": 3
+    "title": "TO DO"
    },
    {
     "id": "doing",
-    "title": "IN PROGRESS",
-    "n": 2
+    "title": "IN PROGRESS"
    },
    {
     "id": "review",
-    "title": "REVIEW",
-    "n": 1
+    "title": "REVIEW"
    },
    {
     "id": "done",
-    "title": "DONE",
-    "n": 2
+    "title": "DONE"
    }
   ],
   "cards": {

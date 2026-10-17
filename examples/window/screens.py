@@ -8,9 +8,9 @@ def save(name, ui):
     with open(f"{L}/{name}.json", "w") as f: json.dump(ui, f, indent=1); f.write("\n")
 
 # 1 · Settings form: labels, fields, toggles, a radio group, a select, a slider, a save bar. The
-# form scrolls; a label sits beside its field, centred on it. Tricks left: the checkboxes are list
-# rows that toggle, the radio group is tabs with empty pages, the select a pop-up list, the slider
-# a gauge (recipes and `slider` are phase 2's).
+# form scrolls; a label sits beside its field, centred on it. The radio group is tabs without
+# pages. Tricks left: the checkboxes are list rows that toggle, the select a pop-up list, the
+# slider a gauge (recipes and `slider` are phase 2's).
 def field(label, node): return {"type": "row", "size": "fit", "gap": 2, "items": "center", "children": [T(f"<dim>{label}</>", size=18, align="right"), node]}
 save("settings", {
  "root": {"type": "stack", "children": [
@@ -24,8 +24,8 @@ save("settings", {
     T("<heading>Preferences</>", size=1),
     {"type": "list", "id": "prefs", "size": 4, "bind": "prefs",
      "item": "{on|true=<accent>[■]</>;*=<dim>[ ]</>}  {label}\t<dim>{hint}</>", "keys": {"space": {"toggle": "on"}, "enter": {"toggle": "on"}}, "click": {"toggle": "on"}},
-    T("<b>Density</>   <dim>(a radio group: tabs as a segmented control)</>", size=1),
-    {"type": "tabs", "id": "density", "size": 1, "tabs": ["Compact", "Comfortable", "Spacious"], "children": [T(""), T(""), T("")]},
+    T("<b>Density</>", size=1),
+    {"type": "tabs", "id": "density", "size": 1, "tabs": ["Compact", "Comfortable", "Spacious"]},
     T("<b>Volume</>  {vol}%   <dim>(a slider: ←/→ can't add 5 without the host)</>", bind="ui", size=1),
     {"type": "gauge", "id": "vol", "size": 1, "bind": "ui", "value": "{vol}", "of": 100},
     T("<b>Region</>", size=1),
@@ -52,6 +52,8 @@ bubble = {"type": "row", "size": "fit", "justify": "{$item.side|me=end;*=start}"
     {"type": "col", "max": 44, "margin": [0, 0, 1, 0], "children": [
         T("<dim>{$item.who} · {$item.at}</>", size="fit", wrap=False, self="{$item.side|me=end;*=start}"),
         T("{$item.text}", variant="{$item.side|me=hero;*=card}", pad=[1, 0], size="fit", self="{$item.side|me=end;*=start}")]}]}
+# Enter in the composer and the Send button do the same: add the message, empty the composer.
+send = {"do": [{"append": "msgs", "value": {"side": "me", "who": "You", "text": "{store.compose.text}", "at": "now"}}, {"put": "compose", "value": ""}]}
 save("chat", {
  "root": {"type": "row", "gap": 2, "children": [
   {"type": "list", "id": "rooms", "size": 34, "title": "MESSAGES", "lines": 2, "bind": "rooms", "item": "<b>{name}</>\t<dim>{when}</>\n<dim>{last}</>"},
@@ -61,8 +63,8 @@ save("chat", {
    {"type": "list", "id": "thread", "bind": "msgs", "row": bubble},
    T("<dim>Grace is typing…</>", size=1),
    {"type": "row", "size": 1, "gap": 1, "children": [{"type": "input", "id": "compose", "placeholder": "Message Grace…",
-     "keys": {"enter": {"do": [{"append": "msgs", "value": {"side": "me", "who": "You", "text": "{store.compose.text}", "at": "now"}}, {"put": "compose", "value": ""}]}}},
-     {"type": "button", "id": "send", "label": "Send", "size": "fit"}]}
+     "keys": {"enter": send}},
+     {"type": "button", "id": "send", "label": "Send", "size": "fit", "click": send}]}
   ]}
  ]},
  "store": {"msgs": [{"id": str(i), "side": s, "who": w, "text": t, "at": a} for i, (s, w, t, a) in enumerate(msgs)],
@@ -70,11 +72,11 @@ save("chat", {
  "focus": "compose"})
 
 # 3 · Kanban: columns of cards with a tag and a size, counts. Each column is a list of cards, a row
-# template as tall as its title wraps to.
+# template as tall as its title wraps to, its title counting its rows.
 cards = {"todo": [("Ellipsis for cut lines", "window", "S"), ("Cards: radius, gradient and a shadow in every theme", "themes", "M"), ("IME composition", "input", "S")],
          "doing": [("Parts as styles", "themes", "L"), ("Charts on canvas", "charts", "M")],
          "review": [("Layout parity", "window", "M")], "done": [("Window under test", "tests", "M"), ("Fuzz through the window", "tests", "S")]}
-cols = [{"id": k, "title": t, "n": len(cards[k])} for k, t in [("todo", "TO DO"), ("doing", "IN PROGRESS"), ("review", "REVIEW"), ("done", "DONE")]]
+cols = [{"id": k, "title": t} for k, t in [("todo", "TO DO"), ("doing", "IN PROGRESS"), ("review", "REVIEW"), ("done", "DONE")]]
 card = {"type": "col", "size": "fit", "variant": "card", "border": True, "pad": [1, 0], "margin": [0, 0, 1, 0], "children": [
     T("<b>{$item.t}</>", size="fit"),
     {"type": "row", "size": 1, "justify": "between", "children": [T("<accent>#{$item.tag}</>", size="fit", wrap=False), T("<dim>{$item.size}</>", size="fit", wrap=False)]}]}
@@ -82,7 +84,7 @@ save("kanban", {
  "root": {"type": "col", "gap": 1, "children": [
   {"type": "row", "size": 1, "justify": "between", "children": [T("<heading>Phase 1 · the window</>   <dim>8 cards · 3 people</>", size="fit", wrap=False), T("<dim>+ New card   ⌕ Filter</>", size="fit", wrap=False)]},
   {"type": "each", "id": "board", "bind": "cols", "row": True, "gap": 2, "template":
-   {"type": "list", "id": "col-{$item.id}", "title": "{$item.title} · {$item.n}", "bind": "cards.{$item.id}", "row": card, "empty": "drop cards here"}}
+   {"type": "list", "id": "col-{$item.id}", "title": "{$item.title} · {$rows}", "bind": "cards.{$item.id}", "row": card, "empty": "drop cards here"}}
  ]},
  "store": {"cols": cols, "cards": {k: [{"id": f"{k}{i}", "t": c[0], "tag": c[1], "size": c[2]} for i, c in enumerate(v)] for k, v in cards.items()}}})
 
@@ -94,7 +96,7 @@ save("player", {
    T("<b>Neon Rain</>\n<dim>Vela Drive · Afterglow (Deluxe)</>", size=2, align="center"),
    {"type": "gauge", "id": "pos", "size": 1, "value": "0.42"},
    T("<dim>1:38</>\t<dim>3:54</>", size=1),
-   {"type": "row", "size": 1, "gap": 2, "children": [T(""), {"type": "button", "id": "prev", "label": "⏮", "size": 6}, {"type": "button", "id": "play", "label": "⏸", "size": 6}, {"type": "button", "id": "next", "label": "⏭", "size": 6}, T("")]},
+   {"type": "row", "size": 1, "gap": 2, "justify": "center", "children": [{"type": "button", "id": "prev", "label": "⏮", "size": 6}, {"type": "button", "id": "play", "label": "⏸", "size": 6}, {"type": "button", "id": "next", "label": "⏭", "size": 6}]},
    {"type": "sparkline", "id": "eq", "size": 2, "values": [3, 5, 8, 6, 9, 4, 7, 10, 6, 3, 5, 8, 9, 7, 4, 6]}
   ]},
   {"type": "list", "id": "queue", "title": "UP NEXT", "bind": "q", "item": "{n:>2}  <b>{t}</>  <dim>{a}</>\t<dim>{d}</>"}

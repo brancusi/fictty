@@ -1109,8 +1109,8 @@ fn node(cx: &mut Cx, n: &Node, f: &mut Frame, area: Rect) {
             let at = Rect::new(inner.x, top, inner.width, 3.min(inner.height));
             f.render_widget(Paragraph::new(lines).alignment(align), at);
         }
-        Kind::Tabs { tabs, children, lead, trail, .. } => {
-            let shown = tab_of(st, n).min(children.len().saturating_sub(1));
+        Kind::Tabs { tabs, lead, trail, .. } => {
+            let shown = tab_of(st, n).min(tabs.len().saturating_sub(1));
             let v = bound(st, n).unwrap_or(&Value::Null);
             let bar = Rect { height: 1.min(inner.height), ..inner };
             // The trail right-aligned, the lead first, the titles between.
@@ -1160,7 +1160,7 @@ fn node(cx: &mut Cx, n: &Node, f: &mut Frame, area: Rect) {
                 let u = cx.look("tabs.underline", Style::default().fg(cx.th.accent));
                 f.buffer_mut().set_string(r.x, rule.y, "━".repeat(r.width as usize), u);
             }
-            if let Some(c) = children.get(shown) {
+            if let Some(c) = n.page(shown) {
                 let body = Rect::new(inner.x, inner.y + 2, inner.width, inner.height.saturating_sub(2));
                 node(cx, c, f, body);
             }

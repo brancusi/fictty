@@ -142,10 +142,6 @@
              "toast": "Archived",
              "tone": "pos"
             }
-           },
-           {
-            "type": "text",
-            "text": ""
            }
           ]
          }

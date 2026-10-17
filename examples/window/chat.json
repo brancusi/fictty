@@ -119,7 +119,24 @@
         "type": "button",
         "id": "send",
         "label": "Send",
-        "size": "fit"
+        "size": "fit",
+        "click": {
+         "do": [
+          {
+           "append": "msgs",
+           "value": {
+            "side": "me",
+            "who": "You",
+            "text": "{store.compose.text}",
+            "at": "now"
+           }
+          },
+          {
+           "put": "compose",
+           "value": ""
+          }
+         ]
+        }
        }
       ]
      }

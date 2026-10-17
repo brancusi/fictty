@@ -63,7 +63,6 @@ INBOX = {"type": "row", "gap": 2, "children": [
             {"type": "button", "id": "send", "label": "Send ↵", "size": 12, "click": {"toast": "Sent", "tone": "pos"}},
             {"type": "button", "id": "archive", "label": "Archive", "size": 12,
              "click": {"do": [{"remove": "inbox"}, {"toast": "Archived", "tone": "pos"}]}},
-            {"type": "text", "text": ""},
         ]},
     ]},
 ]}
@@ -101,7 +100,7 @@ FLOOR = {"type": "col", "gap": 1, "children": [
 NOTES = {"type": "editor", "id": "notes", "title": "NOTES", "syntax": "markdown", "pad": [1, 0],
          "placeholder": "Notes for the shop…"}
 
-TABS = [("Inbox <accent>{inbox}</>", INBOX), ("Jobs", JOBS), ("Stock", STOCK), ("Floor", FLOOR), ("Notes", NOTES)]
+TABS = [("Inbox <accent>{$store.unread}</>", INBOX), ("Jobs", JOBS), ("Stock", STOCK), ("Floor", FLOOR), ("Notes", NOTES)]
 
 
 def app(upto):
@@ -120,7 +119,7 @@ def app(upto):
 
 def main(upto):
     tabs = TABS[:upto]
-    return {"type": "tabs", "id": "main", "bind": "inbox_count", "tabs": [t for t, _ in tabs], "children": [n for _, n in tabs]}
+    return {"type": "tabs", "id": "main", "tabs": [t for t, _ in tabs], "children": [n for _, n in tabs]}
 
 
 # The data. Made up.
@@ -196,7 +195,7 @@ def run():
     # 2. Data arrives in the store; the UI only names it.
     for i in range(1, len(MAIL) + 1):
         fictty("put", "inbox", "-", "--by", "agent", data=MAIL[:i])
-        fictty("put", "inbox_count", "-", "--by", "agent", data={"inbox": sum(m["unread"] for m in MAIL[:i])})
+        fictty("put", "unread", "-", "--by", "agent", data=sum(m["unread"] for m in MAIL[:i]))
         pause(0.35)
     step("Six messages came in. The list is bound to the store entry `inbox`.", "fictty put inbox mail.json", wait=1.6)
 

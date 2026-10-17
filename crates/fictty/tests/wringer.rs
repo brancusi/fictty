@@ -86,4 +86,25 @@ fn kanban_cards_are_as_tall_as_their_titles() {
     let h = s.state().local["col-todo"].heights.clone();
     assert!(h["todo1"] > h["todo0"] + 0.5, "the long title's card is taller: {h:?}");
     assert_eq!(node(&mut s, "col-doing").rows, Some(2), "each column lists its own cards");
+    assert_eq!(node(&mut s, "col-todo").title.as_deref(), Some("TO DO · 3"), "its title counts its own rows");
+}
+
+/// Send does what Enter in the composer does: the message joins the thread, the composer empties.
+#[test]
+fn chat_sends_from_the_button() {
+    let mut s = screen("chat", "glass", 140, 34);
+    s.request(serde_json::json!({"op": "write", "write": "put", "key": "compose", "value": "Lunch at one?"}));
+    let (x, y) = s.at("send", None, None).unwrap();
+    s.mouse("press", x, y).mouse("release", x, y);
+    assert_eq!(node(&mut s, "thread").rows, Some(7));
+    assert_eq!(node(&mut s, "compose").text, "");
+}
+
+/// Density is a radio group: tabs without pages, one of three chosen.
+#[test]
+fn settings_density_is_tabs_without_pages() {
+    let mut s = screen("settings", "glass", 160, 44);
+    let (x, y) = s.at("density", None, Some(2)).unwrap();
+    s.mouse("press", x, y).mouse("release", x, y);
+    assert_eq!(node(&mut s, "density").selected, Some(2));
 }

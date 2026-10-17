@@ -750,9 +750,9 @@ impl Portal {
     /// A tab bar over the shown tab, in the shape the theme gives it.
     #[allow(clippy::too_many_arguments)]
     fn tabs(&mut self, st: &State, lk: &Look, n: &Node, id: &str, key: &str, rs: &style::Resolved, v: &Value, cx: &mut Context<Self>) -> AnyElement {
-        let Kind::Tabs { tabs, children, lead, trail, .. } = &n.kind else { unreachable!("tabs") };
+        let Kind::Tabs { tabs, lead, trail, .. } = &n.kind else { unreachable!("tabs") };
         let c = (self.cell.w, self.cell.h);
-        let at = state::tab_of(st, n).min(children.len().saturating_sub(1));
+        let at = state::tab_of(st, n).min(tabs.len().saturating_sub(1));
         let tabs = tabs.clone();
         let (mut active, mut idle) = (style::inner(st, "tabs.selected", &[]), style::inner(st, "tabs.idle", &[]));
         // The shape the theme gives the tabs: pills (the default), an underline under the
@@ -777,7 +777,7 @@ impl Portal {
             idle.radius = None;
         }
         let underline = (shape == "underline").then(|| line.as_deref().and_then(look::parse)).flatten();
-        let child = children.get(at).cloned();
+        let child = n.page(at).cloned();
         let (lead, trail) = (lead.as_deref().map(|t| text::whole(lk, t, v, Ink::default())), trail.as_deref().map(|t| text::whole(lk, t, v, Ink::default())));
         let bar = bar.children(tabs.iter().enumerate().map(|(k, t)| {
             let target = id.to_string();

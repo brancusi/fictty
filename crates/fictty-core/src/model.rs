@@ -703,6 +703,9 @@ pub enum Kind {
     /// start with `lead` and end with `trail` (templates too: a name, a date).
     Tabs {
         tabs: Vec<String>,
+        /// A page per tab, in order; a tab without one shows nothing, so tabs with no children
+        /// are a bar of choices (a segmented control, a radio group).
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
         children: Vec<Node>,
         /// The tab shown first (default 0), until the person or an action picks another.
         #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -1840,8 +1843,8 @@ impl Node {
         }
         out.push(self);
         match &self.kind {
-            Kind::Tabs { children, .. } => {
-                if let Some(c) = children.get(tab(self).min(children.len().saturating_sub(1))) {
+            Kind::Tabs { .. } => {
+                if let Some(c) = self.page(tab(self)) {
                     c.walk_shown(tab, shown, out);
                 }
             }
@@ -1866,16 +1869,24 @@ impl Node {
         all.into_iter().find(|n| n.id.as_deref() == Some(id))
     }
 
-    /// The nodes from this one down to the node with this id, both included; empty when there
-    /// is none.
-    /// The templates it fills from its bound value: its text, a button's label, its title.
+    /// The templates it fills from its bound value: its text, a button's label, tabs' titles
+    /// and their bar's lead and trail, its title.
     pub fn templates(&self) -> impl Iterator<Item = &str> {
-        let own = match &self.kind {
-            Kind::Text { text, .. } => Some(text.as_str()),
-            Kind::Button { label } => Some(label.as_str()),
-            _ => None,
+        let own: Vec<&str> = match &self.kind {
+            Kind::Text { text, .. } => vec![text],
+            Kind::Button { label } => vec![label],
+            Kind::Tabs { tabs, lead, trail, .. } => tabs.iter().map(String::as_str).chain(lead.as_deref()).chain(trail.as_deref()).collect(),
+            _ => vec![],
         };
         own.into_iter().chain(self.title.as_deref())
+    }
+
+    /// The page tabs show at `tab` (held to the last tab): its child there, if it has one.
+    pub fn page(&self, tab: usize) -> Option<&Node> {
+        match &self.kind {
+            Kind::Tabs { tabs, children, .. } => children.get(tab.min(tabs.len().saturating_sub(1))),
+            _ => None,
+        }
     }
 
     /// The node at `path` under this one, child indexes joined by dots (`0.2`; empty is this
@@ -1884,6 +1895,8 @@ impl Node {
         path.split('.').filter(|p| !p.is_empty()).try_fold(self, |n, k| n.children().get(k.parse::<usize>().ok()?))
     }
 
+    /// The nodes from this one down to the node with this id, both included; empty when there
+    /// is none.
     pub fn path_to(&self, id: &str) -> Vec<&Node> {
         if self.id.as_deref() == Some(id) {
             return vec![self];

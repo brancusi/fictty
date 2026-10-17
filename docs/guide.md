@@ -225,7 +225,9 @@ fictty theme paper                                        # choose a loaded them
   is set) and `{x|!otherwise}` (only when it isn't), and a tab right-aligns the rest of a line.
   `{$store.key}` reads a store entry beside the bound value, so one text can say what it shows
   and how things stand: `"bind": "@albums", "text": "{$store.playing|true=NOW PLAYING;*=PAUSED}
-  · {title}"` (a text, a button's label and a title take it).
+  · {title}"` (a text, a button's label, tab titles and a title take it). A list's, table's or
+  tree's own templates (its title) take `{$rows}`, how many rows it shows after its filter:
+  `"title": "TO DO · {$rows}"`, its own count even inside an `each`.
 - **Actions** on keys: `quit`, `up`, `down` (a line, in a list with `cols`), `next_row` and
   `prev_row` (one row whatever the `cols`, on across line ends), `top`, `bottom`, `page_down` and
   `page_up` (a list's selection by a view, else the scroller around the focus; Page Down and Page
@@ -250,7 +252,9 @@ the value it's bound to: a button bound to `@albums` acts on the album), `{store
   leaves a text field (dropping a selection first). Esc drops a selection first, even where a node binds Esc. `{"focus": …}` takes an id, a template
   (`"{store.from}"`) or `$prev` (where it was before it last moved). Choosing a tab (a click, or
   `{"tab": 2, "of": "views"}`) moves the focus into it; a tabs node's `tab` is the one it starts
-  on, and tab titles take markup.
+  on, and tab titles take markup. A tab without a page (fewer `children` than `tabs`, or none)
+  shows nothing under the bar, so tabs alone are a bar of choices, a segmented control or radio
+  group; more pages than tabs is a problem.
 - **Identity**: view state (selection, folds, carets, scroll) and focus are keyed by node id, so
   they survive a push for any id that's still there (React's `key`).
 - **Problems**: a bound value of the wrong shape, an unknown variant or tone, comes back as a
