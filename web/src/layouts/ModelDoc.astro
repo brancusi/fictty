@@ -1,0 +1,50 @@
+---
+// A page of the data-model comparison (docs/research/data-model/), laid out as the design
+// documents are: lede, facts, sections. The .md stays the source of truth.
+import { getEntry, render } from 'astro:content';
+import Base from './Base.astro';
+import '../styles/prose.css';
+import '../styles/doc.css';
+import '../styles/research.css';
+import '../styles/model.css';
+import ExFictty from '../components/model/ExFictty.astro';
+import ExObsidian from '../components/model/ExObsidian.astro';
+import ExRoam from '../components/model/ExRoam.astro';
+import ExLogseq from '../components/model/ExLogseq.astro';
+import ExNotion from '../components/model/ExNotion.astro';
+interface Props { id: string; description: string }
+const { id, description } = Astro.props;
+const entry = (await getEntry('datamodel', id))!;
+const { Content, headings } = await render(entry);
+const title = headings.find((h) => h.depth === 1)?.text ?? id;
+const toc = headings.filter((h) => h.depth === 2);
+const src = `docs/research/data-model/${id === 'overview' ? '_overview' : id}.md`;
+const Diagram = ({ fictty: ExFictty, obsidian: ExObsidian, roam: ExRoam, logseq: ExLogseq, notion: ExNotion } as Record<string, any>)[id];
+const pages = [['overview', 'Overview'], ['fictty', 'fictty'], ['obsidian', 'Obsidian'], ['roam', 'Roam Research'], ['logseq', 'Logseq'], ['notion', 'Notion']];
+---
+<Base title={title} description={description} nav="research">
+  <article class={`page doc doc-model doc-${id}`}>
+    <header class="page-head">
+      <span class="eyebrow">Research · the data model</span>
+      <h1>{title}</h1>
+      <nav class="models" aria-label="The data model, compared">{pages.map(([p, name]) => <a href={p === 'overview' ? '/data-model/' : `/data-model/${p}/`} aria-current={p === id ? 'page' : undefined}>{name}</a>)}</nav>
+    </header>
+    {Diagram && <div class="lead-fig"><Diagram /><p class="cmp"><a href={`/data-model/?a=fictty&b=${id === 'fictty' ? 'notion' : id}`}>Compare it with the others, dimension by dimension →</a></p></div>}
+    <div class="doc-grid">
+      <nav class="toc" aria-label="Sections">
+        <span class="eyebrow">Sections</span>
+        <ol>{toc.map((h) => <li><a href={`#${h.slug}`}>{h.text}</a></li>)}</ol>
+        <p class="src">From <a href={`https://github.com/brancusi/fictty/blob/main/${src}`} rel="noopener" data-source>{src}</a></p>
+      </nav>
+      <div class="prose docbody"><Content /></div>
+    </div>
+  </article>
+</Base>
+<style>
+  .lead-fig { display: grid; gap: 10px; margin-bottom: calc(var(--m) * 1.5); }
+  .lead-fig .cmp { margin: 0; font-size: 15px; }
+  .models { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 18px; }
+  .models a { font: 500 12.5px/1 var(--mono); letter-spacing: .04em; text-decoration: none; color: var(--ink-2); border: 1px solid var(--line); border-radius: 999px; padding: 7px 12px; }
+  .models a:hover { color: var(--ink); border-color: var(--line-strong); }
+  .models a[aria-current='page'] { color: #fff; background: var(--glass-violet); border-color: var(--glass-violet); }
+</style>

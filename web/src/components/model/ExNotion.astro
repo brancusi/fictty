@@ -1,0 +1,63 @@
+---
+// Notion: the same job as blocks. A database row is a page; a page is a block; relations are ids.
+---
+<figure class="dm-fig dm-notion">
+  <div class="dm-scroll">
+    <svg viewBox="0 0 680 372" role="img" aria-label="Notion: a Jobs data source with a typed schema; the job row is a page block with a UUID, a parent pointer, properties and an ordered list of child block ids; its Customer relation points at a row of the People data source by id.">
+      <defs>
+        <marker id="nx-a" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 8 4 0 8z" class="head" /></marker>
+        <marker id="nx-s" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 8 4 0 8z" class="head-sys" /></marker>
+      </defs>
+      <text x="20" y="26" class="t-lane">data source · a schema</text>
+      <text x="232" y="26" class="t-lane">a row is a page is a block</text>
+      <text x="508" y="26" class="t-lane">another data source</text>
+
+      <!-- schema -->
+      <rect x="20" y="40" width="190" height="122" rx="4" class="box" />
+      <text x="32" y="60" class="t-str">Jobs</text>
+      <text x="32" y="80"><tspan class="t-key">Name</tspan> <tspan class="t-dim">title</tspan></text>
+      <text x="32" y="98"><tspan class="t-key">Customer</tspan> <tspan class="t-dim">relation → People</tspan></text>
+      <text x="32" y="116"><tspan class="t-key">Due</tspan> <tspan class="t-dim">date</tspan></text>
+      <text x="32" y="134"><tspan class="t-key">Pads left</tspan> <tspan class="t-dim">rollup</tspan></text>
+      <text x="32" y="152" class="t-dim t-small">each property has a stable id</text>
+      <rect x="20" y="178" width="190" height="62" rx="4" class="box-ghost" />
+      <text x="32" y="198" class="t-str">views</text>
+      <text x="32" y="215" class="t-dim">board · table · calendar</text>
+      <text x="32" y="231" class="t-dim">filter, sort, group as data</text>
+
+      <!-- the row page -->
+      <rect x="232" y="40" width="254" height="200" rx="4" class="box-sys" />
+      <text x="244" y="60"><tspan class="t-key">id</tspan> <tspan class="t-str">"9f1c…-uuid"</tspan></text>
+      <text x="244" y="78"><tspan class="t-key">type</tspan> <tspan class="t-str">page</tspan></text>
+      <text x="244" y="96"><tspan class="t-key">parent</tspan> <tspan class="t-str">data_source Jobs</tspan></text>
+      <text x="244" y="114"><tspan class="t-key">properties</tspan></text>
+      <text x="258" y="131" class="t-str">Name "Gravel brakes"</text>
+      <rect x="252" y="137" width="226" height="18" rx="3" class="hl" />
+      <text x="258" y="150" class="t-str">Customer [ "4b2e…-uuid" ]</text>
+      <text x="258" y="168" class="t-str">Due 2026-10-15</text>
+      <text x="244" y="188"><tspan class="t-key">content</tspan> <tspan class="t-str">[ "a1…", "a2…" ]</tspan></text>
+      <path d="M268 194 V214 H286" class="edge" marker-end="url(#nx-a)" />
+      <text x="290" y="218" class="t-dim">paragraph · to_do · …</text>
+      <text x="244" y="234" class="t-dim t-small">child blocks, in order, each with its own id</text>
+      <path d="M210 70 H230" class="edge-dash" marker-end="url(#nx-a)" />
+
+      <!-- the related row -->
+      <rect x="508" y="98" width="156" height="72" rx="4" class="box" />
+      <text x="520" y="118" class="t-str">People</text>
+      <text x="520" y="136"><tspan class="t-key">id</tspan> <tspan class="t-str">"4b2e…"</tspan></text>
+      <text x="520" y="154" class="t-str">Priya Natarajan</text>
+      <path d="M478 146 C494 146 494 136 506 136" class="edge-sys" marker-end="url(#nx-s)" />
+      <text x="586" y="190" class="t-dim t-small" text-anchor="middle">a relation is ids, both ways;</text>
+      <text x="586" y="204" class="t-dim t-small" text-anchor="middle">a rename changes nothing</text>
+
+      <!-- server -->
+      <rect x="20" y="262" width="644" height="92" rx="4" class="box-soft" />
+      <text x="34" y="282" class="t-h">the server is the truth</text>
+      <text x="196" y="282" class="t-dim">Postgres, sharded by workspace · a record cache on each device</text>
+      <text x="34" y="304" class="t-str">a client edit is an operation in a transaction, applied locally first,</text>
+      <text x="34" y="320" class="t-str">checked by the server, then sent to everyone with the page open</text>
+      <text x="34" y="340" class="t-dim">properties and structure per record · text merged with a CRDT since 2025 · page history every ten minutes</text>
+    </svg>
+  </div>
+  <figcaption><b>Notion.</b> One kind of record, repeated: a block with an id, a type, properties, an ordered list of child ids and a parent. A page is a block, a database row is a page, and a relation is a list of ids, so nothing breaks when something is renamed or moved. The schema belongs to the data source and the views are saved as data.</figcaption>
+</figure>

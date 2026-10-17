@@ -1,0 +1,56 @@
+---
+// Roam: the same job as entities in a graph database. Every block is an entity, every fact a datom.
+---
+<figure class="dm-fig dm-roam">
+  <div class="dm-scroll">
+    <svg viewBox="0 0 680 372" role="img" aria-label="Roam Research: a page entity with child block entities, each with a uid and a string; a block's reference to the customer's page is a :block/refs edge; every fact is a datom of entity, attribute, value and transaction.">
+      <defs>
+        <marker id="rx-a" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 8 4 0 8z" class="head" /></marker>
+        <marker id="rx-s" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 8 4 0 8z" class="head-sys" /></marker>
+      </defs>
+      <text x="20" y="26" class="t-lane">a graph of entities · DataScript in the client, synced</text>
+
+      <!-- page entity -->
+      <rect x="20" y="44" width="210" height="62" rx="4" class="box-sys" />
+      <text x="32" y="64" class="t-str">page · :node/title</text>
+      <text x="32" y="81" class="t-key">"Gravel brakes"</text>
+      <text x="32" y="97" class="t-dim">:block/uid "pG3kQ2x7m"</text>
+
+      <!-- block entities -->
+      <path d="M60 106 V138 H88" class="edge" marker-end="url(#rx-a)" />
+      <path d="M60 138 V222 H88" class="edge" marker-end="url(#rx-a)" />
+      <text x="66" y="128" class="t-dim t-small">:block/children</text>
+      <rect x="90" y="118" width="300" height="62" rx="4" class="box" />
+      <rect x="96" y="124" width="288" height="18" rx="3" class="hl" />
+      <text x="102" y="137"><tspan class="t-dim">:block/string</tspan> <tspan class="t-str">"Customer:: [[Priya Natarajan]]"</tspan></text>
+      <text x="102" y="156" class="t-dim">:block/uid "x8Kd2fQ1a" · :block/order 0</text>
+      <text x="102" y="172" class="t-dim">:edit/user · :edit/time</text>
+      <rect x="90" y="200" width="300" height="46" rx="4" class="box" />
+      <text x="102" y="220"><tspan class="t-dim">:block/string</tspan> <tspan class="t-str">"Squeals after rain"</tspan></text>
+      <text x="102" y="237" class="t-dim">:block/uid "b7Lq0aZ2c" · :block/order 1</text>
+
+      <!-- referenced pages -->
+      <rect x="470" y="96" width="194" height="46" rx="4" class="box-sys" />
+      <text x="482" y="116" class="t-str">page "Priya Natarajan"</text>
+      <text x="482" y="133" class="t-dim">its title is its name</text>
+      <rect x="470" y="160" width="194" height="46" rx="4" class="box" />
+      <text x="482" y="180" class="t-str">page "Customer"</text>
+      <text x="482" y="197" class="t-dim">an attribute is a page too</text>
+      <path d="M390 132 C430 132 440 120 468 119" class="edge-sys" marker-end="url(#rx-s)" />
+      <path d="M390 142 C430 150 440 178 468 182" class="edge-sys" marker-end="url(#rx-s)" />
+      <text x="430" y="92" class="t-dim t-small" text-anchor="middle">:block/refs</text>
+      <text x="566" y="228" class="t-dim t-small" text-anchor="middle">backlinks: a query over :block/refs,</text>
+      <text x="566" y="242" class="t-dim t-small" text-anchor="middle">never stored separately</text>
+      <text x="566" y="256" class="t-dim t-small" text-anchor="middle">((b7Lq0aZ2c)) points at one block</text>
+
+      <!-- datoms -->
+      <rect x="20" y="266" width="644" height="88" rx="4" class="box-soft" />
+      <text x="34" y="286" class="t-h">every fact is a datom</text>
+      <text x="200" y="286" class="t-dim">[entity attribute value transaction]</text>
+      <text x="34" y="308" class="t-str">[413 :block/string "Customer:: [[Priya Natarajan]]" 536870990]</text>
+      <text x="34" y="326" class="t-str">[413 :block/refs 412 536870990]</text>
+      <text x="34" y="344" class="t-dim">a write is a transaction of datoms; a query is Datalog over all of them</text>
+    </svg>
+  </div>
+  <figcaption><b>Roam Research.</b> A block is the unit, and each block is an entity with a short uid, its text, its children and its order. References are edges between entities, so backlinks are just a query. Pages are named by their titles, attributes are pages too, and the whole graph is a set of facts you can query with Datalog.</figcaption>
+</figure>

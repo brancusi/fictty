@@ -1,0 +1,60 @@
+---
+// Logseq: the same job twice, as a file graph (Markdown is the truth, parsed into a DB) and as a
+// DB graph (the database is the truth, with tags as classes and typed properties).
+---
+<figure class="dm-fig dm-logseq">
+  <div class="dm-scroll">
+    <svg viewBox="0 0 680 372" role="img" aria-label="Logseq: on the left a file graph, an outline in a Markdown file with id:: and key:: value properties, parsed into a DataScript database that is derived; on the right a DB graph, where a node tagged #Job takes the class's typed properties and the database, stored in SQLite, is the truth.">
+      <defs>
+        <marker id="lx-a" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 8 4 0 8z" class="head" /></marker>
+        <marker id="lx-s" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 8 4 0 8z" class="head-sys" /></marker>
+      </defs>
+      <text x="20" y="26" class="t-lane">Logseq OG · the Markdown is the truth</text>
+      <text x="360" y="26" class="t-lane">Logseq 2.0 · the database is the truth</text>
+      <line x1="344" x2="344" y1="16" y2="356" class="grid" />
+
+      <!-- file graph -->
+      <rect x="20" y="40" width="304" height="122" rx="4" class="box-sys" />
+      <text x="32" y="58" class="t-dim">pages/Gravel brakes.md</text>
+      <text x="32" y="80" class="t-str">- Brake job</text>
+      <text x="46" y="97"><tspan class="t-key">customer::</tspan> <tspan class="t-str">[[Priya Natarajan]]</tspan></text>
+      <text x="46" y="114"><tspan class="t-key">id::</tspan> <tspan class="t-str">6710a2c4-…-9e1f</tspan></text>
+      <text x="46" y="131" class="t-str">- Squeals after rain</text>
+      <text x="32" y="152" class="t-dim t-small">an outline of bullets; properties are text lines</text>
+      <path d="M172 162 V196" class="edge" marker-end="url(#lx-a)" />
+      <text x="180" y="184" class="t-dim t-small">parse</text>
+      <rect x="20" y="200" width="304" height="76" rx="4" class="box-soft" />
+      <text x="32" y="220" class="t-h">DataScript</text>
+      <text x="112" y="220" class="t-dim">derived, rebuilt from files</text>
+      <text x="32" y="240" class="t-str">blocks · pages · refs · properties</text>
+      <text x="32" y="258" class="t-dim">queries ({"{{query}}"}, advanced Datalog) read this</text>
+      <text x="20" y="300" class="t-dim t-small">an id:: is written into the file only once</text>
+      <text x="20" y="314" class="t-dim t-small">something refers to the block; sync is of files,</text>
+      <text x="20" y="328" class="t-dim t-small">so two devices can conflict on a whole file</text>
+
+      <!-- DB graph -->
+      <rect x="360" y="40" width="304" height="104" rx="4" class="box-sys" />
+      <text x="372" y="60"><tspan class="t-str">Brake job</tspan> <tspan class="t-key">#Job</tspan></text>
+      <text x="372" y="80"><tspan class="t-dim">Customer</tspan> <tspan class="t-str">→ Priya Natarajan</tspan> <tspan class="t-dim">(node)</tspan></text>
+      <text x="372" y="98"><tspan class="t-dim">Due</tspan> <tspan class="t-str">Oct 15, 2026</tspan> <tspan class="t-dim">(date)</tspan></text>
+      <text x="372" y="116" class="t-dim">:block/uuid · created and updated times</text>
+      <text x="372" y="134" class="t-dim t-small">every node has an id from the start</text>
+      <rect x="360" y="164" width="146" height="62" rx="4" class="box" />
+      <text x="372" y="184" class="t-key">#Job</text>
+      <text x="372" y="200" class="t-dim">a tag is a class:</text>
+      <text x="372" y="216" class="t-dim">Customer, Due</text>
+      <rect x="518" y="164" width="146" height="62" rx="4" class="box" />
+      <text x="530" y="184" class="t-str">Customer</text>
+      <text x="530" y="200" class="t-dim">a property is a node,</text>
+      <text x="530" y="216" class="t-dim">with a type</text>
+      <path d="M430 144 V162" class="edge-sys" marker-end="url(#lx-s)" />
+      <path d="M590 144 V162" class="edge-sys" marker-end="url(#lx-s)" />
+      <rect x="360" y="246" width="304" height="62" rx="4" class="box-soft" />
+      <text x="372" y="266" class="t-h">SQLite holding DataScript</text>
+      <text x="372" y="286" class="t-dim">Markdown is a mirror, never read back</text>
+      <text x="372" y="302" class="t-dim">db-sync: an ordered log; a write names its base</text>
+      <text x="360" y="330" class="t-dim t-small">split from OG in April 2026; 2.0 is in beta</text>
+    </svg>
+  </div>
+  <figcaption><b>Logseq.</b> Two models, now two apps. Logseq OG keeps an outline in Markdown and derives a database from it, so ids and properties are lines of text. Logseq 2.0 turns this around: the database is the truth, a tag is a class with typed properties, every node has an id, and Markdown is a mirror written out, never read back.</figcaption>
+</figure>

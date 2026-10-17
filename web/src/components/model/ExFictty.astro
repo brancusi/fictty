@@ -1,0 +1,69 @@
+---
+// fictty: the same job as three layers with three owners: the UI value (the agent's), the store
+// (shared, versioned per entry) and view state (the person's, by node id).
+---
+<figure class="dm-fig dm-fictty">
+  <div class="dm-scroll">
+    <svg viewBox="0 0 680 372" role="img" aria-label="fictty's three layers: a UI tree whose list binds to the store entry jobs_booked by name; the entry holds rev, by and a JSON array of jobs; view state keyed by the list's id holds the selected row's key.">
+      <defs>
+        <marker id="fx-a" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 8 4 0 8z" class="head" /></marker>
+        <marker id="fx-s" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 8 4 0 8z" class="head-sys" /></marker>
+      </defs>
+      <text x="20" y="26" class="t-lane">UI value · the agent's</text>
+      <text x="252" y="26" class="t-lane">store · shared</text>
+      <text x="506" y="26" class="t-lane">view state · the person's</text>
+
+      <!-- the UI tree -->
+      <rect x="20" y="40" width="200" height="34" rx="4" class="box" />
+      <text x="32" y="61"><tspan class="t-str">tabs</tspan> <tspan class="t-key">#main</tspan></text>
+      <path d="M40 74v26h12" class="edge" />
+      <rect x="52" y="86" width="168" height="48" rx="4" class="box-sys" />
+      <text x="64" y="106"><tspan class="t-str">list</tspan> <tspan class="t-key">#jobs_booked</tspan></text>
+      <text x="64" y="123" class="t-dim">bind: "jobs_booked"</text>
+      <path d="M72 134v26h12" class="edge" />
+      <rect x="84" y="148" width="136" height="70" rx="4" class="box" />
+      <text x="96" y="166" class="t-str">row: col · card</text>
+      <text x="96" y="184" class="t-dim">{"{$item.bike}"}</text>
+      <text x="96" y="200" class="t-dim">{"{$item.who}"}</text>
+      <text x="20" y="246" class="t-dim t-small">push replaces this tree,</text>
+      <text x="20" y="260" class="t-dim t-small">patch replaces one node by id;</text>
+      <text x="20" y="274" class="t-dim t-small">neither touches the store</text>
+
+      <!-- the store -->
+      <rect x="252" y="40" width="226" height="178" rx="4" class="box-sys" />
+      <text x="264" y="60"><tspan class="t-key">"jobs_booked"</tspan></text>
+      <text x="264" y="77" class="t-dim">rev 8 · by "agent"</text>
+      <line x1="264" x2="466" y1="86" y2="86" class="grid" />
+      <rect x="258" y="94" width="214" height="46" rx="3" class="hl" />
+      <text x="264" y="108" class="t-str">[{"{"} "id": "j1",</text>
+      <text x="264" y="122" class="t-str">   "bike": "Gravel · Priya N.",</text>
+      <text x="264" y="136" class="t-str">   "due": "Thu", "who": "Sam" {"}"},</text>
+      <text x="264" y="156" class="t-str"> {"{"} "id": "j3", "bike": "Cargo …" {"}"}]</text>
+      <text x="264" y="182" class="t-dim t-small">one revision covers the whole entry:</text>
+      <text x="264" y="196" class="t-dim t-small">two writers on different rows collide</text>
+      <rect x="252" y="232" width="226" height="56" rx="4" class="box" />
+      <text x="264" y="252"><tspan class="t-key">"reply"</tspan> <tspan class="t-dim">· text · rev 3 · by "person"</tspan></text>
+      <text x="264" y="270" class="t-dim">a caretline document, with undo</text>
+
+      <!-- view state -->
+      <rect x="506" y="86" width="158" height="104" rx="4" class="box" />
+      <text x="518" y="106"><tspan class="t-str">Local</tspan><tspan class="t-key">["jobs_booked"]</tspan></text>
+      <text x="518" y="128" class="t-dim">selected: key "j1"</text>
+      <text x="518" y="146" class="t-dim">top: 0 · folds: []</text>
+      <text x="518" y="164" class="t-dim">heights: {"{"} j1: 4 {"}"}</text>
+      <text x="518" y="180" class="t-dim t-small">survives pushes and writes</text>
+
+      <!-- edges -->
+      <path d="M220 110 C236 110 236 100 250 100" class="edge-sys" marker-end="url(#fx-s)" />
+      <path d="M585 190 V225 H236 V124 H224" class="edge-dash" marker-end="url(#fx-a)" />
+      <text x="590" y="214" class="t-dim t-small" text-anchor="middle">kept by the list's id</text>
+      <path d="M506 128 C494 128 486 116 474 116" class="edge-dash" marker-end="url(#fx-a)" />
+
+      <!-- the write path -->
+      <rect x="20" y="306" width="644" height="48" rx="4" class="box-soft" />
+      <text x="34" y="326" class="t-str">fictty put jobs_booked rows.json --if-rev 8</text>
+      <text x="34" y="343" class="t-dim">→ one Msg through update() → rev 9, by "agent"; or refused, with the entry as it is now</text>
+    </svg>
+  </div>
+  <figcaption><b>fictty.</b> Three layers, three owners. The list names its data (<code>bind</code>) and never holds it; the store entry is the unit of truth, versioned as a whole; what the person is doing is kept by the list's id. Rows have ids only because the data gave them one.</figcaption>
+</figure>

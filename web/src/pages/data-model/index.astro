@@ -1,0 +1,400 @@
+---
+// The data model, compared: fictty beside Obsidian, Roam Research, Logseq and Notion, drawn so it
+// can be understood at a glance. One worked example in each model, two maps, a tool to compare any
+// two approaches dimension by dimension, what a conflict covers, how a write travels, the
+// trade-offs, and where fictty goes. The data is src/lib/datamodel.ts; the long reads are the
+// pages in docs/research/data-model/.
+import Base from '../../layouts/Base.astro';
+import Texture from '../../components/Texture.astro';
+import ExFictty from '../../components/model/ExFictty.astro';
+import ExObsidian from '../../components/model/ExObsidian.astro';
+import ExRoam from '../../components/model/ExRoam.astro';
+import ExLogseq from '../../components/model/ExLogseq.astro';
+import ExNotion from '../../components/model/ExNotion.astro';
+import { DIMENSIONS, MOVES, SYSTEMS } from '../../lib/datamodel';
+import '../../styles/prose.css';
+import '../../styles/model.css';
+
+const DIAGRAMS = [['fictty', 'fictty', ExFictty], ['obsidian', 'Obsidian', ExObsidian], ['roam', 'Roam Research', ExRoam], ['logseq', 'Logseq', ExLogseq], ['notion', 'Notion', ExNotion]] as const;
+const BY = Object.fromEntries(SYSTEMS.map((s) => [s.key, s]));
+const dim = (k: string) => DIMENSIONS.find((d) => d.key === k)!;
+
+// a map of two dimensions, as an SVG scatter
+function map(xk: string, yk: string) {
+  const X = dim(xk), Y = dim(yk);
+  const px = (a: number) => 92 + a * 470, py = (a: number) => 318 - a * 270;
+  const pts = SYSTEMS.map((s) => ({ s, x: px(X.places[s.key].at), y: py(Y.places[s.key].at) }));
+  // a label goes right of its dot, or below it when another dot is close by
+  // of two dots close together, the first is labelled below and the second above; fictty's label
+  // goes above when its planned move is drawn, so the line to it stays clear
+  const close = (p: { x: number; y: number }, q: { x: number; y: number }) => Math.abs(q.x - p.x) < 70 && Math.abs(q.y - p.y) < 20;
+  const moving = !!(X.planned || Y.planned);
+  const labels = pts.map((p, i) => {
+    const after = pts.some((q, j) => j > i && close(p, q)), before = pts.some((q, j) => j < i && close(p, q));
+    const right = p.x < 470;
+    if (before || (moving && p.s.key === 'fictty')) return { ...p, lx: p.x, ly: p.y - 13, anchor: 'middle' };
+    if (after) return { ...p, lx: p.x, ly: p.y + 21, anchor: 'middle' };
+    return { ...p, lx: right ? p.x + 11 : p.x - 11, ly: p.y + 4, anchor: right ? 'start' : 'end' };
+  });
+  return { X, Y, px, py, labels };
+}
+const maps = [map('identity', 'schema'), map('truth', 'concurrency')];
+
+// what one conflict covers: a list of three jobs of three fields; the cells one revision covers
+const GRAIN: [string, string, number[][]][] = [
+  ['fictty', 'the whole entry: all three jobs', [[0, 1, 2], [3, 4, 5], [6, 7, 8]].flat().map((c) => [c])],
+  ['fictty-next', 'one record, by its path', [[3], [4], [5]]],
+  ['obsidian', 'the note\'s file (Sync merges text after)', [[0], [1], [2], [3], [4], [5], [6], [7], [8]]],
+  ['logseq-og', 'the file', [[0], [1], [2], [3], [4], [5], [6], [7], [8]]],
+  ['roam', 'one block (merge undocumented)', [[4]]],
+  ['logseq', 'checked across the graph, replayed by intent', [[4]]],
+  ['notion', 'one record; text by character', [[4]]],
+];
+const grainSys = (k: string) => (k === 'fictty-next' ? 'fictty' : k);
+
+// how a write travels, step by step
+const LANES: [string, string[], string][] = [
+  ['fictty', ['agent: put --if-rev 8', 'socket', 'Msg → update()', 'rev 9, by agent', 'frame redrawn · file saved'], 'refused with the entry as it is now'],
+  ['obsidian', ['editor, plugin or any program', 'the file on disk', 'file watcher', 'metadata cache re-indexed', 'views redrawn'], 'Sync merges, or keeps a conflict file'],
+  ['roam', ['an edit', 'a DataScript transaction', 'applied in the client', 'sent to the graph', 'every client updated'], 'undocumented merge; no conditional writes'],
+  ['logseq', ['an edit, as an intent', 'transaction, local SQLite', 'db-sync log: base t', 'accepted, given the next t', 'other clients pull'], 'rejected: rebase, replay the intent'],
+  ['notion', ['an edit, as operations', 'applied locally first', 'transaction to the server', 'checked, written to Postgres', 'pushed to open pages'], 'records per record · text by CRDT'],
+];
+---
+<Base title="The data model, compared" description="fictty's data model beside Obsidian's, Roam Research's, Logseq's and Notion's: drawn, compared dimension by dimension, with the trade-offs and where fictty goes next." nav="research">
+  <div class="rsite">
+    <Texture />
+    <div class="page dmpage">
+      <header class="page-head">
+        <span class="eyebrow">Research · the data model · 17 October 2026</span>
+        <h1>Five ways to hold the same thing.</h1>
+        <p class="lede">A bike workshop has a job: Priya's gravel bike, brake pads and a rotor clean, due Thursday, with a note that it squeals after rain. Here is that one job in fictty, Obsidian, Roam Research, Logseq and Notion, then a tool to compare any two of them, then what each choice gains and costs, and where fictty should go. The long reads are one page each: <a href="/data-model/fictty/">fictty</a>, <a href="/data-model/obsidian/">Obsidian</a>, <a href="/data-model/roam/">Roam Research</a>, <a href="/data-model/logseq/">Logseq</a>, <a href="/data-model/notion/">Notion</a>.</p>
+      </header>
+
+      <!-- 1 · one example, five shapes -->
+      <section class="dmsec" id="shapes">
+        <h2>One job, five shapes</h2>
+        <p class="sub">Each system, drawn with the same job in it. Pick one.</p>
+        <div class="tabs" role="tablist" aria-label="Systems">
+          {DIAGRAMS.map(([k, name], i) => <button role="tab" class={`tab dm-${k}`} data-show={k} aria-selected={i === 0 ? 'true' : 'false'}>{name}</button>)}
+        </div>
+        <div class="gallery">
+          {DIAGRAMS.map(([k, _n, D]) => <div class="pane" data-pane={k}><D /></div>)}
+        </div>
+      </section>
+
+      <!-- 2 · the maps -->
+      <section class="dmsec" id="maps">
+        <h2>Where each one sits</h2>
+        <p class="sub">Two maps. Left: how things are named, and how much shape the data is given. Right: where the truth lives, and who writes at once. fictty's planned moves are the hollow ring.</p>
+        <div class="maps">
+          {maps.map(({ X, Y, px, py, labels }) => (
+            <figure class="dm-fig">
+              <div class="dm-scroll">
+                <svg viewBox="0 0 600 372" role="img" aria-label={`${X.name} against ${Y.name}`}>
+                  {[0, 0.25, 0.5, 0.75, 1].map((t) => <><line x1={px(t)} x2={px(t)} y1={py(0)} y2={py(1)} class="grid" /><line x1={px(0)} x2={px(1)} y1={py(t)} y2={py(t)} class="grid" /></>)}
+                  <line x1={px(0)} x2={px(1)} y1={py(0)} y2={py(0)} class="axis" />
+                  <line x1={px(0)} x2={px(0)} y1={py(0)} y2={py(1)} class="axis" />
+                  <text x={px(0.5)} y="356" text-anchor="middle" class="t-lane">{X.name}</text>
+                  <text x={px(0)} y="340" class="t-dim t-small">{X.left}</text>
+                  <text x={px(1)} y="340" text-anchor="end" class="t-dim t-small">{X.right}</text>
+                  <text transform={`translate(26 ${py(0.5)}) rotate(-90)`} text-anchor="middle" class="t-lane">{Y.name}</text>
+                  <text transform={`translate(46 ${py(0)}) rotate(-90)`} class="t-dim t-small">{Y.left}</text>
+                  <text transform={`translate(46 ${py(1)}) rotate(-90)`} text-anchor="end" class="t-dim t-small">{Y.right}</text>
+                  {(X.planned || Y.planned) && (() => {
+                    const f = labels.find((l) => l.s.key === 'fictty')!;
+                    const nx = X.planned ? px(X.planned.at) : f.x, ny = Y.planned ? py(Y.planned.at) : f.y;
+                    return <><line x1={f.x} y1={f.y} x2={nx} y2={ny} class="edge-dash" /><circle cx={nx} cy={ny} r="7" fill="none" stroke="var(--glass-violet)" stroke-width="1.6" /><text x={nx + 11} y={ny + 4} class="t-dim t-small">fictty, planned</text></>;
+                  })()}
+                  {labels.map((l) => <g class={`dm-${l.s.key === 'logseq-og' ? 'logseq' : l.s.key}`}><circle cx={l.x} cy={l.y} r="7" class="dot-sys" /><text x={l.lx} y={l.ly} text-anchor={l.anchor} class="t-sys">{l.s.name}</text></g>)}
+                </svg>
+              </div>
+            </figure>
+          ))}
+        </div>
+      </section>
+
+      <!-- 3 · the compare tool -->
+      <section class="dmsec" id="compare">
+        <h2>Compare two approaches</h2>
+        <p class="sub">Pick two. Every dimension shows where all six sit, with the two you picked lit, what each does, what it gains and what it costs. The gap between them is the trade-off.</p>
+        <div class="pickers">
+          {['a', 'b'].map((side) => (
+            <div class="picker" data-side={side} role="radiogroup" aria-label={side === 'a' ? 'First approach' : 'Second approach'}>
+              <span class="plabel">{side === 'a' ? 'Compare' : 'with'}</span>
+              {SYSTEMS.map((s) => <button class={`pick dm-${s.key === 'logseq-og' ? 'logseq' : s.key}`} data-sys={s.key} role="radio" aria-checked={(side === 'a' ? 'fictty' : 'notion') === s.key ? 'true' : 'false'}>{s.name}</button>)}
+            </div>
+          ))}
+          <label class="planned"><input type="checkbox" id="show-planned" /> show fictty's planned moves</label>
+        </div>
+
+        <div class="cmp-head">
+          {['a', 'b'].map((side) => (
+            <div class="cmp-col" data-col={side}>
+              {SYSTEMS.map((s) => (
+                <div class={`bet dm-${s.key === 'logseq-og' ? 'logseq' : s.key}`} data-sys={s.key}>
+                  <span class="who">{s.name}</span>
+                  <p>{s.bet}</p>
+                  <a href={s.page}>Read the long version →</a>
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
+
+        <ol class="dims">
+          {DIMENSIONS.map((d) => (
+            <li class="dim" data-dim={d.key}>
+              <div class="dhead"><h3>{d.name}</h3><span class="q">{d.question}</span><span class="gap" aria-live="polite"></span></div>
+              <div class="track">
+                <span class="end l">{d.left}</span><span class="end r">{d.right}</span>
+                <div class="rail">
+                  {SYSTEMS.map((s) => <span class={`pt dm-${s.key === 'logseq-og' ? 'logseq' : s.key}`} data-sys={s.key} style={`left:${d.places[s.key].at * 100}%`} title={s.name}><span class="pl">{s.name}</span></span>)}
+                  {d.planned && <span class="pt planned-pt" style={`left:${d.planned.at * 100}%`} title={d.planned.what}><span class="pl">planned</span></span>}
+                </div>
+              </div>
+              <div class="sides">
+                {['a', 'b'].map((side) => (
+                  <div class="side" data-col={side}>
+                    {SYSTEMS.map((s) => {
+                      const p = d.places[s.key];
+                      return (
+                        <div class={`place dm-${s.key === 'logseq-og' ? 'logseq' : s.key}`} data-sys={s.key}>
+                          <span class="who">{s.name}</span>
+                          <p>{p.what}</p>
+                          <p class="gc"><span class="g">gains</span>{p.gain}</p>
+                          <p class="gc"><span class="c">costs</span>{p.cost}</p>
+                          {s.key === 'fictty' && d.planned && <p class="gc planned-note"><span class="n">next</span>{d.planned.what}</p>}
+                        </div>
+                      );
+                    })}
+                  </div>
+                ))}
+              </div>
+            </li>
+          ))}
+        </ol>
+
+        <div class="cmp-diagrams">
+          {['a', 'b'].map((side) => (
+            <div class="cmp-col" data-col={side}>
+              {SYSTEMS.map((s) => {
+                const D = DIAGRAMS.find(([k]) => k === s.diagram)![2];
+                return <div class="cdia" data-sys={s.key}><D /></div>;
+              })}
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <!-- 4 · what a conflict covers -->
+      <section class="dmsec" id="grain">
+        <h2>What one conflict covers</h2>
+        <p class="sub">Three jobs, three fields each. Two writers change two different cells at the same moment. The lit cells are what one revision covers: if both writes land inside it, one of them has to give way. This is fictty's weakest point today, and the plan's next data step fixes it.</p>
+        <div class="grains">
+          {GRAIN.map(([k, what, lit]) => {
+            const on = new Set(lit.flat());
+            const sys = BY[grainSys(k)];
+            return (
+              <div class={`grain dm-${sys.key === 'logseq-og' ? 'logseq' : sys.key}${k === 'fictty-next' ? ' next' : ''}`}>
+                <div class="cells" aria-hidden="true">{Array.from({ length: 9 }, (_, i) => <span class={on.has(i) ? 'on' : ''}>{[3, 5].includes(i) ? '✎' : ''}</span>)}</div>
+                <span class="who">{k === 'fictty-next' ? 'fictty, planned' : sys.name}</span>
+                <span class="what">{what}</span>
+              </div>
+            );
+          })}
+        </div>
+      </section>
+
+      <!-- 5 · how a write travels -->
+      <section class="dmsec" id="writes">
+        <h2>How a write travels</h2>
+        <p class="sub">From the moment someone changes the job to the moment everyone sees it, and what happens when two changes meet.</p>
+        <div class="lanes">
+          {LANES.map(([k, steps, clash]) => (
+            <div class={`lane dm-${k}`}>
+              <span class="who">{BY[k]?.name ?? 'Logseq 2.0'}</span>
+              <ol class="steps">{steps.map((s) => <li>{s}</li>)}</ol>
+              <span class="clash"><b>when two meet:</b> {clash}</span>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <!-- 6 · trade-offs -->
+      <section class="dmsec" id="tradeoffs">
+        <h2>The trade-offs, system by system</h2>
+        <p class="sub">Each model is a bet. What it buys, and what it pays for it.</p>
+        <div class="bets">
+          {SYSTEMS.map((s) => (
+            <article class={`card dm-${s.key === 'logseq-og' ? 'logseq' : s.key}`}>
+              <h3>{s.name}</h3>
+              <p class="betline">{s.bet}</p>
+              <div class="gcl"><span class="g">gains</span><ul>{s.gains.map((g) => <li>{g}</li>)}</ul></div>
+              <div class="gcl"><span class="c">costs</span><ul>{s.costs.map((c) => <li>{c}</li>)}</ul></div>
+              <a href={s.page}>The long version →</a>
+            </article>
+          ))}
+        </div>
+      </section>
+
+      <!-- 7 · where fictty goes -->
+      <section class="dmsec" id="next">
+        <h2>Where fictty goes from here</h2>
+        <p class="sub">What the comparison argues for, and against. The plan already has most of it; this says why, and from whom.</p>
+        <div class="moves">
+          {MOVES.map((m) => (
+            <article class={`move${m.status === 'kept on purpose' ? ' keep' : ''}`}>
+              <span class="status">{m.status}</span>
+              <h3>{m.title}</h3>
+              <p>{m.why}</p>
+              <p class="mcost"><span class="c">costs</span>{m.cost}</p>
+              {m.from.length > 0 && <div class="from">{m.from.map((k) => <span class={`chip dm-${k === 'logseq-og' ? 'logseq' : k}`}>{BY[k].name}</span>)}</div>}
+            </article>
+          ))}
+        </div>
+        <p class="sub">The plan is at <a href="/plan/">/plan/</a>; fictty's own model, in full, at <a href="/data-model/fictty/">/data-model/fictty/</a>.</p>
+      </section>
+    </div>
+  </div>
+</Base>
+
+<script>
+  // The gallery's tabs, and the compare tool: two picks, kept in the URL (?a=…&b=…).
+  const $$ = (s: string, r: ParentNode = document) => Array.from(r.querySelectorAll<HTMLElement>(s));
+  const tabs = $$('.tab'), panes = $$('.pane');
+  const show = (k: string) => { tabs.forEach((t) => t.setAttribute('aria-selected', String(t.dataset.show === k))); panes.forEach((p) => (p.hidden = p.dataset.pane !== k)); };
+  tabs.forEach((t) => t.addEventListener('click', () => show(t.dataset.show!)));
+  show('fictty');
+
+  const params = new URLSearchParams(location.search);
+  const known = new Set($$('.picker[data-side="a"] .pick').map((b) => b.dataset.sys!));
+  const pick = { a: known.has(params.get('a') ?? '') ? params.get('a')! : 'fictty', b: known.has(params.get('b') ?? '') ? params.get('b')! : 'notion' };
+  const at = (dim: HTMLElement, sys: string) => parseFloat(dim.querySelector<HTMLElement>(`.pt[data-sys="${sys}"]`)!.style.left) / 100;
+  function render() {
+    for (const side of ['a', 'b'] as const) {
+      $$(`.picker[data-side="${side}"] .pick`).forEach((b) => b.setAttribute('aria-checked', String(b.dataset.sys === pick[side])));
+      $$(`[data-col="${side}"] [data-sys]`).forEach((el) => (el.hidden = el.dataset.sys !== pick[side]));
+    }
+    $$('.dim').forEach((d) => {
+      $$('.pt[data-sys]', d).forEach((p) => p.classList.toggle('lit', p.dataset.sys === pick.a || p.dataset.sys === pick.b));
+      const gap = Math.abs(at(d, pick.a) - at(d, pick.b));
+      const g = d.querySelector<HTMLElement>('.gap')!;
+      d.dataset.gap = gap > 0.45 ? 'far' : gap > 0.2 ? 'some' : 'near';
+      g.textContent = pick.a === pick.b ? '' : gap > 0.45 ? 'far apart' : gap > 0.2 ? 'apart' : 'close';
+    });
+    const u = new URL(location.href); u.searchParams.set('a', pick.a); u.searchParams.set('b', pick.b); history.replaceState(null, '', u);
+  }
+  $$('.picker').forEach((p) => p.addEventListener('click', (e) => {
+    const b = (e.target as HTMLElement).closest<HTMLElement>('.pick'); if (!b) return;
+    pick[p.dataset.side as 'a' | 'b'] = b.dataset.sys!; render();
+  }));
+  const planned = document.getElementById('show-planned') as HTMLInputElement;
+  const plan = () => document.querySelector('.dmpage')!.classList.toggle('with-planned', planned.checked);
+  planned.addEventListener('change', plan); plan();
+  document.querySelector('.dmpage')!.classList.add('js');
+  render();
+</script>
+
+<style>
+  .dmpage { display: grid; gap: calc(var(--m) * 2.4); }
+  .dmpage .page-head h1 { font-size: clamp(38px, 6vw, 72px); max-width: 16ch; }
+  .dmpage .lede { max-width: 72ch; }
+  .dmsec { display: grid; gap: 16px; }
+  .dmsec > h2 { margin: 0; font-size: clamp(24px, 3vw, 34px); letter-spacing: -0.015em; }
+  .sub { margin: 0; color: var(--ink-2); max-width: 74ch; line-height: 1.6; }
+  .who { font: 600 12px/1 var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--sys, var(--ink)); }
+
+  /* the gallery */
+  .tabs, .picker { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .tab, .pick { font: 500 13px/1 var(--mono); color: var(--ink-2); background: none; border: 1px solid var(--line-strong); border-radius: 999px; padding: 8px 13px; cursor: pointer; }
+  .tab:hover, .pick:hover { color: var(--ink); border-color: var(--sys); }
+  .tab[aria-selected='true'], .pick[aria-checked='true'] { color: var(--ground); background: var(--sys); border-color: var(--sys); }
+  .gallery .pane[hidden] { display: none; }
+
+  /* the maps */
+  .maps { display: grid; gap: 20px; grid-template-columns: minmax(0, 1fr); }
+  @media (min-width: 1000px) { .maps { grid-template-columns: 1fr 1fr; } }
+  .maps .dm-fig svg { min-width: 480px; }
+  .maps .dm-fig svg text { font-size: 11.5px; }
+  .maps .dm-fig svg .t-small, .maps .dm-fig svg .t-lane { font-size: 10px; }
+
+  /* the compare tool */
+  .pickers { display: grid; gap: 10px; padding: 16px; border: 1px solid var(--line); border-radius: 4px; background: color-mix(in srgb, var(--raised) calc(70% - 20% * var(--glow)), transparent); position: sticky; top: 64px; z-index: 5; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); }
+  .plabel { font: 500 11px/1 var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--ink-3); min-width: 64px; }
+  .planned { font-size: 14px; color: var(--ink-2); display: inline-flex; gap: 8px; align-items: center; }
+  .cmp-head, .sides, .cmp-diagrams { display: grid; gap: 14px; grid-template-columns: minmax(0, 1fr); }
+  @media (min-width: 820px) { .cmp-head, .sides, .cmp-diagrams { grid-template-columns: 1fr 1fr; } }
+  .bet { padding: 16px 18px; border-radius: 4px; border: 1px solid color-mix(in srgb, var(--sys) 50%, transparent); background: color-mix(in srgb, var(--sys) 8%, transparent); display: grid; gap: 8px; }
+  .bet p { margin: 0; line-height: 1.55; }
+  .bet a { font-size: 14px; }
+  .dmpage:not(.js) [data-col] [data-sys]:not([data-sys='fictty']):not([data-sys='notion']) { display: none; }
+  .dmpage:not(.js) [data-col='a'] [data-sys='notion'], .dmpage:not(.js) [data-col='b'] [data-sys='fictty'] { display: none; }
+  [data-col] [hidden] { display: none !important; }
+  .dims { list-style: none; padding: 0; margin: 0; display: grid; gap: 14px; }
+  .dim { padding: 18px; border: 1px solid var(--line); border-radius: 4px; display: grid; gap: 16px; background: color-mix(in srgb, var(--raised) calc(50% - 20% * var(--glow)), transparent); }
+  .dim[data-gap='far'] { border-color: color-mix(in srgb, var(--glass-violet) 55%, var(--line)); }
+  .dhead { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: baseline; }
+  .dhead h3 { margin: 0; font-size: 19px; }
+  .q { color: var(--ink-3); font-size: 14.5px; }
+  .gap { margin-left: auto; font: 500 11px/1 var(--mono); letter-spacing: .08em; text-transform: uppercase; padding: 5px 8px; border-radius: 999px; color: var(--ink-3); border: 1px solid var(--line); }
+  .dim[data-gap='far'] .gap { color: #fff; background: var(--glass-violet); border-color: var(--glass-violet); }
+  .dim[data-gap='some'] .gap { color: var(--focus); border-color: var(--glass-violet); }
+  .track { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 10px; padding: 0 8px; }
+  .end { font: 500 11px/1.3 var(--mono); color: var(--ink-3); }
+  .end.r { text-align: right; }
+  .rail { grid-column: 1 / -1; position: relative; height: 46px; margin: 0 8px; }
+  .rail::before { content: ''; position: absolute; left: 0; right: 0; top: 30px; height: 4px; border-radius: 2px; background: linear-gradient(90deg, var(--sunken), var(--line-strong)); }
+  .pt { position: absolute; top: 25px; width: 14px; height: 14px; margin-left: -7px; border-radius: 50%; background: var(--sys); opacity: .28; transition: opacity .2s, transform .2s; }
+  .pt .pl { position: absolute; bottom: 18px; left: 50%; transform: translateX(-50%); white-space: nowrap; font: 600 11px/1 var(--mono); color: var(--sys); opacity: 0; transition: opacity .2s; }
+  .pt.lit { opacity: 1; transform: scale(1.25); box-shadow: 0 0 0 3px var(--ground), 0 0 calc(18px * var(--glow)) var(--sys); z-index: 2; }
+  .pt.lit .pl { opacity: 1; }
+  .pt.planned-pt { --sys: var(--glass-violet); background: none; border: 2px solid var(--glass-violet); opacity: 0; }
+  .with-planned .pt.planned-pt { opacity: 1; }
+  .with-planned .pt.planned-pt .pl { opacity: 1; bottom: -18px; }
+  .planned-note { display: none !important; }
+  .with-planned .planned-note { display: grid !important; }
+  .place { display: grid; gap: 8px; padding: 14px 16px; border-left: 3px solid var(--sys); background: color-mix(in srgb, var(--sys) 5%, transparent); border-radius: 0 3px 3px 0; }
+  .place p { margin: 0; line-height: 1.5; font-size: 15px; }
+  .gc { display: grid; grid-template-columns: 58px 1fr; gap: 10px; color: var(--ink-2); }
+  .g, .c, .n { font: 500 10.5px/1.9 var(--mono); letter-spacing: .08em; text-transform: uppercase; }
+  .g { color: var(--ok); } .c { color: var(--err); } .n { color: var(--focus); }
+  .cmp-diagrams .dm-fig svg { min-width: 520px; }
+
+  /* what a conflict covers */
+  .grains { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(124px, 1fr)); }
+  .grain { display: grid; gap: 8px; align-content: start; padding: 12px; min-width: 0; border: 1px solid var(--line); border-radius: 4px; }
+  .grain.next { border-style: dashed; border-color: var(--glass-violet); }
+  .cells { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 3px; }
+  .cells span { height: 20px; border-radius: 2px; background: var(--sunken); display: grid; place-items: center; font-size: 12px; color: var(--ink-3); }
+  .cells span.on { background: color-mix(in srgb, var(--sys) 55%, transparent); color: var(--ink); }
+  .grain .what { font-size: 13.5px; color: var(--ink-2); line-height: 1.45; }
+
+  /* how a write travels */
+  .lanes { display: grid; gap: 12px; }
+  .lane { display: grid; gap: 8px; padding: 14px 16px; border-left: 3px solid var(--sys); border-radius: 0 4px 4px 0; background: color-mix(in srgb, var(--sys) 5%, transparent); }
+  .steps { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+  .steps li { font: 500 12.5px/1.3 var(--mono); padding: 7px 10px; border-radius: 3px; border: 1px solid color-mix(in srgb, var(--sys) 45%, var(--line)); background: var(--raised); }
+  .steps li + li { position: relative; margin-left: 18px; }
+  .steps li + li::before { content: '→'; position: absolute; left: -17px; color: var(--sys); }
+  .clash { font-size: 14px; color: var(--ink-2); }
+  .clash b { font: 500 10.5px/1 var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--warn); margin-right: 6px; }
+
+  /* trade-offs */
+  .bets, .moves { display: grid; gap: 14px; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); }
+  .card, .move { display: grid; gap: 10px; align-content: start; padding: 18px 20px; border-radius: 4px; border: 1px solid var(--line); border-top: 3px solid var(--sys); background: color-mix(in srgb, var(--raised) calc(60% - 20% * var(--glow)), transparent); }
+  .card h3, .move h3 { margin: 0; font-size: 19px; }
+  .betline { margin: 0; color: var(--ink-2); line-height: 1.55; }
+  .gcl { display: grid; grid-template-columns: 58px 1fr; gap: 10px; }
+  .gcl ul { margin: 0; padding-left: 18px; display: grid; gap: 4px; font-size: 14.5px; line-height: 1.5; }
+  .card a { font-size: 14px; }
+  .move { --sys: var(--glass-violet); }
+  .move.keep { --sys: var(--glass-smoke); }
+  .move p { margin: 0; line-height: 1.55; }
+  .status { font: 500 10.5px/1 var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--focus); }
+  .move.keep .status { color: var(--ink-3); }
+  .mcost { display: grid; grid-template-columns: 58px 1fr; gap: 10px; color: var(--ink-2); font-size: 14.5px; }
+  .from { display: flex; gap: 6px; flex-wrap: wrap; }
+  .chip { font: 500 11px/1 var(--mono); padding: 5px 8px; border-radius: 999px; color: var(--sys); border: 1px solid var(--sys); }
+  @media (max-width: 600px) { .pickers { position: static; } .plabel { width: 100%; } }
+</style>

@@ -19,7 +19,13 @@ export function route(rel) {
   if (rel === 'docs/design/state-and-theme.md') return '/state-and-theme/';
   if (rel === 'docs/design/prototype-notes.md') return '/prototype-notes/';
   if (rel === 'docs/releasing.md') return '/releasing/';
+  if (rel === 'docs/design/architecture.md') return '/architecture/';
+  if (rel === 'docs/components.md') return '/components/';
+  if (rel === 'docs/CHANGELOG.md') return '/changelog/';
   if (rel === 'docs/research' || rel === 'docs/research/landscape') return '/research/';
+  if (rel === 'docs/research/data-model' || rel === 'docs/research/data-model/_overview.md') return '/data-model/';
+  let d = rel.match(/^docs\/research\/data-model\/([a-z0-9-]+)\.md$/);
+  if (d) return `/data-model/${d[1]}/`;
   let m = rel.match(/^docs\/research\/landscape\/([a-z0-9-]+)--_overview\.md$/);
   if (m) return `/research/${m[1]}/`;
   m = rel.match(/^docs\/research\/landscape\/([a-z0-9-]+)--([a-z0-9._-]+)\.md$/);
@@ -175,7 +181,8 @@ export default function rehypeLinks() {
     walk(tree, null);
     dialogue(tree);
     const rel = file.path ? path.relative(REPO, file.path).split(path.sep).join('/') : '';
-    if (/^docs\/(design\/[^/]+|PLAN)\.md$/.test(rel)) structure(tree, rel);
+    if (/^docs\/(design\/[^/]+|PLAN|components|CHANGELOG|research\/data-model\/[^/]+)\.md$/.test(rel)) structure(tree, rel);
+    if (/^docs\/research\/data-model\/[^/]+\.md$/.test(rel)) dossier(tree);
     if (/^docs\/research\/landscape\/[^/]+\.md$/.test(rel)) dossier(tree);
   };
 }

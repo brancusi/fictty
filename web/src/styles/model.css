@@ -1,0 +1,36 @@
+/* The data model, compared: diagrams drawn as inline SVG in the site's tokens, so they follow the
+   theme. Each system has a tint: fictty violet, Obsidian rose, Roam cyan, Logseq green, Notion amber. */
+.dm-fictty { --sys: var(--glass-violet); }
+.dm-obsidian { --sys: var(--glass-rose); }
+.dm-roam { --sys: var(--glass-cyan); }
+.dm-logseq { --sys: var(--ok); }
+.dm-notion { --sys: var(--glass-amber); }
+
+.dm-fig { margin: 0; display: grid; gap: 10px; }
+.dm-fig .dm-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; border: 1px solid var(--line); border-radius: 4px;
+  background: color-mix(in srgb, var(--raised) calc(70% - 20% * var(--glow)), transparent); }
+.dm-fig svg { display: block; width: 100%; min-width: 600px; height: auto; }
+.dm-fig figcaption { font-size: 14px; line-height: 1.55; color: var(--ink-3); max-width: 78ch; }
+.dm-fig figcaption b { color: var(--ink-2); font-weight: 600; }
+
+.dm-fig svg text { font-family: var(--mono); font-size: 9.6px; letter-spacing: -0.01em; fill: var(--ink-2); }
+.dm-fig svg .t-h { font-family: var(--sans); font-size: 12.5px; font-weight: 600; fill: var(--ink); }
+.dm-fig svg .t-lane { font-family: var(--mono); font-size: 9px; letter-spacing: .05em; text-transform: uppercase; fill: var(--ink-3); }
+.dm-fig svg .t-sys { fill: var(--sys); font-weight: 600; }
+.dm-fig svg .t-dim { fill: var(--ink-3); }
+.dm-fig svg .t-key { fill: var(--focus); }
+.dm-fig svg .t-str { fill: var(--ink); }
+.dm-fig svg .t-small { font-size: 8.8px; }
+.dm-fig svg .box { fill: var(--raised); stroke: var(--line-strong); stroke-width: 1; }
+.dm-fig svg .box-sys { fill: color-mix(in srgb, var(--sys) 12%, var(--raised)); stroke: var(--sys); stroke-width: 1.2; }
+.dm-fig svg .box-soft { fill: color-mix(in srgb, var(--sys) 6%, transparent); stroke: color-mix(in srgb, var(--sys) 55%, transparent); stroke-dasharray: 4 3; }
+.dm-fig svg .box-ghost { fill: none; stroke: var(--line-strong); stroke-dasharray: 4 3; }
+.dm-fig svg .hl { fill: color-mix(in srgb, var(--sys) 22%, transparent); }
+.dm-fig svg .edge { fill: none; stroke: var(--ink-3); stroke-width: 1.2; }
+.dm-fig svg .edge-sys { fill: none; stroke: var(--sys); stroke-width: 1.6; }
+.dm-fig svg .edge-dash { fill: none; stroke: var(--ink-3); stroke-width: 1.1; stroke-dasharray: 4 3; }
+.dm-fig svg .head { fill: var(--ink-3); }
+.dm-fig svg .head-sys { fill: var(--sys); }
+.dm-fig svg .dot-sys { fill: var(--sys); }
+.dm-fig svg .grid { stroke: var(--line); stroke-width: 1; }
+.dm-fig svg .axis { stroke: var(--line-strong); stroke-width: 1.2; }

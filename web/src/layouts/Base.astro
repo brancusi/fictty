@@ -83,7 +83,7 @@ const TUBES = Array.from({ length: 13 }, (_, k) => {
     <div class="panes" aria-hidden="true"><span class="line"></span><svg viewBox="-0.5 -0.5 33.3 11">{TUBES.map((t) => <rect x={t.x} y={+t.y.toFixed(2)} width={t.w} height={+t.h.toFixed(2)} style={`fill: var(--glass-${t.tint}); fill-opacity: .72; mix-blend-mode: var(--blend)`} />)}</svg><span class="line"></span></div>
     <span>fictty · MIT · a prototype; the format will change</span>
     <nav aria-label="Footer">
-      <a href="/docs/">Docs</a><a href="/research/">Research</a><a href="/scope/">Scope</a><a href="/plan/">Plan</a><a href="/adopt-or-build/">Adopt or build</a><a href="/blog/">Blog</a><a href={GH} rel="noopener">GitHub</a><a href="/blog/rss.xml">RSS</a>
+      <a href="/docs/">Docs</a><a href="/architecture/">Architecture</a><a href="/components/">Components</a><a href="/changelog/">Changelog</a><a href="/research/">Research</a><a href="/data-model/">Data model</a><a href="/scope/">Scope</a><a href="/plan/">Plan</a><a href="/adopt-or-build/">Adopt or build</a><a href="/blog/">Blog</a><a href={GH} rel="noopener">GitHub</a><a href="/blog/rss.xml">RSS</a>
     </nav>
   </footer>
   <style>

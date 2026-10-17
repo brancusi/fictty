@@ -1,0 +1,15 @@
+---
+import ModelDoc from '../../layouts/ModelDoc.astro';
+export function getStaticPaths() {
+  return ['fictty', 'obsidian', 'roam', 'logseq', 'notion'].map((slug) => ({ params: { slug } }));
+}
+const DESC: Record<string, string> = {
+  fictty: "fictty's data model: a UI value, a store of versioned entries, view state, sources, and how agents and people write to them.",
+  obsidian: "Obsidian's data model: a vault of Markdown files, links by name, properties, Bases and Canvas, compared with fictty's.",
+  roam: "Roam Research's data model: blocks as entities in a DataScript graph, uids, references and Datalog, compared with fictty's.",
+  logseq: "Logseq's data model, file graphs and the DB version: blocks, properties, tags as classes, queries, compared with fictty's.",
+  notion: "Notion's data model: everything a block, pages, databases and data sources, relations and history, compared with fictty's.",
+};
+const { slug } = Astro.params;
+---
+<ModelDoc id={slug!} description={DESC[slug!]} />

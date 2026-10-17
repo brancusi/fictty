@@ -1,0 +1,62 @@
+---
+// Obsidian: the same job as files in a vault. Links are names; everything else is a derived index.
+---
+<figure class="dm-fig dm-obsidian">
+  <div class="dm-scroll">
+    <svg viewBox="0 0 680 372" role="img" aria-label="Obsidian: a vault folder of Markdown files. The job note's frontmatter links to the customer's note by name; a derived metadata cache holds links, backlinks, tags and properties read from the files.">
+      <defs>
+        <marker id="ox-a" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 8 4 0 8z" class="head" /></marker>
+        <marker id="ox-s" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 8 4 0 8z" class="head-sys" /></marker>
+      </defs>
+      <text x="20" y="26" class="t-lane">the vault · a folder</text>
+      <text x="196" y="26" class="t-lane">a note · one Markdown file</text>
+      <text x="500" y="26" class="t-lane">another note</text>
+
+      <!-- folder tree -->
+      <text x="20" y="56" class="t-str">vault/</text>
+      <text x="34" y="78" class="t-dim">.obsidian/  (settings)</text>
+      <text x="34" y="100" class="t-str">Jobs/</text>
+      <rect x="44" y="108" width="134" height="20" rx="3" class="hl" />
+      <text x="50" y="122" class="t-str">Gravel brakes.md</text>
+      <text x="34" y="146" class="t-str">People/</text>
+      <text x="50" y="168" class="t-str">Priya Natarajan.md</text>
+      <text x="34" y="190" class="t-str">Board.canvas</text>
+      <text x="34" y="210" class="t-str">Jobs.base</text>
+      <text x="20" y="240" class="t-dim t-small">the path is the identity:</text>
+      <text x="20" y="254" class="t-dim t-small">rename in the app and it</text>
+      <text x="20" y="268" class="t-dim t-small">rewrites the links to it</text>
+
+      <!-- the job note -->
+      <rect x="196" y="40" width="282" height="194" rx="4" class="box-sys" />
+      <text x="208" y="60" class="t-dim">---</text>
+      <text x="208" y="77"><tspan class="t-key">customer:</tspan> <tspan class="t-str">"[[Priya Natarajan]]"</tspan></text>
+      <text x="208" y="94"><tspan class="t-key">due:</tspan> <tspan class="t-str">2026-10-15</tspan></text>
+      <text x="208" y="111"><tspan class="t-key">tags:</tspan> <tspan class="t-str">[job]</tspan></text>
+      <text x="208" y="128" class="t-dim">---  (properties: YAML frontmatter)</text>
+      <text x="208" y="152" class="t-str"># Gravel brakes</text>
+      <text x="208" y="172" class="t-str">Squeals after rain. ^b7f2</text>
+      <text x="208" y="192" class="t-str">- [ ] order organic pads</text>
+      <text x="208" y="218" class="t-dim t-small">one write = the whole file · no revision, no author</text>
+
+      <!-- the other note -->
+      <rect x="500" y="40" width="164" height="90" rx="4" class="box" />
+      <text x="512" y="60" class="t-str"># Priya Natarajan</text>
+      <text x="512" y="80" class="t-dim">## Bikes</text>
+      <text x="512" y="98" class="t-str">Gravel, 2023</text>
+      <path d="M418 74 C460 74 470 64 498 62" class="edge-sys" marker-end="url(#ox-s)" />
+      <text x="582" y="150" class="t-dim t-small" text-anchor="middle">a link is a name, resolved</text>
+      <text x="582" y="164" class="t-dim t-small" text-anchor="middle">when it's read</text>
+
+      <!-- derived cache -->
+      <rect x="196" y="262" width="468" height="92" rx="4" class="box-soft" />
+      <text x="210" y="282" class="t-h">metadata cache</text>
+      <text x="320" y="282" class="t-dim">derived, rebuilt from the files, never the truth</text>
+      <text x="210" y="304" class="t-str">links · backlinks · headings · block ids · tags · properties</text>
+      <text x="210" y="324" class="t-dim">read by search, Bases (.base views), the graph, Dataview (a plugin)</text>
+      <text x="210" y="342" class="t-dim t-small">any program can edit the files; the app re-reads them when they change</text>
+      <path d="M337 234 V258" class="edge-dash" marker-end="url(#ox-a)" />
+      <path d="M582 130 V258" class="edge-dash" marker-end="url(#ox-a)" />
+    </svg>
+  </div>
+  <figcaption><b>Obsidian.</b> The file is the unit and the folder is the database. Links are names that get resolved when they're read, properties are YAML at the top of a note, and everything that looks like structure (backlinks, Bases, the graph) is an index derived from plain text.</figcaption>
+</figure>
