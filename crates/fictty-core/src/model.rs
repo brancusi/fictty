@@ -2317,6 +2317,9 @@ mod tests {
             ("".into(), None, false, Some('─')),
         ]);
         assert_eq!(fill("{x|markup}", &json!({"x": "<tag>#a</> b"})), "#a b");
+        // A map's arm reads the value as `$`: its catch-all styles what it didn't name.
+        let segs = segments("{kind|done=✓;*=<accent>$</>}", &json!({"kind": "sold"}));
+        assert_eq!(segs.iter().map(|s| (s.text.as_str(), s.style.as_deref())).collect::<Vec<_>>(), vec![("sold", Some("accent"))]);
         assert!(shows("static", &v) && shows("{ctx} ", &v) && !shows("<muted>{due|?due $}</> ", &v));
         // Inside a value, styles layer on the surrounding one; `<=…>` replaces it.
         let styles: Vec<Option<String>> = segments("<text+b>{x|markup}</>", &json!({"x": "a <tag>#t</> <=muted>[[</>"}))

@@ -334,8 +334,9 @@ Small things found during step 2 and Daybook, picked up where they fit:
   the window hands them back with the frame (`Drawn::fonts`), and the state keeps them.
 - ~~**`tabs.active` and the `active` state** share a word for two things; rename the part
   `tabs.selected` before any theme outside the repo uses it (with 3a).~~ Done with 3a.
-- **A map's catch-all can't read its value** (`{kind|done=✓;*=<accent>{kind}</>}`); a template
-  language fix, any time.
+- ~~**A map's catch-all can't read its value**~~: it can, as `$`
+  (`{kind|done=✓;*=<accent>$</>}`), which the guide didn't say; documented and tested on 17
+  October 2026. `{kind}` inside an arm can't work: its `}` ends the placeholder.
 - **A task action** (`{"task": "toggle"}`) so ⌘Enter can tick a task: editors, step 5.
 - **Days as a calendar**, not a list: Daybook's ⌥[ walks rows. Date arithmetic is a host's or
   an agent's, so this stays out of the UI value.

@@ -1355,6 +1355,8 @@ fn a_grid_fits_as_many_columns_as_there_is_room_for() {
     let bad = window(json!({"root": {"type": "grid", "cols": {"min": 12}, "children": [{"type": "grid", "id": "h", "cols": ["50%", "*"], "children": []}]}}), 30, 6).state().problems.clone();
     assert!(bad.iter().any(|p| p.contains("needs an id")), "{bad:?}");
     assert!(bad.iter().any(|p| p.contains("column \"50%\" isn't cells, pixels or a share")), "{bad:?}");
+    let row = window(json!({"root": {"type": "row", "children": [{"type": "text", "id": "t", "text": "x", "span": 2}]}}), 30, 4).state().problems.clone();
+    assert!(row.iter().any(|p| p.contains("t: span takes columns in a grid, and it's in a row")), "{row:?}");
 }
 
 /// A column with `scroll` holds more than it shows: what it holds is as tall as its children

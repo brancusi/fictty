@@ -3267,6 +3267,13 @@ pub fn problems(st: &State) -> Vec<String> {
         {
             out.push(format!("input {name}: accept {a:?} isn't known (only \"number\")"));
         }
+        // `span` is a grid's: anywhere else it would be quietly ignored.
+        if !matches!(n.kind, Kind::Grid { .. }) {
+            for c in n.children().iter().filter(|c| c.span.is_some()) {
+                let who = c.id.clone().unwrap_or_else(|| c.kind_name().to_string());
+                out.push(format!("{who}: span takes columns in a grid, and it's in a {}", n.kind_name()));
+            }
+        }
         let Some(bind) = n.bind.as_deref().filter(|b| !b.starts_with('@')) else { continue };
         let Some(v) = value_of(st, bind) else { continue };
         let wants_list = matches!(n.kind, Kind::List { .. } | Kind::Table { .. } | Kind::Tree { .. } | Kind::Bars { .. } | Kind::Sparkline { .. });

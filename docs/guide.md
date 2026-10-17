@@ -204,7 +204,9 @@ fictty theme paper                                        # choose a loaded them
   `@id` is the selected row of another list. Text and columns are templates over the bound
   value: `"{text} · {due}"`, `<accent+b>styled</>` (or any theme part: `<link>`), `<<` for a
   literal `<`, `{±change}` coloured by sign, `{name:12}` fitted to 12 cells (`{n:>6}`
-  right-aligned), maps (`{done|true=☑;*=☐}`), and a tab right-aligns the rest of a line.
+  right-aligned), maps (`{done|true=☑;*=☐}`; `$` in an arm is the value, so a catch-all can
+  style what it didn't name: `{kind|done=✓;*=<accent>$</>}`), `{x|?then $}` (only when `x`
+  is set) and `{x|!otherwise}` (only when it isn't), and a tab right-aligns the rest of a line.
 - **Actions** on keys: `quit`, `up`, `down` (a line, in a list with `cols`), `next_row` and
   `prev_row` (one row whatever the `cols`, on across line ends), `top`, `bottom`, `page_down` and
   `page_up` (a list's selection by a view, else the scroller around the focus; Page Down and Page
