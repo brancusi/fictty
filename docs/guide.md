@@ -66,7 +66,7 @@ fictty theme paper                                        # choose a loaded them
 ## The model
 
 - **Components** (a closed set): layout `col`, `row` (both with a `gap`) and `stack` (children
-  over each other); `text`, `big`, `spinner`; `list`, `tree`, `table` (with column `total`s);
+  over each other); `text`, `big`, `spinner`; `list`, `tree`, `table`;
   `editor`, `input`, `button`; `tabs`; `sparkline`, `chart`, `bars` (up, or `horizontal`), `gauge`;
   and the pixel ones below. A `gauge` fills to its `value` out of `of` (a number or a template,
   `"value": "{at}", "of": "{length}"`; default 1), saying its `label` or the percent; in the window
@@ -121,6 +121,15 @@ fictty theme paper                                        # choose a loaded them
   as that makes it). A node that has neither, one not stretched across and with no fixed
   `size`, has nothing to work from, so give it one. Anything but a number above nothing or `"w/h"`
   fails to parse.
+- **Tables** lay every line, the header, the rows and a footer, on the same columns: each
+  column's `size` in cells, `px`, a `%` or a share (`"*"`, `"2*"`; one share by default; `fit`
+  is a problem, since each line is laid out apart), a cell between them, `align` (`right`,
+  `center`) for its title and cells. A cell is its column's `value` (a template over the row) or
+  its `cell`, a node template filled from `$item` as a list's `row`, whose buttons are the row's
+  parts (the column, then the path: `3.0`). `heat` (`{"value": "{chg}", "min": -2, "max": 2}`)
+  tints a cell by where its value sits from `min` to `max`, from the theme's `neg` to `pos`;
+  `total` sums a path over the rows into a footer (thousands grouped), read back as the table's
+  footer.
 - **Lists and trees** share their row options: `item` (a template), `row_variant` and `variants`
   (a template per kind of row) with `skip` (rows that can't be selected), `mark` and `lead`,
   `selected` (a style), `lines` (rows of several lines), `keep` (cells the left side keeps before

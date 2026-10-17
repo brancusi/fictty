@@ -867,11 +867,27 @@ pub struct Heat {
     pub max: f64,
 }
 
+impl Heat {
+    /// Where a row's `value` (a template, `"{chg}"`) sits from `min` (0) to `max` (1), held to
+    /// them; None when it doesn't read as a number. A window colours it from the theme's `neg`
+    /// through the panel at the middle to `pos`.
+    pub fn at(&self, row: &Value) -> Option<f32> {
+        let v = number(&fill_raw(&self.value, row))?;
+        let span = self.max - self.min;
+        Some(if span.abs() < 1e-9 { 0.5 } else { ((v - self.min) / span).clamp(0., 1.) as f32 })
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Column {
     pub title: String,
     /// A template over the row, e.g. `"{text}"` or `"{due} {priority}"`.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
     pub value: String,
+    /// The column's cells as a node template instead of `value`'s text, filled from `$item` as a
+    /// list's `row` (a chip, a badge, a button with its own click).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cell: Option<Box<Node>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub size: Option<Size>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -882,6 +898,39 @@ pub struct Column {
     /// numbers).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub total: Option<String>,
+}
+
+impl Column {
+    /// Its `total` over these rows, and as it's written: thousands grouped, cents when there are
+    /// any (`12,480.50`).
+    pub fn total(&self, rows: &[Value]) -> Option<(f64, String)> {
+        let path = self.total.as_deref()?;
+        let sum: f64 = rows.iter().filter_map(|r| lookup(r, path)).filter_map(|v| v.as_f64().or_else(|| v.as_str().and_then(number))).sum();
+        Some((sum, grouped(sum)))
+    }
+}
+
+/// A table's footer, a cell a column: its total, or `Total` under the first column when that
+/// has none, else nothing.
+pub fn table_footer(columns: &[Column], rows: &[Value]) -> Vec<String> {
+    columns.iter().enumerate().map(|(k, c)| c.total(rows).map(|(_, t)| t).unwrap_or_else(|| if k == 0 { "Total".into() } else { String::new() })).collect()
+}
+
+/// A number with its thousands grouped and cents when it has any: `12,480`, `-3.50`.
+pub fn grouped(x: f64) -> String {
+    let neg = x < 0.0;
+    let cents = (x.abs() * 100.0).round() as u64;
+    let (whole, frac) = (cents / 100, cents % 100);
+    let digits = whole.to_string();
+    let mut out = String::new();
+    for (i, ch) in digits.chars().enumerate() {
+        if i > 0 && (digits.len() - i) % 3 == 0 {
+            out.push(',');
+        }
+        out.push(ch);
+    }
+    let sign = if neg && cents > 0 { "-" } else { "" };
+    if frac == 0 { format!("{sign}{out}") } else { format!("{sign}{out}.{frac:02}") }
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -1889,6 +1938,18 @@ impl Node {
         }
     }
 
+    /// The node at `part` of one of its rows: in a list's or tree's `row` template by its path
+    /// (`0.2`), in a table's column's `cell` template by the column and then the path (`3.0`).
+    pub fn row_part(&self, part: &str) -> Option<&Node> {
+        match &self.kind {
+            Kind::Table { columns, .. } => {
+                let (col, rest) = part.split_once('.').unwrap_or((part, ""));
+                columns.get(col.parse::<usize>().ok()?)?.cell.as_deref()?.at_path(rest)
+            }
+            _ => self.rows()?.row.as_deref()?.at_path(part),
+        }
+    }
+
     /// The node at `path` under this one, child indexes joined by dots (`0.2`; empty is this
     /// one), as a row's buttons are named.
     pub fn at_path(&self, path: &str) -> Option<&Node> {
@@ -2367,6 +2428,16 @@ mod tests {
 
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn heat_runs_from_min_to_max_and_totals_group_their_thousands() {
+        let h = Heat { value: "{d}".into(), min: -10., max: 10. };
+        assert_eq!([-20, -10, 0, 5, 10].map(|d| h.at(&json!({"d": d}))), [Some(0.), Some(0.), Some(0.5), Some(0.75), Some(1.)]);
+        assert_eq!(h.at(&json!({"d": "n/a"})), None);
+        let c: Column = serde_json::from_value(json!({"title": "Q1", "value": "{q}", "total": "q"})).unwrap();
+        assert_eq!(c.total(&[json!({"q": 1200}), json!({"q": "3,280.5"})]), Some((4480.5, "4,480.50".to_string())));
+        assert_eq!(grouped(-0.001), "0");
+    }
 
     #[test]
     fn templates_fit_fields_escape_brackets_and_take_tabs_from_values() {

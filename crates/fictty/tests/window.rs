@@ -1689,6 +1689,40 @@ fn a_tree_takes_a_row_template() {
     assert!(x > gx, "the row's nodes sit after its glyph");
 }
 
+/// A table's columns are the same on every line: a fixed one, shares, a right-aligned one; a
+/// column's `cell` is a node template whose button is that row's part (the column, then its
+/// path); totals sit in a footer and read back; `fit` is a problem for a column.
+#[test]
+fn a_tables_columns_line_up_and_its_cells_can_be_nodes() {
+    let probe = |label: &str| json!({"type": "button", "label": label, "size": "fit", "click": {"toast": label}});
+    let ui = json!({"root": {"type": "table", "id": "t", "bind": "rows", "columns": [
+        {"title": "Name", "size": 12, "cell": probe("{$item.name}")},
+        {"title": "Note", "value": "{note}"},
+        {"title": "Qty", "size": 10, "align": "right", "total": "qty", "cell": probe("{$item.qty}")},
+        {"title": "", "size": 4, "cell": {"type": "button", "label": "✕", "size": "fit", "click": {"remove": "rows"}}},
+    ]}, "store": {"rows": [{"id": "a", "name": "Chain", "note": "11-speed", "qty": 4}, {"id": "b", "name": "Brake pads", "note": "organic", "qty": 1200}]},
+        "focus": "t"});
+    let mut s = window(ui, 80, 10);
+    assert_eq!(s.state().problems, Vec::<String>::new());
+    let (n0, n1) = (s.at_part("t", 0, "0").unwrap(), s.at_part("t", 1, "0").unwrap());
+    let (q0, q1) = (s.at_part("t", 0, "2").unwrap(), s.at_part("t", 1, "2").unwrap());
+    assert!(n0.1 < n1.1, "a line each");
+    assert!(n0.0.abs_diff(n1.0) <= 3, "a left-aligned column's buttons start together, centred on their labels: {n0:?} {n1:?}");
+    assert!(q1.0 < q0.0, "right-aligned: the wider number starts further left, {q0:?} {q1:?}");
+    let (x, _) = s.at_part("t", 0, "3").unwrap();
+    assert!(x > q0.0 && x >= 72, "the last column at the right edge: {x}");
+    let t = node(&mut s, "t");
+    assert_eq!(t.text, "Chain · 11-speed · 4 · ✕");
+    assert_eq!(t.footer.as_deref(), Some("Total ·  · 1,204 · "));
+    // The ✕ on the second row removes that row.
+    let (x, y) = s.at_part("t", 1, "3").unwrap();
+    s.mouse("press", x, y).mouse("release", x, y);
+    assert_eq!(node(&mut s, "t").rows, Some(1));
+    assert_eq!(node(&mut s, "t").footer.as_deref(), Some("Total ·  · 4 · "));
+    let fit = json!({"root": {"type": "table", "id": "f", "items": [{"a": 1}], "columns": [{"title": "A", "value": "{a}", "size": "fit"}]}});
+    assert_eq!(window(fit, 40, 5).state().problems, vec!["table f: column \"A\" can't be `fit` (each line is laid out apart): give it cells, px, a % or a share".to_string()]);
+}
+
 /// Tabs without pages are a bar of choices (a radio group): the titles are the choices, → and a
 /// press pick one, and nothing shows under them. More pages than tabs is a problem.
 #[test]

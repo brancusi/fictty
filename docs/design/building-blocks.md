@@ -77,10 +77,10 @@ did nothing (it now runs the composer's Enter action, one action for both).
 
 ## Known gaps in the foundations
 
-- **The window draws trees flat.** A tree's rows show without their indent or fold glyph (the
-  terminal drew both); folding works by key only. This is 4c.
-- **Tables in the window share every column equally** and ignore `size`, `align`, `heat` and
-  `total` (the `sheet` screen shows placeholders). Also 4c.
+- ~~**The window draws trees flat.**~~ Done in 4c: indent, fold glyphs, a press on the glyph
+  folds.
+- ~~**Tables in the window share every column equally.**~~ Done in 4c: widths, `align`, `heat`,
+  totals, a column's `cell` template; the `sheet` rebuilt.
 - **A row template is filled by a JSON round trip** for every row built, every frame: node rows
   cost twice item text (10.9 ms a frame against 5.4 for a 50,000-row list, headless, release).
   Step 4's "done when" asks for `fit` rows at a uniform list's frame time.
@@ -92,7 +92,7 @@ did nothing (it now runs the composer's Enter action, one action for both).
 
 ## Next steps, in order
 
-1. **4c, trees and tables in the window** ([rows-step.md](rows-step.md) has the detail): a
+1. ~~**4c, trees and tables in the window**~~ (done 17 October 2026; [rows-step.md](rows-step.md) has the detail): a
    tree's indent and fold glyph drawn by the runtime around its row (item text or `row`
    template), a press on the glyph folds; a table's column widths, alignment, heat and totals,
    its header over the same columns, and a column's `cell` as a node template. The wringer's

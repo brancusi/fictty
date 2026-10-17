@@ -78,7 +78,7 @@ use it looked at.
   action wrote the store sent the selection back to the row it left (`step` already guarded
   against that). `a_click_that_writes_keeps_the_row_it_chose` covers it.
 
-### 4c · Trees and tables (M) · next
+### 4c · Trees and tables (M) · done 17 October 2026
 
 Where it starts (found in the demo audit, [building-blocks.md](building-blocks.md)): the window
 draws a tree as a flat list, with no indent or fold glyph, and folds it by key only; a table's
@@ -102,6 +102,18 @@ shows placeholders.
   `heat` colours from the theme, totals read back, a `cell` template's button takes its click.
   The wringer's `sheet` rebuilt without placeholders in `tests/wringer.rs`; Kestrel's Stock
   (`tests/demo.rs`) right-aligned and whole.
+- How it landed: the glyph is worked out once (`model::fold_lead`) for the window and the
+  readback, and a press on it is `Msg::Press` with the part `fold`, so a row's parts are its
+  template's buttons by path and a tree row's glyph. A table's columns are `column_slot`s, the
+  same on every line; `fit` is a problem rather than a guess, since each line is laid out apart
+  (measuring a column's widest cell would mean every row, every frame). `heat` has one meaning,
+  where the value sits from `min` to `max` (`Heat::at`; every diverging use was symmetric, so
+  they draw as before), drawn as the theme's `neg` or `pos` over the cell, stronger towards the
+  ends. Totals are `Column::total`, written by `model::grouped` (the terminal's `money`, moved),
+  and read back as the table's `footer`. A column's `cell` is a node template; its buttons are
+  the row's parts, the column first (`Node::row_part`). The audit's eye found one more: the
+  `sheet` wrote its heat's `value` as a path (`"q1"`) where it's a template (`"{q1}"`), so its
+  heat never showed, in the terminal either.
 
 ### 4d · Rebuild (M) · chat and kanban done; Kestrel next
 

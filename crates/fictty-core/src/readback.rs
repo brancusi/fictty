@@ -51,6 +51,10 @@ pub struct Shown {
     /// Where the last frame laid it out (nodes with an id).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rect: Option<Rect>,
+    /// A table's footer: each column's total under it, `Total` under the first when it has none
+    /// (`Total ·  · 412 · 380`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub footer: Option<String>,
     /// Whether the last frame cut some of its text to fit, ending it in `…`.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub cut: bool,
@@ -116,6 +120,7 @@ fn shown(st: &State, n: &Node, depth: usize, key: &str, (rects, cut): Frame) -> 
         rows: None,
         selected: None,
         picked: s_picked(st, n),
+        footer: s_footer(st, n),
         scroll: s_scroll(st, n),
         cols: Some(state::per_line(st, n)).filter(|c| *c > 1),
         entries: if n.field().is_some() { state::doc_keys(st, n).len() } else { 0 },
@@ -167,7 +172,7 @@ fn shown(st: &State, n: &Node, depth: usize, key: &str, (rects, cut): Frame) -> 
             s.rows = Some(items.len());
             if let Some(r) = items.get(at) {
                 s.selected = Some(at);
-                s.text = columns.iter().map(|c| fill(&c.value, r)).collect::<Vec<_>>().join(" · ");
+                s.text = columns.iter().map(|c| c.cell.as_deref().map_or_else(|| fill(&c.value, r), |t| row_text(st, t, r, (at, items.len())))).collect::<Vec<_>>().join(" · ");
             }
         }
         Kind::Tabs { tabs, lead, trail, .. } => {
@@ -221,6 +226,12 @@ fn s_scroll(st: &State, n: &Node) -> Option<(f32, usize)> {
     let lines = state::Lines::of(st, n);
     let at = lines.offset(Some(local));
     (local.rows > 0 && lines.count > lines.fitting_from(at.floor() as usize)).then(|| ((at * 100.).round() / 100., lines.count))
+}
+
+/// A table's totals, while it has any.
+fn s_footer(st: &State, n: &Node) -> Option<String> {
+    let Kind::Table { columns, .. } = &n.kind else { return None };
+    columns.iter().any(|c| c.total.is_some()).then(|| crate::model::table_footer(columns, state::items(st, n)).join(" · "))
 }
 
 /// A `multi` node's picked rows while it has more than one.
@@ -284,6 +295,9 @@ fn outline_with(shown: &[Shown], styled: bool) -> String {
         if !s.text.is_empty() {
             line.push_str(": ");
             line.push_str(&s.text.replace('\n', " ⏎ ").replace('\t', "   "));
+        }
+        if let Some(f) = &s.footer {
+            line.push_str(&format!(" ⏎ {f}"));
         }
         out.push_str(&line);
         out.push('\n');

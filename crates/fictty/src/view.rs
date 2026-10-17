@@ -1020,7 +1020,7 @@ fn node(cx: &mut Cx, n: &Node, f: &mut Frame, area: Rect) {
                 for (c, a) in columns.iter().zip(cols(y)) {
                     let Some(path) = &c.total else { continue };
                     let sum: f64 = rows.iter().filter_map(|r| lookup(r, path)).filter_map(|v| v.as_f64().or_else(|| v.as_str().and_then(number))).sum();
-                    let text = money(sum);
+                    let text = crate::model::grouped(sum);
                     let al = if c.align.as_deref() == Some("right") { Alignment::Right } else { Alignment::Left };
                     let mut cs = ts;
                     if sum < 0.0 {
@@ -1284,7 +1284,7 @@ fn across(cx: &mut Cx, n: &Node, f: &mut Frame, inner: Rect, label: &str, value:
     let max = vals.iter().fold(0.0f64, |m, v| m.max(v.abs())).max(1e-9);
     let labels: Vec<String> = rows.iter().map(|r| fill(label, r)).collect();
     let lw = labels.iter().map(|l| l.chars().count()).max().unwrap_or(0).min(16) as u16;
-    let nums: Vec<String> = vals.iter().map(|v| money(v.round())).collect();
+    let nums: Vec<String> = vals.iter().map(|v| crate::model::grouped(v.round())).collect();
     let nw = nums.iter().map(|s| s.chars().count()).max().unwrap_or(0) as u16;
     let room = inner.width.saturating_sub(lw + nw + 2) as f64;
     let eighths = ["", "▏", "▎", "▍", "▌", "▋", "▊", "▉"];
@@ -1382,23 +1382,6 @@ fn numbers(values: &[f64], v: Option<&Value>, field: Option<&str>) -> Vec<f64> {
 }
 
 /// `1234567` → `1.23M`.
-/// A sum for a footer: thousands separated, two decimals unless it's whole.
-fn money(x: f64) -> String {
-    let neg = x < 0.0;
-    let cents = (x.abs() * 100.0).round() as u64;
-    let (whole, frac) = (cents / 100, cents % 100);
-    let digits = whole.to_string();
-    let mut grouped = String::new();
-    for (i, ch) in digits.chars().enumerate() {
-        if i > 0 && (digits.len() - i) % 3 == 0 {
-            grouped.push(',');
-        }
-        grouped.push(ch);
-    }
-    let sign = if neg { "-" } else { "" };
-    if frac == 0 { format!("{sign}{grouped}") } else { format!("{sign}{grouped}.{frac:02}") }
-}
-
 fn compact(x: f64) -> String {
     let a = x.abs();
     match a {

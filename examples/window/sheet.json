@@ -15,14 +15,15 @@
     "columns": [
      {
       "title": "Rep \u25b2",
-      "value": "<b>{rep}</>"
+      "value": "<b>{rep}</>",
+      "size": 14
      },
      {
       "title": "Q1",
       "value": "{q1}",
       "align": "right",
       "heat": {
-       "value": "q1",
+       "value": "{q1}",
        "min": 20,
        "max": 90
       },
@@ -33,7 +34,7 @@
       "value": "{q2}",
       "align": "right",
       "heat": {
-       "value": "q2",
+       "value": "{q2}",
        "min": 20,
        "max": 90
       },
@@ -44,7 +45,7 @@
       "value": "{q3}",
       "align": "right",
       "heat": {
-       "value": "q3",
+       "value": "{q3}",
        "min": 20,
        "max": 90
       },
@@ -55,7 +56,7 @@
       "value": "{q4}",
       "align": "right",
       "heat": {
-       "value": "q4",
+       "value": "{q4}",
        "min": 20,
        "max": 90
       },

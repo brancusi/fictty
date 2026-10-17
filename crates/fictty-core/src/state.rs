@@ -739,8 +739,9 @@ pub enum Msg {
     Revealed,
     /// How tall a frame built a list's `fit` rows, in cells, by row key.
     Heights { id: String, heights: Vec<(String, f32)> },
-    /// A press on a part of row `row` of list or tree `id`: a button by its path in the row
-    /// template (`0.2`), or a tree row's fold glyph (`fold`). The row is selected as a click
+    /// A press on a part of row `row` of list, tree or table `id`: a button by its path in the
+    /// row template (`0.2`; in a table, the column first: `3.0`), or a tree row's fold glyph
+    /// (`fold`). The row is selected as a click
     /// selects it, without the list's own `click`, then the button's `click` runs on it
     /// (`{"toggle": "store.loved/{id}"}` loves that row's album), or the row folds or opens.
     Press { id: String, row: usize, part: String },
@@ -1020,7 +1021,7 @@ fn apply(st: &mut State, msg: Msg) -> Vec<Effect> {
             let click = if part == "fold" && matches!(n.kind, Kind::Tree { .. }) {
                 None
             } else {
-                let Some(click) = n.rows().and_then(|r| r.row.as_deref()).and_then(|t| t.at_path(&part)).filter(|b| matches!(b.kind, Kind::Button { .. })).and_then(|b| b.click.clone()) else {
+                let Some(click) = n.row_part(&part).filter(|b| matches!(b.kind, Kind::Button { .. })).and_then(|b| b.click.clone()) else {
                     return vec![];
                 };
                 Some(click)
@@ -3507,6 +3508,11 @@ pub fn problems(st: &State) -> Vec<String> {
             && a != "number"
         {
             out.push(format!("input {name}: accept {a:?} isn't known (only \"number\")"));
+        }
+        if let Kind::Table { columns, .. } = &n.kind {
+            for c in columns.iter().filter(|c| c.size.as_ref().is_some_and(|s| s.measure() == crate::model::Measure::Fit)) {
+                out.push(format!("table {name}: column {:?} can't be `fit` (each line is laid out apart): give it cells, px, a % or a share", c.title));
+            }
         }
         if let Kind::Tabs { tabs, children, .. } = &n.kind
             && children.len() > tabs.len()

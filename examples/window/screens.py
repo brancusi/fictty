@@ -134,7 +134,8 @@ save("calendar", {
  ]},
  "data": {"hours": {"value": hours}, **{f"day{i}": {"value": [{"id": f"{i}-{s}", "title": t, "at": hours[s], "y": s * 2, "h": n * 2} for s, n, t in sorted(ev.get(i, []))]} for i in range(5)}}})
 
-# 7 · Spreadsheet: dense numbers, heat, totals, sort marks.
+# 7 · Spreadsheet: dense numbers, heat, totals, sort marks. The columns line up over the header,
+# the rows and the totals; each quarter's cells are tinted by where they sit from 20 to 90.
 import random
 random.seed(4)
 rows = [{"id": str(i), "rep": n, "q1": random.randint(20, 90), "q2": random.randint(20, 90), "q3": random.randint(20, 90), "q4": random.randint(20, 90), "d": round(random.uniform(-12, 18), 1)}
@@ -143,11 +144,11 @@ save("sheet", {
  "root": {"type": "col", "gap": 1, "children": [
   T("<heading>Q-by-Q pipeline</>  <dim>14 reps · $k</>\t<dim>Sorted by name ▲</>", size=1),
   {"type": "table", "id": "t", "bind": "rows", "columns": [
-    {"title": "Rep ▲", "value": "<b>{rep}</>"},
-    {"title": "Q1", "value": "{q1}", "align": "right", "heat": {"value": "q1", "min": 20, "max": 90}, "total": "q1"},
-    {"title": "Q2", "value": "{q2}", "align": "right", "heat": {"value": "q2", "min": 20, "max": 90}, "total": "q2"},
-    {"title": "Q3", "value": "{q3}", "align": "right", "heat": {"value": "q3", "min": 20, "max": 90}, "total": "q3"},
-    {"title": "Q4", "value": "{q4}", "align": "right", "heat": {"value": "q4", "min": 20, "max": 90}, "total": "q4"},
+    {"title": "Rep ▲", "value": "<b>{rep}</>", "size": 14},
+    {"title": "Q1", "value": "{q1}", "align": "right", "heat": {"value": "{q1}", "min": 20, "max": 90}, "total": "q1"},
+    {"title": "Q2", "value": "{q2}", "align": "right", "heat": {"value": "{q2}", "min": 20, "max": 90}, "total": "q2"},
+    {"title": "Q3", "value": "{q3}", "align": "right", "heat": {"value": "{q3}", "min": 20, "max": 90}, "total": "q3"},
+    {"title": "Q4", "value": "{q4}", "align": "right", "heat": {"value": "{q4}", "min": 20, "max": 90}, "total": "q4"},
     {"title": "Δ YoY", "value": "{±d}%", "align": "right"}]}
  ]},
  "store": {"rows": rows}, "focus": "t"})

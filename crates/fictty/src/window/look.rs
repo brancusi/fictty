@@ -39,6 +39,16 @@ pub struct Look<'a> {
     pub neg: Hsla,
 }
 
+/// A heat cell's tint at `t` (0 at its `min`, 1 at its `max`): the theme's `neg` below the
+/// middle and `pos` above it, stronger towards the ends, over whatever is under the cell (the
+/// panel at the middle).
+pub fn heat(st: &State, t: f32) -> Option<Hsla> {
+    let (name, k) = if t < 0.5 { ("neg", (0.5 - t) * 2.) } else { ("pos", (t - 0.5) * 2.) };
+    let mut c = parse(&style::Theme::of(st).colour(name)?)?;
+    c.a *= 0.6 * k;
+    Some(c)
+}
+
 /// A colour by name: `#rrggbb`, `#rgb`, or one of the named colours.
 pub fn parse(name: &str) -> Option<Hsla> {
     let hex = style::hex(name)?;

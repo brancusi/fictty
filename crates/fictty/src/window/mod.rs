@@ -367,6 +367,30 @@ fn track_slot(tracks: &[Measure], gap: f32, cell: Cell) -> gpui::Div {
     slot
 }
 
+/// A table column's slot on each of its lines: as wide as its `size` says (cells, `px`, a
+/// percentage of the line, or a share of what's left, one by default), giving way when there's
+/// no room; its text where `align` puts it.
+fn column_slot(col: &crate::model::Column, cell: Cell) -> gpui::Div {
+    let slot = div().flex().flex_row().items_center().min_w(px(0.)).overflow_hidden();
+    let slot = match col.size.as_ref().map(|s| s.measure()) {
+        Some(Measure::Cells(n)) => slot.flex_basis(px(n as f32 * cell.w)).flex_shrink(),
+        Some(Measure::Px(p)) => slot.flex_basis(px(p)).flex_shrink(),
+        Some(Measure::Percent(p)) => slot.flex_basis(relative(p / 100.)).flex_shrink(),
+        Some(Measure::Share(w)) => {
+            let mut slot = slot.flex_basis(px(0.)).flex_shrink();
+            slot.style().flex_grow = Some(w as f32);
+            slot
+        }
+        // `fit` is a problem for a column (its lines are laid out apart): one share.
+        None | Some(Measure::Fit) => slot.flex_basis(px(0.)).flex_grow().flex_shrink(),
+    };
+    match col.align.as_deref() {
+        Some("right") => slot.justify_end(),
+        Some("center") => slot.justify_center(),
+        _ => slot,
+    }
+}
+
 /// `self` and `items` as flexbox's alignment across.
 fn across(a: Align) -> gpui::AlignItems {
     match a {
@@ -706,30 +730,60 @@ impl Portal {
 
     /// A table: its header over its rows, as many as it has room for.
     #[allow(clippy::too_many_arguments)]
+    /// A table: a header, its rows, and a footer of totals when a column has one, every line
+    /// on the same columns (`size` in any unit but `fit`, a cell between them, `align`). A cell
+    /// is its column's `value` text, or its `cell` template's nodes; `heat` tints it from the
+    /// theme's `neg` to `pos`.
+    #[allow(clippy::too_many_arguments)]
     fn table(&mut self, st: &State, lk: &Look, n: &Node, id: &str, key: &str, tx: text::Tx, cx: &mut Context<Self>) -> AnyElement {
         let Kind::Table { columns, .. } = &n.kind else { unreachable!("a table") };
         let cell = self.cell;
         let c = (cell.w, cell.h);
         let rows = state::items(st, n).to_vec();
         let columns = columns.clone();
-        // The header sits over the rows' text: the rows' pad, the header's own look.
+        let line = |d: gpui::Div| d.flex().flex_row().gap(px(cell.w)).h(px(cell.h));
+        // The header and the footer sit over the rows' text: the rows' pad, their own look.
         let [_, row_r, _, row_l] = Look::pad(&style::inner_in(st, n, "row", &[]), c);
-        let head = lk.boxed(div().flex().flex_row().h(px(cell.h)), &style::inner(st, "table.header", &[]), c, [0., row_r, 0., row_l]).children(columns.iter().map(|c| div().flex_1().child(c.title.clone())));
-        let body: Vec<AnyElement> = shown_rows(st, n)
-            .map(|k| (k, &rows[k]))
-            .map(|(k, r)| {
-                let target = id.to_string();
-                let under = id.to_string();
-                lk.boxed(div().id(k).relative().flex().flex_row().h(px(cell.h)), &style::inner_in(st, n, "row", &style::row_states(st, n, k)), c, [0.; 4])
+        let head = lk.boxed(line(div()), &style::inner(st, "table.header", &[]), c, [0., row_r, 0., row_l]).children(columns.iter().map(|col| column_slot(col, cell).child(col.title.clone())));
+        let mut body: Vec<AnyElement> = Vec::new();
+        for k in shown_rows(st, n).collect::<Vec<_>>() {
+            let r = &rows[k];
+            let (target, under) = (id.to_string(), id.to_string());
+            let mut cells: Vec<AnyElement> = Vec::new();
+            for (ci, col) in columns.iter().enumerate() {
+                let shows = match &col.cell {
+                    // A cell template's nodes, its buttons the row's parts: the column, then the path.
+                    Some(t) => {
+                        let was = self.row.replace((id.to_string(), k));
+                        let built = self.node(st, lk, &crate::model::row_instance(t, r, (k, rows.len())), false, &format!("{id}/row{k}.{ci}"), cx);
+                        self.row = was;
+                        built
+                    }
+                    None => text::line(&tx, &col.value, r, Ink::default(), false),
+                };
+                let tint = col.heat.as_ref().and_then(|h| h.at(r)).and_then(|t| look::heat(st, t));
+                cells.push(column_slot(col, cell).when_some(tint, |d, t| d.bg(t)).child(shows).into_any_element());
+            }
+            body.push(
+                lk.boxed(line(div()).id(k).relative(), &style::inner_in(st, n, "row", &style::row_states(st, n, k)), c, [0.; 4])
                     .child(measure(&self.laid, move |l, b| l.hits.push((b, hit(under, Some(k), None, false)))))
                     .on_mouse_down(MouseButton::Left, cx.listener(move |this, e: &MouseDownEvent, _, cx| {
-                cx.stop_propagation();
-                this.send(row_press(&target, k, e), cx)
+                        cx.stop_propagation();
+                        this.send(row_press(&target, k, e), cx)
+                    }))
+                    .children(cells)
+                    .into_any_element(),
+            );
+        }
+        // Each total under its column, a negative one in `neg`.
+        let foot = columns.iter().any(|col| col.total.is_some()).then(|| {
+            let neg = style::Theme::of(st).colour("neg").and_then(|h| look::parse(&h));
+            let cells = crate::model::table_footer(&columns, &rows);
+            lk.boxed(line(div().flex_none()), &style::inner(st, "table.total", &[]), c, [0., row_r, 0., row_l]).children(columns.iter().zip(cells).map(|(col, t)| {
+                let below = col.total(&rows).is_some_and(|(sum, _)| sum < 0.);
+                column_slot(col, cell).when(below, |d| d.when_some(neg, |d, n| d.text_color(n))).child(t)
             }))
-                    .children(columns.iter().map(|c| div().flex_1().min_w_0().child(text::line(&tx, &c.value, r, Ink::default(), false))))
-                    .into_any_element()
-            })
-            .collect();
+        });
         // The rows it has room for, below the header.
         let fits = id.to_string();
         let wheel = id.to_string();
@@ -744,7 +798,7 @@ impl Portal {
             .child(measure_whole(&self.laid, move |l, b| l.sizes.push((fits, b))))
             .on_scroll_wheel(cx.listener(move |this, e: &ScrollWheelEvent, _, cx| this.wheel(&wheel, e, cx)))
             .children(body);
-        div().flex().flex_col().size_full().child(head).child(rows_area).into_any_element()
+        div().flex().flex_col().size_full().child(head).child(rows_area).children(foot).into_any_element()
     }
 
     /// A tab bar over the shown tab, in the shape the theme gives it.

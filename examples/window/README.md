@@ -38,7 +38,7 @@ until `fictty screenshot` lands in phase 2.
 | `player` | album art, title, progress, transport, up next | the art is an `svg` placeholder in the window; the title is plain text | the art draws (`svg`, native step 5 / phase 3); the title is a `display` type role (step 2); progress is a `slider` |
 | `landing` | a hero, calls to action, a feature row, pricing | none since step 3 | done: `display` type (step 2); the page scrolls, the calls to action and nav are justified, and the features and prices are grids of as many as fit, up to three (step 3) |
 | `calendar` | a week, with events at times and of different lengths | none since step 3 | done: each day's events are data, an `each` with `stack`, floated at `y` from the start, as tall as they last (step 3) |
-| `sheet` | a dense table with heat colours and totals | heat and totals are placeholders in the window | heat colours, totals, column widths and alignment (native step 3) |
+| `sheet` | a dense table with heat colours and totals | none since step 4 | done: column widths and alignment the same over the header, rows and totals, heat tints from the theme's `neg` to `pos`, totals in a footer (4c) |
 
 ## Pushing the styling
 

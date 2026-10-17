@@ -23,7 +23,7 @@ fn node(s: &mut fictty::Headless, id: &str) -> Shown {
 #[test]
 fn the_rebuilt_screens_wear_every_theme_with_nothing_cut() {
     let themes: Vec<String> = fictty::engine::load_themes(&dir().join("themes.json")).unwrap().into_keys().collect();
-    for name in ["settings", "landing", "calendar", "chat", "kanban"] {
+    for name in ["settings", "landing", "calendar", "chat", "kanban", "sheet"] {
         for theme in &themes {
             for (w, h) in [(160, 44), (110, 30)] {
                 let mut s = screen(name, theme, w, h);
@@ -107,4 +107,15 @@ fn settings_density_is_tabs_without_pages() {
     let (x, y) = s.at("density", None, Some(2)).unwrap();
     s.mouse("press", x, y).mouse("release", x, y);
     assert_eq!(node(&mut s, "density").selected, Some(2));
+}
+
+/// The sheet's quarters total in a footer, read back, and its numbers sit right.
+#[test]
+fn sheet_totals_its_quarters() {
+    let mut s = screen("sheet", "paper", 140, 30);
+    let t = node(&mut s, "t");
+    assert_eq!(t.rows, Some(14));
+    let footer = t.footer.expect("a footer");
+    assert!(footer.starts_with("Total · "), "{footer}");
+    assert_eq!(footer.split(" · ").filter(|c| c.parse::<u32>().is_ok()).count(), 4, "a total for each quarter: {footer}");
 }

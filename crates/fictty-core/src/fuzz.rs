@@ -848,6 +848,7 @@ mod tests {
             id: Some(id.into()),
             title: None,
             text: String::new(),
+            footer: None,
             focus: false,
             rows: None,
             selected: None,
