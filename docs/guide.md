@@ -5,9 +5,18 @@ is the short version. To see it first: `curl -fsSL https://fictty.com/try.sh | s
 showcase in your terminal (it fetches fictty into `~/.fictty`, building it or using a release
 binary; delete that folder to undo). Releases are described in [releasing.md](releasing.md).
 
+**Where fictty is now (17 October 2026).** fictty is becoming a native window (GPUI, macOS) and
+the terminal is being dropped. Everything below still runs in the terminal, and the window has
+most of it: layout (`fit`, margins, grids, wrap, scroll), whole-style themes, type roles, lists,
+trees and tables with row templates. Charts and big type, `svg`, layers (callouts, rings) and
+the hover tip are still terminal-only; icons are still to come. New fields are window-only
+(`fictty run --window`). How it's
+built is in [the architecture](design/architecture.md), every component and what's next in
+[the components](components.md), and what changed when in [the changelog](CHANGELOG.md).
+
 ## The model in one picture
 
-A terminal UI that is one serializable value. The whole screen (a tree of components, the data
+A UI that is one serializable value. The whole screen (a tree of components, the data
 sources they bind to and the keys) is plain JSON. A running screen holds no other state, so you can
 read the UI out, push a whole new one in, or replace one node, and it re-renders.
 
@@ -19,7 +28,7 @@ State { ui, data, store (versioned entries), local (view state by id), focus, th
    │  update(state, msg) -> effects        (pure)          ← serializable, `get --state`
    │  view(state) -> frame                 (pure)
    ▼
-terminal
+the native window (GPUI), or the terminal until it goes
 ```
 
 Who owns what: the **UI** is the agent's (a push replaces it), the **store** is shared (only
@@ -529,8 +538,9 @@ fictty::App::new(ui)
 ## Not yet
 
 A policy on what a pushed UI may `run` (today: anything you could run yourself, over a socket
-only you can open), flexbox layout, writes by path with a revision per record, `watch`, a widget
-registry for embedding apps, history. The order is in [PLAN.md](PLAN.md).
+only you can open), form controls (a checkbox, a select, a slider), writes by path with a
+revision per record, `watch`, project components, a widget registry for embedding apps, history.
+What each component still lacks in the window is in [the components](components.md). The order is in [PLAN.md](PLAN.md).
 
 ## Stress demos
 
