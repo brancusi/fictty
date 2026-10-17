@@ -220,6 +220,7 @@ mod window {
         let mut checks = fuzz::editing();
         checks.push(fuzz::laid_out());
         checks.push(fuzz::fitted());
+        checks.push(fuzz::revealed());
         checks
     }
 
@@ -244,6 +245,22 @@ mod window {
             {"type": "list", "id": "l", "items": rows, "size": "fit", "max": 6, "border": true},
             {"type": "editor", "id": "e", "text": "a note\nthat grows", "size": "fit", "max": 10, "border": true},
             {"type": "text", "id": "after", "text": "after"}]}, "focus": "e"}), 50, 24);
+    }
+
+    #[test]
+    fn scrollers_grids_and_wrapping_rows_in_the_window() {
+        let items: Vec<String> = (0..20).map(|i| format!("item {i}")).collect();
+        let tags: Vec<Value> = ["one", "two", "three", "four", "five", "six"].iter().map(|t| json!({"type": "button", "id": format!("tag-{t}"), "label": t, "size": "fit"})).collect();
+        let cards: Vec<Value> = (0..7).map(|i| json!({"type": "button", "id": format!("card{i}"), "label": format!("card {i}"), "size": 3, "span": 1 + i % 2})).collect();
+        let tiles: Vec<Value> = (0..8).map(|i| json!({"type": "button", "id": format!("tile{i}"), "label": format!("tile {i}"), "size": 14})).collect();
+        fuzzed(json!({"root": {"type": "col", "id": "page", "scroll": true, "gap": 1, "children": [
+            {"type": "input", "id": "name", "placeholder": "name"},
+            {"type": "row", "id": "tags", "wrap": true, "gap": 1, "size": "fit", "children": tags},
+            {"type": "list", "id": "l", "items": items, "size": 6, "border": true},
+            {"type": "grid", "id": "g", "cols": {"min": 14}, "gap": 1, "size": "fit", "children": cards},
+            {"type": "row", "id": "shelf", "scroll": true, "size": 3, "children": tiles},
+            {"type": "editor", "id": "e", "text": "a note at the bottom", "size": 4, "border": true},
+            {"type": "text", "id": "end", "text": "the end"}]}, "focus": "name"}), 44, 9);
     }
 
     #[test]

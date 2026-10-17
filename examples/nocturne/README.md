@@ -25,7 +25,8 @@ UI beside them, into `$TMPDIR/fictty-nocturne`, so nothing binary is checked in.
 title, lyric and note is made up.
 
 It fits a big screen and a laptop's: the sidebar goes below 230 cells, the rail below 150,
-the hero shrinks with the height, and the shelf holds as many covers a line as fit at 200
+the room scrolls (`scroll` on the main column: the wheel, Page Down, and the album chosen
+brought into view), and the shelf holds as many covers a line as fit at 200
 pixels or more each (`cols: {"min": "200px"}`). `tests/nocturne.rs` drives it in the window,
 written with `--no-art` (no Pillow).
 

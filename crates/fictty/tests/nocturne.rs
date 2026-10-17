@@ -34,18 +34,40 @@ fn press(s: &mut fictty::Headless, id: &str) {
 
 #[test]
 fn it_fits_a_laptop_and_a_big_screen_with_nothing_cut() {
-    for (w, h) in [(300, 56), (200, 45), (171, 36)] {
+    // A big screen, a 1440×900 laptop, a 1280×800 one, and a narrow window.
+    for (w, h) in [(300, 56), (171, 36), (152, 31), (120, 30)] {
         let mut s = nocturne(w, h);
         assert_eq!(s.state().problems, Vec::<String>::new(), "{w}x{h}");
         let cut: Vec<String> = shown(&mut s).into_iter().filter(|n| n.cut).map(|n| format!("{} {:?}: {}", n.kind, n.id, n.text)).collect();
         assert!(cut.is_empty(), "{w}x{h} cut {cut:?}");
-        assert!(has(&mut s, "tracks") && has(&mut s, "hero") && has(&mut s, "albums"), "{w}x{h}");
+        assert!(has(&mut s, "hero") && has(&mut s, "albums"), "{w}x{h}");
+        assert_eq!(has(&mut s, "tracks"), w >= 150, "{w}x{h}: Up Next where there's room for the rail");
         assert_eq!(has(&mut s, "side"), w >= 230, "the sidebar only where there's room for it");
         // One shelf, as many covers to a line as fit at 200 px each.
         let albums = shown(&mut s).into_iter().find(|n| n.id.as_deref() == Some("albums")).unwrap();
         let fit = (albums.rect.unwrap().width as f32 * 8.4 / 200.) as usize;
         assert!(albums.cols.is_some_and(|c| c >= 3 && c.abs_diff(fit) <= 1), "{w}x{h}: {:?} to a line, about {fit} fit", albums.cols);
     }
+}
+
+/// On a laptop the room scrolls: the shelf is as tall as its covers, the wheel and Page Down
+/// move down it, and an album chosen below the fold is brought into view.
+#[test]
+fn the_room_scrolls_to_the_album_chosen() {
+    let mut s = nocturne(152, 31);
+    let main = shown(&mut s).into_iter().find(|n| n.id.as_deref() == Some("main")).unwrap();
+    let (at, held) = main.scroll.expect("the room holds more than a laptop shows");
+    assert_eq!(at, 0., "it starts at the top, the hero in view");
+    assert!(held > 31, "{held}");
+    assert!(has(&mut s, "hero"));
+    // Down the shelf a line at a time until the last album: the room follows.
+    s.keys(&["down"; 6]);
+    let (at, _) = shown(&mut s).into_iter().find(|n| n.id.as_deref() == Some("main")).unwrap().scroll.unwrap();
+    assert!(at > 0., "the room scrolled to the album chosen");
+    assert!(!s.state().problems.iter().any(|p| p.contains("scroll")), "{:?}", s.state().problems);
+    s.keys(&["up"; 6]);
+    let (back, _) = shown(&mut s).into_iter().find(|n| n.id.as_deref() == Some("main")).unwrap().scroll.unwrap();
+    assert!(back < at, "and back up with it: {back} after {at}");
 }
 
 #[test]
@@ -86,9 +108,10 @@ fn space_plays_love_loves_and_search_narrows_the_shelf() {
 #[test]
 fn browse_puts_the_shelf_where_the_hero_was() {
     let mut s = nocturne(300, 56);
+    let shelf_y = |s: &mut fictty::Headless| shown(s).into_iter().find(|n| n.id.as_deref() == Some("albums")).and_then(|n| n.rect).unwrap().y;
+    let (now, hero) = (shelf_y(&mut s), shown(&mut s).into_iter().find(|n| n.id.as_deref() == Some("hero")).and_then(|n| n.rect).unwrap());
     let (x, y) = s.at("nav", Some(1), None).unwrap();
     s.mouse("press", x, y).mouse("release", x, y);
     assert!(!has(&mut s, "hero"), "no hero");
-    let albums = shown(&mut s).into_iter().find(|n| n.id.as_deref() == Some("albums")).unwrap();
-    assert!(albums.rect.unwrap().height > 40, "the shelf takes the room: {:?}", albums.rect);
+    assert!(shelf_y(&mut s) <= hero.y + 4 && shelf_y(&mut s) < now, "the shelf moves up where the hero was: {} from {now}", shelf_y(&mut s));
 }

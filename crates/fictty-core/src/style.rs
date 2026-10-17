@@ -805,6 +805,8 @@ pub fn problems(st: &State, nodes: &[&Node]) -> Vec<String> {
             ("max", n.max.as_ref().map(std::slice::from_ref)),
             ("gap", gap.map(Gap::written)),
             ("float margin", n.float.as_ref().and_then(|f| f.margin.as_ref()).map(Lens::written)),
+            ("float x", n.float.as_ref().and_then(|f| f.x.as_ref()).map(std::slice::from_ref)),
+            ("float y", n.float.as_ref().and_then(|f| f.y.as_ref()).map(std::slice::from_ref)),
             ("cols min", match n.cols() {
                 Some(crate::model::Cols::Fill { min }) => Some(std::slice::from_ref(min)),
                 _ => None,
@@ -812,6 +814,11 @@ pub fn problems(st: &State, nodes: &[&Node]) -> Vec<String> {
         ];
         for (field, ls) in lens {
             out.extend(th.len_problems(field, ls.unwrap_or_default()).into_iter().map(|p| format!("{who}: {p}")));
+        }
+        if n.scroll && n.scrolls_down().is_none() {
+            out.push(format!("{} {who}: only a col, row, grid or each scrolls (a list, a text and an editor scroll themselves)", n.kind_name()));
+        } else if n.scroll && n.id.is_none() {
+            out.push(format!("{} {who}: scroll keeps its offset by id, so it needs an id", n.kind_name()));
         }
         match n.cols() {
             Some(crate::model::Cols::Fill { .. }) if n.id.is_none() => {

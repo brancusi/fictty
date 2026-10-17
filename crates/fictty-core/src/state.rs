@@ -100,6 +100,12 @@ pub struct State {
     /// Where the focus was before it last moved (`{"focus": "$prev"}` goes back there).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub prev_focus: Option<String>,
+    /// The node the focus moved to (or whose selected row moved), until the scrollers around it
+    /// have brought it into view, a list's selected row rather than all of it:
+    /// the engine scrolls them from where the next frame laid it out (`Msg::Pan`), then says
+    /// it's done (`Msg::Revealed`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reveal: Option<String>,
     /// Keys typed into an editor whose hosted text is still loading: (entry, editor, key), typed
     /// in order once it lands.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -173,12 +179,14 @@ fn has_each(n: &Node) -> bool {
 /// its bound array.
 fn expand_node(st: &State, n: &Node) -> Node {
     match &n.kind {
-        Kind::Each { template, row, wrap, cols, gap, justify, items: across } => {
+        Kind::Each { template, row, stack, wrap, cols, gap, justify, items: across } => {
             let items = n.bind.as_deref().and_then(|b| value_of(st, b)).and_then(Value::as_array).cloned().unwrap_or_default();
-            let children: Vec<Node> = items.iter().map(|it| expand_node(st, &crate::model::instance(template, it))).collect();
+            let count = items.len();
+            let children: Vec<Node> = items.iter().enumerate().map(|(k, it)| expand_node(st, &crate::model::instance(template, it, (k, count)))).collect();
             let (gap, justify, items, wrap) = (gap.clone(), *justify, *across, *wrap);
             let kind = match cols {
                 Some(cols) => Kind::Grid { children, cols: cols.clone(), gap, items },
+                None if *stack => Kind::Stack { children },
                 None if *row => Kind::Row { children, gap, justify, items, wrap },
                 None => Kind::Col { children, gap, justify, items, wrap },
             };
@@ -344,6 +352,18 @@ pub struct Local {
     /// `$width` or `$height` (the view reports it).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub area: Option<(u16, u16)>,
+    /// How far a scrolling container is scrolled, in cells along it (rows down a column, columns
+    /// across a row), fractions too.
+    #[serde(default, skip_serializing_if = "is_nothing")]
+    pub offset: f32,
+    /// A scrolling container's view and what it holds, in cells along it, as the last frame laid
+    /// them out (the view reports it).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub extent: Option<(f32, f32)>,
+}
+
+fn is_nothing(n: &f32) -> bool {
+    *n == 0.
 }
 
 fn is_zero(n: &u16) -> bool {
@@ -375,6 +395,97 @@ pub fn view_offset(local: Option<&Local>, len: usize, fit: usize, cols: usize) -
         Some(top) => top.clamp(0.0, most),
         None => follow as f32,
     }
+}
+
+/// Move the view under the mouse by `lines`: a list's (its lines) or a scrolling container's (its
+/// cells), and what it can't take, at its end, the next scroller out, in cells.
+fn pan_from(st: &mut State, id: &str, lines: f32) {
+    let Some(n) = st.node(id) else { return };
+    let left = if n.rows().is_some() && n.focusable() && st.local.get(id).is_some_and(|l| l.rows > 0) {
+        let height = n.rows().map_or(1, crate::model::Rows::height) as f32;
+        let before = st.local.get(id).and_then(|l| l.top);
+        let len = items(st, n).len();
+        let (cols, fit) = (per_line(st, n), st.local.get(id).map_or(0, |l| l.rows as usize));
+        let at = view_offset(st.local.get(id), len, fit, cols);
+        pan(st, id, lines);
+        let moved = view_offset(st.local.get(id), len, fit, cols) - at;
+        if before.is_none() && moved == 0. {
+            st.local.entry(id.to_string()).or_default().top = None;
+        }
+        (lines - moved) * height
+    } else if n.scrolls_down().is_some() {
+        scroll_by(st, id, lines)
+    } else {
+        lines
+    };
+    if left.abs() < 0.001 {
+        return;
+    }
+    if let Some(out) = scrollers_around(st, id).into_iter().find(|s| s != id) {
+        let left = scroll_by(st, &out, left);
+        if left.abs() >= 0.001 {
+            pan_from(st, &out, left);
+        }
+    }
+}
+
+/// Scroll a container by `cells` along it, kept inside what it holds: what it couldn't take.
+fn scroll_by(st: &mut State, id: &str, cells: f32) -> f32 {
+    let local = st.local.entry(id.to_string()).or_default();
+    let Some((view, content)) = local.extent else { return cells };
+    let to = (local.offset + cells).clamp(0., (content - view).max(0.));
+    let took = to - local.offset;
+    local.offset = to;
+    cells - took
+}
+
+/// The scrolling containers around node `id` in the tree shown, innermost first (itself first
+/// if it scrolls).
+pub fn scrollers_around(st: &State, id: &str) -> Vec<String> {
+    fn find<'a>(st: &State, n: &'a Node, id: &str, path: &mut Vec<&'a Node>) -> bool {
+        if !shown(st, n) {
+            return false;
+        }
+        path.push(n);
+        if n.id.as_deref() == Some(id) {
+            return true;
+        }
+        let found = match &n.kind {
+            Kind::Tabs { children, .. } => children.get(tab_of(st, n).min(children.len().saturating_sub(1))).is_some_and(|c| find(st, c, id, path)),
+            _ => n.children().iter().any(|c| find(st, c, id, path)),
+        };
+        if !found {
+            path.pop();
+        }
+        found
+    }
+    let mut path = Vec::new();
+    find(st, tree!(st), id, &mut path);
+    path.iter().rev().filter(|n| n.scrolls_down().is_some()).filter_map(|n| n.id.clone()).collect()
+}
+
+/// Whether `key` pages the scroller around the focus rather than acting on the focus (whose
+/// list would page its own selection), so it doesn't bring the focus back into view.
+pub fn pages_a_scroller(st: &State, key: &str) -> bool {
+    let paging = matches!(resolve(st, key), Some(Action::Named(n)) if n == "page_down" || n == "page_up");
+    paging && !st.focus.as_deref().and_then(|f| st.node(f)).is_some_and(|n| n.rows().is_some() || matches!(n.kind, Kind::Table { .. }))
+}
+
+/// A page down (or up, `dir` -1): the focused list's selection by the rows it shows, else the
+/// innermost scroller around the focus by most of its view.
+fn page(st: &mut State, dir: isize) -> Vec<Effect> {
+    let Some(focus) = st.focus.clone() else { return vec![] };
+    if let Some(n) = st.node(&focus).filter(|n| n.rows().is_some() || matches!(n.kind, Kind::Table { .. })) {
+        let cols = per_line(st, n);
+        let fit = st.local.get(&focus).map_or(0, |l| l.rows as usize);
+        let by = (fit / cols).max(1) * cols;
+        return step(st, move |sel, len| if dir > 0 { (sel + by).min(len.saturating_sub(1)) } else { sel.saturating_sub(by) });
+    }
+    if let Some(s) = scrollers_around(st, &focus).into_iter().next() {
+        let view = st.local.get(&s).and_then(|l| l.extent).map_or(0., |(v, _)| v);
+        scroll_by(st, &s, dir as f32 * (view - 1.).max(1.));
+    }
+    vec![]
 }
 
 /// Move a list's view by `lines`, from where it is now.
@@ -443,8 +554,15 @@ pub enum Msg {
     /// The wheel over a node: rows to move (negative is up).
     Scroll { id: String, by: isize },
     /// The view of a list moved by `lines` (fractions too), as a trackpad moves it; the
-    /// selection stays where it is.
+    /// selection stays where it is. On a scrolling container it's cells along it. What the
+    /// node can't take (a list at its end, a node that doesn't scroll) goes to the scroller
+    /// around it.
     Pan { id: String, lines: f32 },
+    /// A scrolling container's view and what it holds, in cells along it, as a frame laid them
+    /// out.
+    Extent { id: String, view: f32, content: f32 },
+    /// The focused node is in view in every scroller around it (see `State::reveal`).
+    Revealed,
     /// A click inside an editor's or input's text, at a cell relative to it: focus it and put the
     /// caret there, or with `extend` (Shift held) stretch the selection to it. A second click on
     /// the same cell soon after selects a word, a third the line.
@@ -560,7 +678,7 @@ pub enum Pick {
 pub fn update(st: &mut State, msg: Msg) -> Vec<Effect> {
     let checks = matches!(msg, Msg::Push { .. } | Msg::Patch { .. } | Msg::Data { .. } | Msg::Write { .. } | Msg::Theme { .. } | Msg::Key { .. } | Msg::Font { .. });
     let writes = st.store_writes;
-    let quiet = matches!(msg, Msg::Tick { .. } | Msg::Hover { .. } | Msg::Stats { .. } | Msg::Activity { .. } | Msg::Caps { .. } | Msg::Size { .. });
+    let quiet = matches!(msg, Msg::Tick { .. } | Msg::Hover { .. } | Msg::Stats { .. } | Msg::Activity { .. } | Msg::Caps { .. } | Msg::Size { .. } | Msg::Extent { .. } | Msg::Revealed);
     // A source's new value changes only the rows of the nodes that read it.
     let only = match &msg {
         Msg::Data { name, .. } => Some(name.clone()),
@@ -570,6 +688,8 @@ pub fn update(st: &mut State, msg: Msg) -> Vec<Effect> {
     // on now, before re-deriving rows makes a selection follow its old row instead.
     let moves = matches!(msg, Msg::Key { .. } | Msg::Click { .. } | Msg::Pick { .. } | Msg::Set { .. } | Msg::Scroll { .. });
     let was = st.focus.clone();
+    let was_row = st.focus.as_deref().and_then(|f| st.local.get(f)).map(|l| l.selected);
+    let keyed = matches!(&msg, Msg::Key { key } if !pages_a_scroller(st, key));
     let fx = apply(st, msg);
     // A tick that took a lasting write away changed the store like any write.
     let quiet = quiet && st.store_writes == writes;
@@ -589,6 +709,14 @@ pub fn update(st: &mut State, msg: Msg) -> Vec<Effect> {
     // focus on one that's gone: it moves, whatever the message.
     if !quiet && let Some(to) = moved_focus(st, &focus_order(st)) {
         st.focus = to;
+    }
+    // Wherever the focus went, or the row it's on in a list, it's brought into view once the
+    // next frame says where it is, and on any key, which acts on it (typing in a field scrolled
+    // away brings it back); not where a UI starts it (a screen opens at its top), nor for the
+    // wheel, which leaves the focus where it is.
+    let row = st.focus.as_deref().and_then(|f| st.local.get(f)).map(|l| l.selected);
+    if keyed || (was.is_some() && st.focus != was) || (st.focus == was && row != was_row) {
+        st.reveal = st.focus.clone();
     }
     // A selection, a write or a new row can point an editor at an entry it hasn't shown yet.
     fields(st);
@@ -897,11 +1025,17 @@ fn apply(st: &mut State, msg: Msg) -> Vec<Effect> {
             vec![]
         }
         Msg::Pan { id, lines } => {
-            let list = st.node(&id).is_some_and(|n| n.focusable() && n.field().is_none());
-            if !list || st.local.get(&id).is_none_or(|l| l.rows == 0) {
-                return vec![];
-            }
-            pan(st, &id, lines);
+            pan_from(st, &id, lines);
+            vec![]
+        }
+        Msg::Extent { id, view, content } => {
+            let local = st.local.entry(id).or_default();
+            local.extent = Some((view, content));
+            local.offset = local.offset.clamp(0., (content - view).max(0.));
+            vec![]
+        }
+        Msg::Revealed => {
+            st.reveal = None;
             vec![]
         }
         Msg::Tick { now_ms } => {
@@ -2074,6 +2208,8 @@ fn resolve(st: &State, key: &str) -> Option<Action> {
         "k" | "up" => "up",
         "g" | "home" => "top",
         "G" | "end" => "bottom",
+        "pgdn" => "page_down",
+        "pgup" => "page_up",
         "tab" => "focus_next",
         "s-tab" => "focus_prev",
         "h" | "left" => "tab_prev",
@@ -2348,6 +2484,8 @@ fn act(st: &mut State, a: Action) -> Vec<Effect> {
             }
             "next_row" => step(st, |sel, len| (sel + 1).min(len.saturating_sub(1))),
             "prev_row" => step(st, |sel, _| sel.saturating_sub(1)),
+            "page_down" => page(st, 1),
+            "page_up" => page(st, -1),
             "top" => step(st, |_, _| 0),
             "bottom" => step(st, |_, len| len.saturating_sub(1)),
             "tab_next" => switch(st, 1),

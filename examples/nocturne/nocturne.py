@@ -417,7 +417,7 @@ controls = {"type": "row", "size": "fit", "children": [{"type": "col", "max": "5
     ]},
 ]}]}
 
-hero = {"type": "row", "id": "hero", "size": "36%", "min": 10, "max": 16, "gap": 5, "items": "center", "when": NOW, "children": [
+hero = {"type": "row", "id": "hero", "size": 14, "gap": 5, "items": "center", "when": NOW, "children": [
     {"type": "image", "id": "art", "src": "{art}", "bind": "@albums", "aspect": 1, "self": "stretch", "variant": "art", "fit": "cover"},
     {"type": "col", "id": "playing", "justify": "center", "gap": 0, "children": [
         T("<label>NOW PLAYING</>     <caption>{label} · {year}</>", bind="@albums", tone="faint", size="fit", wrap=False, when="playing"),
@@ -439,14 +439,14 @@ def shelf():
     """The shelf: as many covers to a line as fit at 200 pixels or more each, so a cover is
     under 4/3 of that wide wherever three or more fit (the main column always holds three). A
     row is as tall as the widest cover and its two lines; rows as tall as what they show are
-    step 4's."""
+    step 4's. In the scrolling main column it's as tall as all its rows: the room scrolls."""
     cell_h, least = 24, 200
     rows = math.ceil((least * 4 / 3 + 8) / cell_h + 2.2)
     return {"type": "list", "id": "albums", "bind": "albums", "filter": "find", "row": {**card, "size": rows},
             "cols": {"min": f"{least}px"}}
 
 
-main = {"type": "col", "id": "main", "gap": 1, "children": [
+main = {"type": "col", "id": "main", "gap": 1, "scroll": True, "children": [
     {"type": "row", "size": 2, "items": "center", "gap": 3, "children": [
         T("<brand>Nocturne</>", size="fit", wrap=False, when=SLIM),
         T("<headline>Listen Now</>", size="fit", wrap=False, when=NOW),

@@ -32,7 +32,8 @@ pub struct Shown {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub selected: Option<usize>,
     /// Where a list's view is and how many lines it has, while it has more than it shows: lines
-    /// scrolled past (fractions too) and the lines in all.
+    /// scrolled past (fractions too) and the lines in all. A scrolling container's is in cells
+    /// along it: scrolled past, and what it holds.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub scroll: Option<(f32, usize)>,
     /// How many rows a list lays out to a line, while it's more than one (its `cols`, counted
@@ -143,7 +144,7 @@ fn shown(st: &State, n: &Node, depth: usize, key: &str, (rects, cut): Frame) -> 
                 s.selected = Some(at);
                 s.text = match (&rows.item, &rows.row, items.get(at)) {
                     (Some(t), _, Some(r)) => lines(t, r),
-                    (None, Some(row), Some(r)) => row_text(st, row, r),
+                    (None, Some(row), Some(r)) => row_text(st, row, r, (at, items.len())),
                     (None, _, r) => scalar(r),
                     _ => String::new(),
                 };
@@ -176,8 +177,8 @@ fn shown(st: &State, n: &Node, depth: usize, key: &str, (rects, cut): Frame) -> 
 /// The readback as an outline, a line per node, indented by depth:
 /// What a row drawn from a node template shows: its texts, labels and pictures' files, in order,
 /// leaving out what a `when` hides.
-fn row_text(st: &State, template: &Node, row: &Value) -> String {
-    let n = crate::model::row_instance(template, row);
+fn row_text(st: &State, template: &Node, row: &Value, at: (usize, usize)) -> String {
+    let n = crate::model::row_instance(template, row, at);
     let mut all = Vec::new();
     n.walk_shown(&|n| state::tab_of(st, n), &|n| state::shown(st, n), &mut all);
     let parts: Vec<String> = all
@@ -197,10 +198,15 @@ fn is_zero(n: &usize) -> bool {
     *n == 0
 }
 
-/// A list's view and its lines, while it has more lines than it shows.
+/// A list's view and its lines, while it has more lines than it shows; a scroller's offset and
+/// content, while it holds more than its view.
 fn s_scroll(st: &State, n: &Node) -> Option<(f32, usize)> {
-    n.rows()?;
     let local = st.local.get(n.id.as_deref()?)?;
+    if n.scrolls_down().is_some() {
+        let (view, content) = local.extent?;
+        return (content > view + 0.5).then(|| ((local.offset * 10.).round() / 10., content.round() as usize));
+    }
+    n.rows()?;
     let cols = state::per_line(st, n);
     let (len, fit) = (state::items(st, n).len(), local.rows as usize);
     let total = len.div_ceil(cols);

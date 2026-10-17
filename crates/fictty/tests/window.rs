@@ -1097,13 +1097,15 @@ fn fit_makes_a_node_as_wide_as_what_it_shows_and_gives_way_when_there_isnt_room(
     for w in [30u16, 40, 50, 60, 70, 80, 100] {
         let mut s = window(ui.clone(), w, 6);
         let [r, t, cut, b, boxed, rest] = ["r", "t", "cut", "b", "boxed", "rest"].map(|id| node(&mut s, id));
-        let [r, t, c, b, x, rest] = [r.rect, t.rect, cut.rect, b.rect, boxed.rect, rest.rect].map(Option::unwrap);
+        let [r, t, c, b, x] = [r.rect, t.rect, cut.rect, b.rect, boxed.rect].map(Option::unwrap);
+        // A share squeezed to nothing shows nothing, so it has no rectangle.
+        let rest = rest.rect.map_or(0, |r| r.width);
         // The texts' widths, the button's face (its label and padding) and the box's title
         // inside its border: 12 + 20 + 7 + 14 = 53 columns.
         if r.width >= 53 {
             assert_eq!((t.width, c.width, b.width, x.width), (12, 20, 7, 14), "at {w}: as wide as they show");
             assert!(!cut.cut, "at {w}: whole while there's room");
-            assert_eq!(rest.width, r.width - 53, "at {w}: a share takes what's left");
+            assert_eq!(rest, r.width - 53, "at {w}: a share takes what's left");
         } else {
             assert!(cut.cut && t.width + c.width + b.width + x.width <= r.width, "at {w}: they give way: {t:?} {c:?} {b:?} {x:?} in {r:?}");
         }
@@ -1295,6 +1297,37 @@ fn an_each_with_cols_is_a_grid_of_its_items() {
     assert!(d.width.abs_diff(a.width) <= 1, "as wide");
 }
 
+/// `{$index}` and `{$count}` in an `each` template say where an instance is (from 0) and of how
+/// many, in its ids and text alike; a list's row template has them too.
+#[test]
+fn an_each_knows_where_each_instance_is() {
+    let ui = json!({"root": {"type": "col", "children": [
+        {"type": "each", "bind": "steps", "template": {"type": "text", "id": "step-{$index}", "size": 1, "text": "{$index} of {$count}: {$item}"}},
+        {"type": "list", "id": "l", "items": ["a", "b", "c"], "row": {"type": "text", "size": 1, "text": "row {$index} of {$count} is {$item}"}},
+    ]}, "data": {"steps": {"value": ["mix", "rest", "bake"]}}, "focus": "l"});
+    let mut s = window(ui, 40, 10);
+    assert_eq!(node(&mut s, "step-2").text, "2 of 3: bake");
+    s.keys(&["down"]);
+    assert_eq!(node(&mut s, "l").text, "row 1 of 3 is b");
+}
+
+/// A calendar from data: an `each` with `stack` floats each event where its item says, `x` and
+/// `y` from the stack's corner, its height from the item too.
+#[test]
+fn events_float_where_their_data_puts_them() {
+    let ui = json!({"root": {"type": "each", "id": "day", "bind": "events", "stack": true, "template":
+        {"type": "text", "id": "ev-{$item.id}", "text": "{$item.name}", "float": {"x": "{$item.col}", "y": "{$item.start}", "width": 12, "height": "{$item.len}"}}},
+        "data": {"events": {"value": [
+            {"id": "a", "name": "standup", "col": 0, "start": 1, "len": 2},
+            {"id": "b", "name": "lunch", "col": 14, "start": 5, "len": 3},
+        ]}}});
+    let mut s = window(ui, 40, 12);
+    assert!(s.state().problems.is_empty(), "{:?}", s.state().problems);
+    let (a, b, day) = (node(&mut s, "ev-a").rect.unwrap(), node(&mut s, "ev-b").rect.unwrap(), node(&mut s, "day").rect.unwrap());
+    assert_eq!((a.x - day.x, a.y - day.y, a.width, a.height), (0, 1, 12, 2), "standup: {a:?} in {day:?}");
+    assert_eq!((b.x - day.x, b.y - day.y, b.height), (14, 5, 3), "lunch: {b:?}");
+}
+
 /// A grid's columns can each have a size: cells and pixels as written, shares of what's left.
 #[test]
 fn a_grids_columns_take_sizes_and_shares() {
@@ -1322,6 +1355,93 @@ fn a_grid_fits_as_many_columns_as_there_is_room_for() {
     let bad = window(json!({"root": {"type": "grid", "cols": {"min": 12}, "children": [{"type": "grid", "id": "h", "cols": ["50%", "*"], "children": []}]}}), 30, 6).state().problems.clone();
     assert!(bad.iter().any(|p| p.contains("needs an id")), "{bad:?}");
     assert!(bad.iter().any(|p| p.contains("column \"50%\" isn't cells, pixels or a share")), "{bad:?}");
+}
+
+/// A column with `scroll` holds more than it shows: what it holds is as tall as its children
+/// (shares too), the wheel scrolls it inside what it holds, the readback says where it is, and
+/// what's around it keeps its place.
+#[test]
+fn a_scrolling_column_scrolls_what_it_holds() {
+    let rows: Vec<Value> = (0..30).map(|i| json!({"type": "text", "id": format!("t{i}"), "text": format!("line {i}")})).collect();
+    let ui = json!({"root": {"type": "col", "children": [
+        {"type": "text", "id": "head", "size": 1, "text": "head"},
+        {"type": "col", "id": "body", "scroll": true, "children": rows},
+        {"type": "text", "id": "foot", "size": 1, "text": "foot"},
+    ]}});
+    let mut s = window(ui, 40, 12);
+    assert!(s.state().problems.is_empty(), "{:?}", s.state().problems);
+    let body = node(&mut s, "body");
+    let r = body.rect.unwrap();
+    assert_eq!(body.scroll, Some((0., 30)), "thirty lines held: {body:?}");
+    assert!(s.at("t0", None, None).is_some() && s.at("t29", None, None).is_none(), "the first shows, the last doesn't");
+    assert_eq!(node(&mut s, "foot").rect.unwrap().y, r.y + r.height, "the foot stays below it");
+    s.mouse("wheel-down", r.x + 2, r.y + 2);
+    assert_eq!(node(&mut s, "body").scroll.map(|(at, _)| at), Some(3.), "a notch is three lines");
+    assert!(s.at("t0", None, None).is_none(), "the first has gone up");
+    for _ in 0..20 {
+        s.mouse("wheel-down", r.x + 2, r.y + 2);
+    }
+    let at = node(&mut s, "body").scroll.unwrap().0;
+    let (view, held) = s.state().local["body"].extent.unwrap();
+    assert!((at - (held - view)).abs() < 0.11, "never past the end: {at} of {held} in {view}");
+    assert!(s.at("t29", None, None).is_some(), "the last shows");
+    s.mouse("wheel-up", r.x + 2, r.y + 2);
+    assert_eq!(node(&mut s, "body").scroll.map(|(a, _)| a), Some(at - 3.));
+}
+
+/// Tab onto a node below the fold brings it into view; Page Down scrolls the scroller around
+/// the focus by most of a view.
+#[test]
+fn the_focus_is_scrolled_into_view_and_page_down_pages() {
+    let buttons: Vec<Value> = (0..20).map(|i| json!({"type": "button", "id": format!("b{i}"), "label": format!("button {i}"), "size": 2})).collect();
+    let ui = json!({"root": {"type": "col", "id": "body", "scroll": true, "children": buttons}, "focus": "b0"});
+    let mut s = window(ui, 40, 10);
+    let view = node(&mut s, "body").rect.unwrap();
+    s.keys(&["tab"; 9]);
+    assert_eq!(s.state().focus.as_deref(), Some("b9"));
+    let b = node(&mut s, "b9").rect.unwrap();
+    assert!(b.y >= view.y && b.y + b.height <= view.y + view.height, "b9 {b:?} in the view {view:?}");
+    assert!(node(&mut s, "body").scroll.unwrap().0 > 0.);
+    // Back up to the top.
+    s.keys(&["s-tab"; 9]);
+    assert_eq!(node(&mut s, "body").scroll.map(|(a, _)| a), Some(0.), "b0 at the top again");
+    s.keys(&["pgdn"]);
+    let at = node(&mut s, "body").scroll.unwrap().0;
+    let shown = s.state().local["body"].extent.unwrap().0;
+    assert!((at - (shown - 1.)).abs() < 0.11, "a page is the view less a line: {at} of {shown}");
+}
+
+/// The wheel over a list scrolls the list; at its end, the scroller around it takes the rest.
+#[test]
+fn the_wheel_scrolls_a_list_first_then_what_holds_it() {
+    let items: Vec<Value> = (0..12).map(|i| json!({"id": format!("i{i}"), "name": format!("item {i}")})).collect();
+    let more: Vec<Value> = (0..20).map(|i| json!({"type": "text", "text": format!("after {i}")})).collect();
+    let mut kids = vec![json!({"type": "list", "id": "l", "size": 6, "item": "{name}", "items": items})];
+    kids.extend(more);
+    let mut s = window(json!({"root": {"type": "col", "id": "body", "scroll": true, "children": kids}}), 40, 12);
+    let l = node(&mut s, "l").rect.unwrap();
+    s.mouse("wheel-down", l.x + 2, l.y + 2);
+    assert!(node(&mut s, "l").scroll.is_some_and(|(at, _)| at > 0.), "the list scrolled");
+    assert_eq!(node(&mut s, "body").scroll.map(|(a, _)| a), Some(0.), "not the column yet");
+    // Over the same spot: the list, then what scrolls up under it.
+    for _ in 0..5 {
+        s.mouse("wheel-down", l.x + 2, l.y + 2);
+    }
+    assert!(node(&mut s, "body").scroll.unwrap().0 > 0., "the column took what the list couldn't");
+}
+
+/// A row with `scroll` scrolls across, and the wheel moves it; `scroll` needs an id and a
+/// container.
+#[test]
+fn a_scrolling_row_scrolls_across() {
+    let tiles: Vec<Value> = (0..10).map(|i| json!({"type": "text", "id": format!("c{i}"), "text": format!("tile {i}"), "size": 12})).collect();
+    let mut s = window(json!({"root": {"type": "row", "id": "shelf", "scroll": true, "children": tiles}}), 40, 4);
+    assert_eq!(node(&mut s, "shelf").scroll.map(|(_, held)| held), Some(120), "ten tiles of twelve");
+    let r = node(&mut s, "shelf").rect.unwrap();
+    s.mouse("wheel-down", r.x + 2, r.y);
+    assert!(node(&mut s, "shelf").scroll.unwrap().0 > 0., "the wheel goes across a row");
+    let bad = window(json!({"root": {"type": "col", "scroll": true, "children": [{"type": "text", "id": "x", "text": "x", "scroll": true}]}}), 30, 4).state().problems.clone();
+    assert!(bad.iter().any(|p| p.contains("needs an id")) && bad.iter().any(|p| p.contains("only a col, row, grid or each scrolls")), "{bad:?}");
 }
 
 /// `cols: {"min": …}` fits as many rows to a line as the list has room for, each at least that

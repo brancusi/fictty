@@ -605,6 +605,43 @@ pub fn laid_out() -> Check {
     check("laid out without overlap", |s| nested(&s.screen.readback()))
 }
 
+/// The focus is in view after a key (which acts on it; the wheel and a page down on a scroller may
+/// scroll it away): once the
+/// engine has brought it in (`State::reveal` done), the focused node shows inside every scroller
+/// around it, from its start (one longer than the view shows from its start; a list, whose
+/// selected row is brought in, at least in part). A cell's give for rounding.
+pub fn revealed() -> Check {
+    check("the focus is scrolled into view after a key", |s| {
+        let st = s.screen.state().clone();
+        // A page down on a scroller scrolls it and leaves the focus where it is, as the wheel does.
+        if !matches!(s.act, Act::Key(k) if !crate::state::pages_a_scroller(&st, k)) {
+            return Ok(());
+        }
+        let Some(focus) = st.focus.clone().filter(|_| st.reveal.is_none()) else { return Ok(()) };
+        let scrollers: Vec<String> = crate::state::scrollers_around(&st, &focus).into_iter().filter(|x| *x != focus).collect();
+        if scrollers.is_empty() {
+            return Ok(());
+        }
+        let nodes = s.screen.readback();
+        let rect = |id: &str| nodes.iter().find(|n| n.id.as_deref() == Some(id)).and_then(|n| n.rect);
+        let Some(f) = rect(&focus) else { return Err(format!("{focus} has the focus inside {} but shows nowhere", scrollers.join(", "))) };
+        for sc in scrollers {
+            let (Some(v), Some(down)) = (rect(&sc), st.node(&sc).and_then(crate::model::Node::scrolls_down)) else { continue };
+            let ((fs, fl), (vs, vl)) = if down { ((f.y, f.height), (v.y, v.height)) } else { ((f.x, f.width), (v.x, v.width)) };
+            // A list's place is its selected row, so a list need only show in part.
+            let shows = if st.node(&focus).is_some_and(|n| n.rows().is_some() || matches!(n.kind, crate::model::Kind::Table { .. })) {
+                fs < vs + vl && fs + fl > vs
+            } else {
+                fs + 1 >= vs && (fs + fl <= vs + vl + 1 || fs <= vs + 1)
+            };
+            if !shows {
+                return Err(format!("{focus} at {f:?} isn't in the view of {sc} at {v:?}"));
+            }
+        }
+        Ok(())
+    })
+}
+
 /// A `size: "fit"` node is as big as what it shows: none has its text cut while its row (or
 /// column) has room left past its children, or a share beside it holds some (a share only gets
 /// what's left). One with a `max` may be held to it, so it isn't asked.

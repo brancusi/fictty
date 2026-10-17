@@ -87,6 +87,11 @@ struct Laid {
     cut: Vec<String>,
     /// The font files it couldn't load, and why.
     fonts: Vec<(String, String)>,
+    /// Each scroller's view (whether it scrolls down), and what it holds, by id.
+    views: Vec<(String, bool, Bounds<Pixels>)>,
+    contents: Vec<(String, Bounds<Pixels>)>,
+    /// Where the focused node was laid out, unclipped: it may be scrolled out of sight.
+    focused: Option<Bounds<Pixels>>,
 }
 
 type Shared = Rc<RefCell<Laid>>;
@@ -105,6 +110,14 @@ fn hit(id: String, row: Option<usize>, tab: Option<usize>, text: bool) -> Hit {
 fn measure(laid: &Shared, note: impl FnOnce(&mut Laid, Bounds<Pixels>) + 'static) -> AnyElement {
     let laid = laid.clone();
     canvas(move |b, window, _| note(&mut laid.borrow_mut(), b.intersect(&window.content_mask().bounds)), |_, _, _, _| {}).absolute().inset_0().into_any_element()
+}
+
+/// A canvas that notes the whole of its bounds, shown or not: what a scroller holds, where the
+/// focus is when it's scrolled out of sight, and the room a list or an editor was given (its
+/// box, not the part a scroller around it shows).
+fn measure_whole(laid: &Shared, note: impl FnOnce(&mut Laid, Bounds<Pixels>) + 'static) -> AnyElement {
+    let laid = laid.clone();
+    canvas(move |b, _, _| note(&mut laid.borrow_mut(), b), |_, _, _, _| {}).absolute().inset_0().into_any_element()
 }
 
 /// Where the window's state comes from and where its messages go.
@@ -173,6 +186,9 @@ struct Portal {
     /// How many `fit` nodes the node being built is inside: their cut lines say how wide
     /// they'd be.
     fitting: usize,
+    /// Set while a scroller builds its children: the way it scrolls (true across a row), where
+    /// they have all the room they want, so a share is as long as what it shows.
+    loose: Option<bool>,
 }
 
 impl Portal {
@@ -185,7 +201,7 @@ impl Portal {
         engine.send(Msg::Caps { caps: state::Caps { graphics: false, cell_w: cell.w, cell_h: cell.h }, text_sizing: false });
         let focus = cx.focus_handle();
         focus.focus(window);
-        Portal { engine, focus, cell, screen: (0, 0), laid: Shared::default(), shown: Rc::default(), drag: None, wheel: (String::new(), 0.0), wake: None, faces: HashMap::new(), fitting: 0 }
+        Portal { engine, focus, cell, screen: (0, 0), laid: Shared::default(), shown: Rc::default(), drag: None, wheel: (String::new(), 0.0), wake: None, faces: HashMap::new(), fitting: 0, loose: None }
     }
 
     fn send(&mut self, msg: Msg, cx: &mut Context<Self>) {
@@ -203,6 +219,8 @@ impl Portal {
     /// The wheel or the trackpad over a list: its view moves by as much as the fingers did, a
     /// pixel at a time (a line is `line_h` pixels); a mouse wheel's notch is three lines.
     fn pan(&mut self, id: &str, e: &ScrollWheelEvent, line_h: f32, cx: &mut Context<Self>) {
+        // The list takes the wheel; what it can't take goes on to its scroller in the state.
+        cx.stop_propagation();
         let lines = match e.delta {
             gpui::ScrollDelta::Lines(l) => -l.y * 3.0,
             gpui::ScrollDelta::Pixels(p) => -f32::from(p.y) / line_h.max(1.0),
@@ -213,6 +231,7 @@ impl Portal {
     }
 
     fn wheel(&mut self, id: &str, e: &ScrollWheelEvent, cx: &mut Context<Self>) {
+        cx.stop_propagation();
         if self.wheel.0 != id {
             self.wheel = (id.to_string(), 0.0);
         }
@@ -284,7 +303,7 @@ fn key_name(e: &KeyDownEvent) -> Option<String> {
 /// (as a terminal's layout gives a fixed size up when there isn't room), `30%` a fraction, `*`
 /// and `2*` a grow factor; `min` and `max` bound it, and `margin` keeps it off its neighbours,
 /// as lengths.
-fn sized(el: gpui::Stateful<gpui::Div>, n: &Node, along_row: bool, cell: Cell, th: &style::Theme) -> gpui::Stateful<gpui::Div> {
+fn sized(el: gpui::Stateful<gpui::Div>, n: &Node, along_row: bool, loose: bool, cell: Cell, th: &style::Theme) -> gpui::Stateful<gpui::Div> {
     let per = if along_row { cell.w } else { cell.h };
     let fixed = |mut el: gpui::Stateful<gpui::Div>, l: DefiniteLength| {
         el.style().flex_grow = Some(0.);
@@ -300,6 +319,8 @@ fn sized(el: gpui::Stateful<gpui::Div>, n: &Node, along_row: bool, cell: Cell, t
         Some(Measure::Cells(c)) => fixed(el, px(c as f32 * per).into()),
         Some(Measure::Px(p)) => fixed(el, px(p).into()),
         Some(Measure::Percent(p)) => fixed(el, relative(p / 100.0)),
+        // In a scroller there's no room to share along it: as long as what it shows.
+        Some(Measure::Share(_)) | None if loose => fit(el),
         Some(Measure::Share(w)) => {
             let mut el = el.flex_basis(px(0.)).min_w(px(0.)).min_h(px(0.)).flex_shrink();
             el.style().flex_grow = Some(w as f32);
@@ -405,6 +426,7 @@ impl Portal {
         let id = n.id.clone().unwrap_or_default();
         let key = if id.is_empty() { path.to_string() } else { id.clone() };
         let focused = !id.is_empty() && st.focus.as_deref() == Some(id.as_str());
+        let loose = self.loose.take() == Some(along_row);
         let cell = self.cell;
         let th = style::Theme::of(st);
         // Everything clips what it holds, rows and columns too: a squeezed row's children would
@@ -417,13 +439,13 @@ impl Portal {
         // stretched the node to.
         let (mut el, place) = match n.aspect.as_ref().map(Aspect::ratio) {
             Some(ratio) => {
-                let place = sized(div().id(SharedString::from(format!("place-{key}"))).flex().flex_col(), n, along_row, cell, &th);
+                let place = sized(div().id(SharedString::from(format!("place-{key}"))).flex().flex_col(), n, along_row, loose, cell, &th);
                 let given = n.size.as_ref().is_some_and(|s| s.measure() != Measure::Fit);
                 let mut el = if given == along_row { el.w(relative(1.)) } else { el.h(relative(1.)) }.flex_none();
                 el.style().aspect_ratio = Some(ratio);
                 (el, Some(place))
             }
-            None => (sized(el, n, along_row, cell, &th), None),
+            None => (sized(el, n, along_row, loose, cell, &th), None),
         };
         // Where it was laid out, for the readback and the mouse: noted before its children, so
         // the innermost hit comes last.
@@ -433,6 +455,10 @@ impl Portal {
                 l.rects.push((id.clone(), b));
                 l.hits.push((b, hit(id, None, None, false)));
             }));
+        }
+        // The focus, wherever it is, so the scrollers around it can bring it into view.
+        if focused {
+            el = el.child(measure_whole(&self.laid, |l, b| l.focused = Some(b)));
         }
         let fits = n.size.as_ref().is_some_and(|s| s.measure() == Measure::Fit);
         self.fitting += fits as usize;
@@ -460,14 +486,25 @@ impl Portal {
         let body: AnyElement = match &n.kind {
             Kind::Col { children, gap, justify, items, wrap } | Kind::Row { children, gap, justify, items, wrap } => {
                 let row = matches!(n.kind, Kind::Row { .. });
+                let scrolls = n.scroll && !id.is_empty();
                 // A hidden child takes no room, its gap neither.
-                let kids: Vec<AnyElement> =
-                    children.iter().enumerate().filter(|(_, c)| state::shown(st, c)).map(|(k, c)| self.node(st, lk, c, row, &format!("{key}.{k}"), cx)).collect();
+                let mut kids: Vec<AnyElement> = Vec::new();
+                for (k, c) in children.iter().enumerate().filter(|(_, c)| state::shown(st, c)) {
+                    self.loose = scrolls.then_some(row);
+                    kids.push(self.node(st, lk, c, row, &format!("{key}.{k}"), cx));
+                }
+                self.loose = None;
                 let [gx, gy] = gap.as_ref().map_or([0.; 2], |g| {
                     let [x, y] = g.xy();
                     [th.px(x, cell.w).unwrap_or(0.), th.px(y, cell.h).unwrap_or(0.)]
                 });
-                let d = div().relative().flex().size_full().min_h(px(0.)).min_w(px(0.)).gap_x(px(gx)).gap_y(px(gy));
+                let d = div().relative().flex().min_h(px(0.)).min_w(px(0.)).gap_x(px(gx)).gap_y(px(gy));
+                // A scroller's content is as long as what it holds, along it.
+                let d = match (scrolls, row) {
+                    (false, _) => d.size_full(),
+                    (true, true) => d.h_full().flex_none(),
+                    (true, false) => d.w_full().flex_none(),
+                };
                 let mut d = if row { d.flex_row() } else { d.flex_col() };
                 (d.style().justify_content, d.style().align_items) = (justify.map(along), items.map(across));
                 // Wrapped lines pack from the start, each as tall (or wide) as its biggest child.
@@ -477,7 +514,8 @@ impl Portal {
                 // `$width` and `$height` in a child's `when` are this node's inner size.
                 let sized: Vec<String> = children.iter().filter(|c| c.when.as_deref().is_some_and(state::sized)).filter_map(|c| c.id.clone()).collect();
                 let d = if sized.is_empty() { d } else { d.child(measure(&self.laid, move |l, b| l.areas.extend(sized.into_iter().map(|id| (id, b))))) };
-                d.children(kids).into_any_element()
+                let d = d.children(kids);
+                if scrolls { self.scroller(st, lk, &id, !row, d, cx) } else { d.into_any_element() }
             }
             Kind::Grid { .. } => self.grid(st, lk, n, &id, &key, &th, cx),
             Kind::Stack { children } => {
@@ -574,7 +612,7 @@ impl Portal {
                     .flex_1()
                     .min_h(px(0.))
                     .overflow_hidden()
-                    .child(measure(&self.laid, move |l, b| l.sizes.push((fits, b, 1, 1))))
+                    .child(measure_whole(&self.laid, move |l, b| l.sizes.push((fits, b, 1, 1))))
                     .on_scroll_wheel(cx.listener(move |this, e: &ScrollWheelEvent, _, cx| this.wheel(&wheel, e, cx)))
                     .children(body);
                 div().flex().flex_col().size_full().child(head).child(rows_area).into_any_element()
@@ -703,6 +741,16 @@ impl Portal {
         } else {
             wrap.items_center()
         };
+        // `x` and `y` put its edge that far in from the stack's, where `at` would place it.
+        let th = style::Theme::of(st);
+        let wrap = match fl.x.as_ref().and_then(|x| th.px(x, cell.w)) {
+            Some(x) => wrap.justify_start().pl(px(x)),
+            None => wrap,
+        };
+        let wrap = match fl.y.as_ref().and_then(|y| th.px(y, cell.h)) {
+            Some(y) => wrap.items_start().pt(px(y)),
+            None => wrap,
+        };
         let (w, h) = (float_side(fl.width.as_ref(), cell.w), float_side(fl.height.as_ref(), cell.h));
         // Its float sizes it, not `size`: it fills the box.
         let n = Node { size: None, min: None, max: None, ..n };
@@ -743,11 +791,46 @@ impl Portal {
         // The width it was laid out across, for `cols` that fit as many as there's room for.
         let width = (!id.is_empty() && matches!(cols, crate::model::Cols::Fill { .. })).then(|| {
             let fits = id.to_string();
-            measure(&self.laid, move |l, b| l.sizes.push((fits, b, 1, 1)))
+            measure_whole(&self.laid, move |l, b| l.sizes.push((fits, b, 1, 1)))
         });
         let sized: Vec<String> = children.iter().filter(|c| c.when.as_deref().is_some_and(state::sized)).filter_map(|c| c.id.clone()).collect();
         let areas = (!sized.is_empty()).then(|| measure(&self.laid, move |l, b| l.areas.extend(sized.into_iter().map(|id| (id, b)))));
-        div().relative().flex().flex_col().size_full().min_h(px(0.)).min_w(px(0.)).overflow_hidden().gap_y(px(gy)).children(width).children(areas).children(lines).into_any_element()
+        let d = div().relative().flex().flex_col().min_h(px(0.)).min_w(px(0.)).gap_y(px(gy)).children(width).children(areas).children(lines);
+        // Its lines are as tall as what they hold, so a scrolling grid's content is too.
+        if n.scroll && !id.is_empty() { self.scroller(st, lk, id, true, d.w_full().flex_none(), cx) } else { d.size_full().overflow_hidden().into_any_element() }
+    }
+
+    /// A scrolling container: `content` (as long as what it holds, along it) in a view that
+    /// clips it, moved back by the state's offset. It tells the engine how long the view and
+    /// the content are, takes the wheel (what it can't take goes to the scroller around it, in
+    /// the state), and shows a scrollbar while it holds more than it shows.
+    fn scroller(&mut self, st: &State, lk: &Look, id: &str, down: bool, content: gpui::Div, cx: &mut Context<Self>) -> AnyElement {
+        let cell = self.cell;
+        let along = if down { cell.h } else { cell.w };
+        let local = st.local.get(id);
+        let offset = local.map_or(0., |l| l.offset) * along;
+        let (held, seen, wheel) = (id.to_string(), id.to_string(), id.to_string());
+        let content = if down { content.mt(px(-offset)) } else { content.ml(px(-offset)) }.child(measure_whole(&self.laid, move |l, b| l.contents.push((held, b))));
+        let bar = match local.and_then(|l| l.extent) {
+            Some((view, held)) if down => self.scrollbar(st, lk, offset / along, held, view),
+            _ => None,
+        };
+        let view = div().id(SharedString::from(format!("scroll-{id}"))).relative().flex().size_full().min_h(px(0.)).min_w(px(0.)).overflow_hidden();
+        let view = if down { view.flex_col() } else { view.flex_row() };
+        view.child(measure_whole(&self.laid, move |l, b| l.views.push((seen, down, b))))
+            .on_scroll_wheel(cx.listener(move |this, e: &ScrollWheelEvent, _, cx| {
+                let px_moved = match e.delta {
+                    gpui::ScrollDelta::Lines(l) => -(if down || l.x == 0. { l.y } else { l.x }) * 3.0 * along,
+                    gpui::ScrollDelta::Pixels(p) => -f32::from(if down || p.x == px(0.) { p.y } else { p.x }),
+                };
+                if px_moved != 0. {
+                    cx.stop_propagation();
+                    this.send(Msg::Pan { id: wheel.clone(), lines: px_moved / along }, cx);
+                }
+            }))
+            .child(content)
+            .children(bar)
+            .into_any_element()
     }
 
     /// A list's rows, from where the state says it's scrolled: as many as fit, each the rows its
@@ -768,7 +851,7 @@ impl Portal {
             let r = &rows[k];
             // A row is its template's nodes, or its item's text.
             let body = match (&look.row, &look.item) {
-                (Some(t), _) => self.node(st, lk, &crate::model::row_instance(t, r), false, &format!("{id}/row{k}"), cx),
+                (Some(t), _) => self.node(st, lk, &crate::model::row_instance(t, r, (k, rows.len())), false, &format!("{id}/row{k}"), cx),
                 (None, Some(t)) => {
                     let tx = text::Tx { lk, laid: &laid, id, keep: look.keep.map_or(0., |k| k as f32 * cell.w), line_h: cell.h, fitting: self.fitting > 0 };
                     text::lines(&tx, t, r, Ink::default(), false, None)
@@ -776,9 +859,12 @@ impl Portal {
                 (None, None) => div().child(crate::model::scalar(Some(r))).into_any_element(),
             };
             let (target, under) = (id.to_string(), id.to_string());
+            // A focused list's place is its selected row: that's what a scroller brings into view.
+            let here = (st.focus.as_deref() == Some(id) && k == state::selected(st, id)).then(|| measure_whole(&self.laid, |l, b| l.focused = Some(b)));
             let row = lk
                 .boxed(div().id(k).relative().flex_none(), &style::inner(st, "row", &style::row_states(st, n, k)), (cell.w, cell.h), [0.; 4])
                 .child(measure(&self.laid, move |l, b| l.hits.push((b, hit(under, Some(k), None, false)))))
+                .children(here)
                 .h(px(cell.h * per as f32))
                 .flex()
                 .flex_col()
@@ -817,7 +903,7 @@ impl Portal {
         let at = state::view_offset(local, rows.len(), fit, cols);
         let line_h = cell.h * per as f32;
         let lines = div().flex().flex_col().flex_none().w_full().mt(px(-(at - at.floor()) * line_h)).children(shown);
-        let bar = self.scrollbar(st, lk, at, rows.len().div_ceil(cols), (fit / cols).max(1));
+        let bar = self.scrollbar(st, lk, at, rows.len().div_ceil(cols) as f32, (fit / cols).max(1) as f32);
         let (fits, wheel) = (id.to_string(), id.to_string());
         div()
             .id(SharedString::from(format!("rows-{id}")))
@@ -827,8 +913,9 @@ impl Portal {
             .flex_1()
             .min_h(px(0.))
             .overflow_hidden()
-            // The items it has room for: the wheel and paging move by them.
-            .child(measure(&self.laid, move |l, b| l.sizes.push((fits, b, per, cols as u16))))
+            // The items it has room for: the wheel and paging move by them. Its whole box, not
+            // the part a scroller around it shows: scrolling that is the scroller's.
+            .child(measure_whole(&self.laid, move |l, b| l.sizes.push((fits, b, per, cols as u16))))
             .on_scroll_wheel(cx.listener(move |this, e: &ScrollWheelEvent, _, cx| this.pan(&wheel, e, line_h, cx)))
             .child(lines)
             .children(bar)
@@ -838,11 +925,11 @@ impl Portal {
     /// A list's scrollbar while it has more lines than it shows: a thumb as tall as the share
     /// shown, where the view is, from the `scrollbar` and `scrollbar.thumb` parts (`shape:
     /// "none"` draws none).
-    fn scrollbar(&self, st: &State, lk: &Look, at: f32, total: usize, shown: usize) -> Option<AnyElement> {
-        if total <= shown || style::inner(st, "scrollbar", &[]).shape.as_deref() == Some("none") {
+    fn scrollbar(&self, st: &State, lk: &Look, at: f32, total: f32, shown: f32) -> Option<AnyElement> {
+        if total <= shown + 0.01 || total <= 0. || style::inner(st, "scrollbar", &[]).shape.as_deref() == Some("none") {
             return None;
         }
-        let (size, from) = (shown as f32 / total as f32, at / total as f32);
+        let (size, from) = (shown / total, at / total);
         let thumb = lk.boxed(div().absolute().left_0().right_0().top(relative(from)).h(relative(size)), &style::inner(st, "scrollbar.thumb", &[]), (self.cell.w, self.cell.h), [0.; 4]);
         Some(div().absolute().top_0().bottom_0().right(px(2.)).w(px(5.)).child(thumb).into_any_element())
     }
@@ -870,8 +957,8 @@ impl Portal {
             text = text.h(px(rows.max(1) as f32 * cell.h)).flex_none();
         }
         let (fits, under) = (id.to_string(), id.to_string());
+        text = text.child(measure_whole(&self.laid, move |l, b| l.sizes.push((fits, b, 1, 1))));
         text = text.child(measure(&self.laid, move |l, b| {
-            l.sizes.push((fits, b, 1, 1));
             l.hits.push((b, hit(under, None, None, true)));
         }));
         match doc {
@@ -1180,13 +1267,26 @@ fn toast(st: &State, lk: &Look, t: &state::Toast, cell: (f32, f32)) -> AnyElemen
 fn handover(laid: &Shared, shown: &RefCell<DrawnHits>, engine: &Engine, cell: Cell, wake: Option<u64>, took: Duration, window: &mut Window) {
     let l = std::mem::take(&mut *laid.borrow_mut());
     let drawn = Drawn {
-        rects: l.rects.into_iter().map(|(id, b)| (id, cell.rect(b))).collect(),
-        hits: l.hits.iter().map(|(b, h)| Hit { rect: cell.rect(*b), ..h.clone() }).collect(),
+        // Nothing shows of a node clipped away (scrolled out of its view): it has no rectangle
+        // and nothing lands on it.
+        rects: l.rects.into_iter().filter(|(_, b)| !b.is_empty()).map(|(id, b)| (id, cell.rect(b))).collect(),
+        hits: l.hits.iter().filter(|(b, _)| !b.is_empty()).map(|(b, h)| Hit { rect: cell.rect(*b), ..h.clone() }).collect(),
         sizes: l.sizes.into_iter().map(|(id, b, per, cols)| { let (w, h) = cell.fit(b); (id, w, h / per.max(1) * cols.max(1)) }).collect(),
         areas: l.areas.into_iter().map(|(id, b)| { let (w, h) = cell.fit(b); (id, w, h) }).collect(),
         wake,
         cut: l.cut,
         fonts: l.fonts,
+        scrolls: l
+            .views
+            .iter()
+            .filter_map(|(id, down, v)| {
+                let c = l.contents.iter().find(|(c, _)| c == id)?.1;
+                let along = |b: Bounds<Pixels>| if *down { (f32::from(b.origin.y) / cell.h, f32::from(b.size.height) / cell.h) } else { (f32::from(b.origin.x) / cell.w, f32::from(b.size.width) / cell.w) };
+                let ((start, view), (_, content)) = (along(*v), along(c));
+                Some(crate::engine::Scrolled { id: id.clone(), start, view, content })
+            })
+            .collect(),
+        focused: l.focused.map(|b| [f32::from(b.origin.x) / cell.w, f32::from(b.origin.y) / cell.h, f32::from(b.size.width) / cell.w, f32::from(b.size.height) / cell.h]),
     };
     *shown.borrow_mut() = l.hits;
     if engine.drew(took, drawn) {

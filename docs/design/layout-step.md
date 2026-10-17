@@ -55,7 +55,7 @@ The Kestrel demo plays in a real window on it.
 it on 17 October as a test of how far the window goes. What it found in fictty was fixed then
 (hidden nodes leave no gap, lookups by id prefer the shown node, gauges and `of`, alpha colours,
 actions on a bound node's value, a grid's short last line); what's left for step 3 is in 3c, 3d
-and 3f below. **3c is done too (17 October); next is 3d.**
+and 3f below. **3c, 3d and 3e are done too (17 October); next is 3f.**
 
 **3b (fit and alignment), as it landed, each with its tests in `tests/window.rs`:**
 
@@ -236,7 +236,7 @@ and the screens that use it looked at in a real window.
   locals overflowed a debug build's test-thread stack on Nocturne. Left: a grid isn't fuzzed
   yet (3f's rebuilt screens will carry it), and `span` outside a grid is quietly ignored.
 
-### 3d · Scroll (M, the one new behaviour) · next
+### 3d · Scroll (M, the one new behaviour) · done 17 October 2026
 
 - `scroll: true` on a row or column: it scrolls along its direction, with its offset in `State`
   (decision 3).
@@ -245,14 +245,35 @@ and the screens that use it looked at in a real window.
 - `Msg::Scroll` is shared with lists; a nested list scrolls first, then its container.
 - The readback shows `scroll 120/840` on a scroller. The JSON has `scroll` and `content`.
 - A fuzz property: the focused node is always inside its scroller's view after a key.
+- Done 17 October 2026: `scroll` on any node (a col, grid or each scrolls down, a row across),
+  its offset and extent (view, content) in `Local`, the extent from the frame (`Drawn::scrolls`,
+  `Msg::Extent`). The wheel is `Msg::Pan` on the innermost node under it; what a list or a
+  scroller can't take goes outward in `update` (`pan_from`, `scrollers_around`). Page Up and Down
+  are `page_down` and `page_up`: a focused list's selection by a view, else the scroller around
+  the focus. The focus brought into view: `State::reveal` is set whenever the focus moves (not
+  a UI's first focus: a screen opens at its top), its list's row moves, or a key comes (but a
+  page on a scroller); a focused list reports its selected row as its place; and the
+  engine scrolls the innermost scroller that doesn't show it from the frame's unclipped
+  `Drawn::focused`, a scroller a frame, then `Msg::Revealed`. A scroller's children are as long
+  as what they show along it (`loose` in the window). A node clipped away has no rectangle or
+  hit any more, and a list's or editor's room is its whole box (`measure_whole`), not the part
+  a scroller shows, or a list would scroll itself inside the view. The fuzz has `revealed`
+  (after a key), and a screen of scrollers, a grid and a wrapping row; at 400 release runs its
+  first catch was the wheel scrolling the focus away, which is why it's keys that reveal.
+  Nocturne's room scrolls, so the hero is fixed and the shelf as tall as its covers.
 
-### 3e · Data placement (S)
+### 3e · Data placement (S) · done 17 October 2026
 
 - `$index` and `$count` in `each` templates.
 - Float `x` and `y` in any unit, as templates (`"y": "{$item.start}"`), with `size` from data
   too, for the calendar.
+- Done 17 October 2026: `instance` fills `{$index}` and `{$count}` beside `{$item}` (an `each`'s
+  instances and a list's row template); `Float` has `x` and `y` (lengths, as data may fill
+  them); and an `each` with `stack: true` is a stack of its instances, since a float only floats
+  in a stack, so a calendar's events come from data. Sizes from data already worked: a string
+  filled whole is read again as its field.
 
-### 3f · Rebuild without tricks (M)
+### 3f · Rebuild without tricks (M) · next
 
 - The wringer's `settings`, `landing` and `calendar` rebuilt in `screens.py` with no tricks,
   each noted in examples/window/README.md, with screenshots in three themes, as in the styling

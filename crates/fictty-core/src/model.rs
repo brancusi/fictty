@@ -390,15 +390,25 @@ pub struct Node {
     /// In a `grid`, how many of its columns it takes (default one).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub span: Option<u16>,
+    /// A `col`, `grid` or `each` scrolls down, a `row` across, when what it holds is longer than
+    /// it is (the wheel, Page Up and Down, the focus brought into view); the offset is kept by id.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub scroll: bool,
     #[serde(flatten)]
     pub kind: Kind,
 }
 
 /// Where a floating node sits in its stack: `width` and `height` (cells, `"50%"`, `"240px"`; default the
 /// whole stack) and `at` (`center`, the default, or `top`, `bottom`, `left`, `right` and the
-/// corners, `top-right`), `margin` in from the edges (lengths as a node's `pad`).
+/// corners, `top-right`), `margin` in from the edges (lengths as a node's `pad`). `x` and `y`
+/// (lengths) put its left or top edge that far in from the stack's instead, as data may: an
+/// event on a calendar's day.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct Float {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub x: Option<Len>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub y: Option<Len>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub width: Option<Size>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -438,6 +448,7 @@ impl Default for Node {
             align_self: None,
             aspect: None,
             span: None,
+            scroll: false,
             kind: Kind::Text { text: String::new(), wrap: None, lines: None },
         }
     }
@@ -493,12 +504,16 @@ pub enum Kind {
     /// The `template` node once for each item of the bound array, top to bottom (side by side
     /// with `row`), `gap` apart. In the template, `{$item}` and `{$item.path}` are filled from the
     /// item (ids, binds, `doc`, `size`: `"id": "panel-{$item.id}"`); every other placeholder is
-    /// left for the node itself. An instance's share is its `size`, else an equal one. `wrap` is
-    /// a row's or column's; with `cols` the instances are a `grid`'s children instead.
+    /// left for the node itself, but `{$index}` and `{$count}` (where it is, from 0, of how many).
+    /// An instance's share is its `size`, else an equal one. `wrap` is a row's or column's; with
+    /// `cols` the instances are a `grid`'s children instead, and with `stack` a stack's, each
+    /// floating where its `float` says (`"y": "{$item.start}"`).
     Each {
         template: Box<Node>,
         #[serde(default, skip_serializing_if = "std::ops::Not::not")]
         row: bool,
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        stack: bool,
         #[serde(default, skip_serializing_if = "std::ops::Not::not")]
         wrap: bool,
         #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -1641,6 +1656,20 @@ impl Node {
         }
     }
 
+    /// Which way it scrolls, if it does: down (true) for a `col`, `grid` or `each`, across
+    /// (false) for a `row` or a `row: true` each.
+    pub fn scrolls_down(&self) -> Option<bool> {
+        if !self.scroll {
+            return None;
+        }
+        match &self.kind {
+            Kind::Col { .. } | Kind::Grid { .. } => Some(true),
+            Kind::Row { .. } => Some(false),
+            Kind::Each { row, .. } => Some(!row),
+            _ => None,
+        }
+    }
+
     /// How many to a line a list, tree or grid lays out (see `state::per_line`).
     pub fn cols(&self) -> Option<&Cols> {
         match &self.kind {
@@ -1807,9 +1836,9 @@ impl Node {
     }
 }
 
-/// A list's row template for row `item`: filled as an `each` instance is, with every id taken
-/// off, since the row takes the presses and the focus for all of it.
-pub fn row_instance(template: &Node, item: &Value) -> Node {
+/// A list's row template for row `item`, `at` (index, count): filled as an `each` instance is,
+/// with every id taken off, since the row takes the presses and the focus for all of it.
+pub fn row_instance(template: &Node, item: &Value, at: (usize, usize)) -> Node {
     fn bare(n: &mut Node) {
         n.id = None;
         n.click = None;
@@ -1817,7 +1846,7 @@ pub fn row_instance(template: &Node, item: &Value) -> Node {
             cs.iter_mut().for_each(bare);
         }
     }
-    let mut n = instance(template, item);
+    let mut n = instance(template, item, at);
     bare(&mut n);
     n
 }
@@ -1832,9 +1861,12 @@ impl Rows {
     }
 }
 
-/// A template node for one item of an `each`: every `{$item}` and `{$item.path}` in its strings
-/// filled from the item, the rest left as they are.
-pub fn instance(template: &Node, item: &Value) -> Node {
+/// A template node for one item of an `each` (or a list's row), `index` of `count` (from 0):
+/// every `{$item}` and `{$item.path}` in its strings filled from the item, `{$index}` and
+/// `{$count}` from where it is, the rest left as they are. A string filled whole is read again
+/// as whatever the field takes, so `"size": "{$item.h}"` and a float's `"y": "{$item.start}"`
+/// come from data.
+pub fn instance(template: &Node, item: &Value, (index, count): (usize, usize)) -> Node {
     fn fill_item(s: &str, item: &Value) -> String {
         let mut out = String::new();
         let mut rest = s;
@@ -1855,16 +1887,21 @@ pub fn instance(template: &Node, item: &Value) -> Node {
         out.push_str(rest);
         out
     }
-    fn walk(v: &mut Value, item: &Value) {
+    fn walk(v: &mut Value, item: &Value, at: &(String, String)) {
         match v {
-            Value::String(s) if s.contains("{$item") => *s = fill_item(s, item),
-            Value::Array(a) => a.iter_mut().for_each(|x| walk(x, item)),
-            Value::Object(m) => m.values_mut().for_each(|x| walk(x, item)),
+            Value::String(s) if s.contains("{$") => {
+                if s.contains("{$item") {
+                    *s = fill_item(s, item);
+                }
+                *s = s.replace("{$index}", &at.0).replace("{$count}", &at.1);
+            }
+            Value::Array(a) => a.iter_mut().for_each(|x| walk(x, item, at)),
+            Value::Object(m) => m.values_mut().for_each(|x| walk(x, item, at)),
             _ => {}
         }
     }
     let mut v = serde_json::to_value(template).unwrap_or_default();
-    walk(&mut v, item);
+    walk(&mut v, item, &(index.to_string(), count.to_string()));
     serde_json::from_value(v).unwrap_or_else(|_| template.clone())
 }
 

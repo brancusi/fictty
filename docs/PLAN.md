@@ -46,7 +46,7 @@ file (they're in its history). **Where to start:** 3b, from "Start here" in layo
 
 **17 October 2026:** 3b is on `main`, and Nocturne (examples/nocturne), a listening room, pushed
 the window as far as it goes; the gaps it found are fixed or placed in step 3. **Where to
-start:** 3d, from "Start here" in layout-step.md (3c landed the same day).
+start:** 3f, from "Start here" in layout-step.md (3c, 3d and 3e landed the same day).
 
 ## Done
 
@@ -240,7 +240,10 @@ The phases of [design/native.md](design/native.md), where each is broken down.
   - [x] 3b, fit and alignment: `self`, `justify`, `items`, `aspect`, `size: "fit"`
   - [x] 3c, wrap and grid: `wrap`, `grid` with `cols` (a count, as many as fit, or a size per
         column) and `span`, an `each` with `cols`, a list's `cols` as many as fit
-  - [ ] **Next: 3d**, then 3e and 3f
+  - [x] 3d, scroll: `scroll` on a col, row, grid or each, the wheel chained from lists, Page Up
+        and Down, the focus scrolled into view, `(scroll a/b)` in the readback
+  - [x] 3e, data placement: `{$index}` and `{$count}`, float `x` and `y`, an `each` as a stack
+  - [ ] **Next: 3f**, rebuilding the wringer's screens, the Kestrel demo and Daybook without tricks
   - [ ] Step 3, the layout vocabulary, planned in
         [design/layout-step.md](design/layout-step.md). Then: lists and rows as nodes, the rest of
         editors, charts and icons, toasts and layers, embedding and the examples, then the terminal

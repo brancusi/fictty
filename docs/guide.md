@@ -160,13 +160,19 @@ fictty theme paper                                        # choose a loaded them
 - **Repeating**: `{"type": "each", "bind": "open", "template": {…}}` draws the template once per
   item of the bound array, top to bottom (`"row": true` side by side). In the template,
   `{$item}` and `{$item.path}` are filled from the item (`"id": "panel-{$item.id}"`,
-  `"doc": "page/{$item.ref}"`, `"size": "{$item.h}"`); the template's own placeholders are left
-  for it. The expanded tree is what's drawn and focused (`tree` in `get --state`); a push or a
+  `"doc": "page/{$item.ref}"`, `"size": "{$item.h}"`), and `{$index}` and `{$count}` say where
+  it is (from 0) and of how many (`"id": "step-{$index}"`, `"{$index} of {$count}"`; a list's
+  row template has them too); the template's own placeholders are left for it. A string
+  filled whole is read as whatever its field takes, so sizes and a float's `x` and `y` come
+  from data. `"cols": 3` (or any grid `cols`) makes the instances a grid's children, and
+  `"stack": true` a stack's, each floating where its `float` says: a calendar's events,
+  `{"float": {"x": "{$item.col}", "y": "{$item.start}", "width": 12, "height": "{$item.len}"}}`. The expanded tree is what's drawn and focused (`tree` in `get --state`); a push or a
   patch changes the template. A `State` read back from `get --state` leaves the tree out (it's
   worked out, not kept): call `derive()` on it before `focus_order` or `tree()`.
 - **Overlays**: a `stack` draws its children over each other, the last on top; one with
   `float` (`width` and `height` in cells, pixels or `%`, `at` an edge or corner, `margin` in
-  from the edges, as a node's) sits
+  from the edges, as a node's; `x` and `y`, lengths, put its left or top edge that far in from
+  the stack's instead) sits
   where it says, and a `modal` one dims what's behind it and keeps the focus: while it shows, a
   click or the wheel anywhere outside it goes nowhere. Both cover what's under them. **`when`**
   shows a node only while a condition holds: a bind that's set (`"dialog"`), not set
@@ -199,7 +205,9 @@ fictty theme paper                                        # choose a loaded them
   literal `<`, `{±change}` coloured by sign, `{name:12}` fitted to 12 cells (`{n:>6}`
   right-aligned), maps (`{done|true=☑;*=☐}`), and a tab right-aligns the rest of a line.
 - **Actions** on keys: `quit`, `up`, `down` (a line, in a list with `cols`), `next_row` and
-  `prev_row` (one row whatever the `cols`, on across line ends), `top`, `bottom`, `focus_next`, `focus_prev`,
+  `prev_row` (one row whatever the `cols`, on across line ends), `top`, `bottom`, `page_down` and
+  `page_up` (a list's selection by a view, else the scroller around the focus; Page Down and Page
+  Up), `focus_next`, `focus_prev`,
   `refresh`, `{"run": [argv with {field} of the selected row]}`, `{"load": "{file}"}`,
   `{"focus": "id"}`, `{"select": "{store.k}", "in": "list"}` (a row by its key, now or once it
   arrives), `{"theme": "next"}`, `{"copy": "text"}` (onto the system clipboard, through
@@ -289,7 +297,25 @@ document with its undo history), each with a revision (`rev`) and who wrote it l
   (the view's start is `top` in lines, fractions too). A key that moves the selection out of
   view brings the view back to it. While a list has more than it shows, the window draws a
   scrollbar (the `scrollbar` and `scrollbar.thumb` parts; `shape: "none"` hides it), and the
-  readback shows `(scroll 6/16)`, lines scrolled past and lines in all.
+  readback shows `(scroll 6/16)`, lines scrolled past and lines in all. Page Down and Page Up
+  move a focused list's selection by the rows it shows.
+- **Scrolling containers** (the window's): `"scroll": true` on a `col`, `grid` or `each` (down)
+  or a `row` (across) holds more than it shows. What it holds is as long as its children along
+  it (a share there is as long as what it shows, since there's no room to share), the rest of
+  the screen keeps its place, and its offset is in the state by its `id` (it needs one), in
+  cells, fractions too. The wheel and a trackpad scroll it (a row takes the vertical wheel
+  across too); over a list, the list scrolls first and the scroller around it takes what the
+  list can't, at its end. Page Down and Page Up scroll the scroller around the focus by its
+  view less a line. Wherever the focus goes (Tab onto a field below the fold, a click, an
+  agent's `focus`), or the row it's on in a list, the scrollers around it bring it into view,
+  by as little as shows it; a list's selected row is what's brought in, so arrowing through a
+  shelf scrolls the page with it. Any key does the same (typing in a field scrolled away
+  brings it back), except a page on a scroller; the wheel leaves the focus where it is, and a
+  screen opens at its top whatever its `focus`. A
+  node scrolled out of sight has no rectangle in the readback and takes no clicks. While it
+  holds more than it shows, a column draws a scrollbar and the readback shows `(scroll 12/40)`,
+  cells scrolled past and cells held (`scroll` in the JSON, and `extent` in its `get --state`
+  view state). `scroll` on anything else, or without an id, is a problem.
 
 ## Themes
 

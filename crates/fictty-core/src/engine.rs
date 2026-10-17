@@ -5,7 +5,7 @@
 //! `fictty render` drive one without a thread (`Headless`).
 
 use crate::host::{Host, NoHost, Notifier};
-use crate::model::{Source, ThemeSpec, Ui};
+use crate::model::{Node, Source, ThemeSpec, Ui};
 use crate::state::{Effect, Msg, State, Stats, narrow, update};
 use anyhow::{Context, Result, bail};
 use serde::{Deserialize, Serialize};
@@ -146,6 +146,21 @@ pub struct Drawn {
     pub cut: Vec<String>,
     /// The font files it couldn't load, and why.
     pub fonts: Vec<(String, String)>,
+    /// Each scrolling container with an id: where its view starts on the screen, along it, how
+    /// long the view is and how long what it holds, in cells.
+    pub scrolls: Vec<Scrolled>,
+    /// Where the focused node was laid out, in cells, whether or not a scroller showed it (so
+    /// it can be off the screen: before its top, below its bottom): x, y, width, height.
+    pub focused: Option<[f32; 4]>,
+}
+
+/// A scrolling container as a frame laid it out (`Drawn::scrolls`), in cells along it.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Scrolled {
+    pub id: String,
+    pub start: f32,
+    pub view: f32,
+    pub content: f32,
 }
 
 /// The mouse, as whatever draws reports it.
@@ -1285,9 +1300,10 @@ impl Live {
     /// another frame should follow.
     pub fn drew(&mut self, took: Duration, drawn: Drawn) -> bool {
         self.meter.frame(took);
-        let Drawn { hits, rects, sizes, areas, wake, cut, fonts } = drawn;
+        let wake = drawn.wake;
+        let (hits, rects, cut, changed) = report(&mut self.d, &mut self.st, drawn);
         (self.hits, self.rects, self.wake, self.cut) = (hits, rects, wake, cut);
-        resize_editors(&mut self.d, &mut self.st, sizes) | report_areas(&mut self.d, &mut self.st, areas) | report_fonts(&mut self.d, &mut self.st, fonts)
+        changed
     }
 
     /// `screen` requests waiting for a frame; answer each with what it shows.
@@ -1736,17 +1752,19 @@ impl Headless {
         }
         self.drawn = true;
         let Some(f) = &mut self.frame else { return };
-        let Drawn { hits, rects, sizes, areas, cut, fonts, .. } = f.draw(&self.st);
+        let drawn = f.draw(&self.st);
+        let (hits, rects, cut, changed) = report(&mut self.d, &mut self.st, drawn);
         (self.hits, self.rects, self.cut) = (hits, rects, cut);
         // What drawing sent (a window's cell size) and what it learned (an editor's size) change
         // the state: again until they don't, so the frame is the state's. A `fit` editor takes
         // two: its width, then the rows its text wraps to at that width.
-        let mut changed = resize_editors(&mut self.d, &mut self.st, sizes) | report_areas(&mut self.d, &mut self.st, areas) | report_fonts(&mut self.d, &mut self.st, fonts) | self.absorb();
+        let mut changed = changed | self.absorb();
         for _ in 0..4 {
             let Some(f) = self.frame.as_mut().filter(|_| changed) else { break };
-            let Drawn { hits, rects, sizes, areas, cut, fonts, .. } = f.draw(&self.st);
+            let drawn = f.draw(&self.st);
+            let (hits, rects, cut, again) = report(&mut self.d, &mut self.st, drawn);
             (self.hits, self.rects, self.cut) = (hits, rects, cut);
-            changed = resize_editors(&mut self.d, &mut self.st, sizes) | report_areas(&mut self.d, &mut self.st, areas) | report_fonts(&mut self.d, &mut self.st, fonts) | self.absorb();
+            changed = again | self.absorb();
         }
         self.drawn = true;
     }
@@ -1815,6 +1833,53 @@ fn clock() -> String {
         return format!("{:02}:{:02}:{:02}", now / 3600 % 24, now / 60 % 60, now % 60);
     }
     format!("{:02}:{:02}:{:02}", tm.tm_hour, tm.tm_min, tm.tm_sec)
+}
+
+/// What a frame learned, to the state: editors' and lists' sizes, sized areas, fonts that
+/// didn't load, scrollers' extents, and the focus brought into view. Hands back what the engine
+/// keeps of the frame (hits, rectangles, cut nodes), and whether the state changed.
+#[allow(clippy::type_complexity)]
+fn report(d: &mut Driver, st: &mut State, drawn: Drawn) -> (Vec<Hit>, Vec<(String, Rect)>, Vec<String>, bool) {
+    let Drawn { hits, rects, sizes, areas, cut, fonts, scrolls, focused, .. } = drawn;
+    let changed = resize_editors(d, st, sizes) | report_areas(d, st, areas) | report_fonts(d, st, fonts) | report_scrolls(d, st, &scrolls);
+    (hits, rects, cut, changed | reveal(d, st, &scrolls, focused))
+}
+
+/// Tells each scroller the view and content it was laid out with, where they changed.
+fn report_scrolls(d: &mut Driver, st: &mut State, scrolls: &[Scrolled]) -> bool {
+    let mut changed = false;
+    for s in scrolls {
+        let had = st.local.get(&s.id).and_then(|l| l.extent);
+        if had.is_none_or(|(v, c)| (v - s.view).abs() > 0.01 || (c - s.content).abs() > 0.01) {
+            d.apply(st, Msg::Extent { id: s.id.clone(), view: s.view, content: s.content });
+            changed = true;
+        }
+    }
+    changed
+}
+
+/// While the focus waits to be shown (`State::reveal`), scroll the innermost scroller around it
+/// that doesn't show it all, by as little as brings it in (its start, if it's longer than the
+/// view); once every one does, it's revealed. One scroller a frame, since scrolling one moves
+/// the focus in those around it.
+fn reveal(d: &mut Driver, st: &mut State, scrolls: &[Scrolled], focused: Option<[f32; 4]>) -> bool {
+    let Some(id) = st.reveal.clone() else { return false };
+    let Some([x, y, w, h]) = focused.filter(|_| st.focus.as_deref() == Some(id.as_str())) else {
+        d.apply(st, Msg::Revealed);
+        return false;
+    };
+    for s in crate::state::scrollers_around(st, &id).into_iter().filter(|s| *s != id) {
+        let (Some(down), Some(at)) = (st.node(&s).and_then(Node::scrolls_down), scrolls.iter().find(|x| x.id == s)) else { continue };
+        let (from, len) = if down { (y, h) } else { (x, w) };
+        let start = from - at.start;
+        let by = if start < 0. { start } else { (start + len - at.view).max(0.).min(start) };
+        if by.abs() >= 0.5 {
+            d.apply(st, Msg::Pan { id: s, lines: by });
+            return true;
+        }
+    }
+    d.apply(st, Msg::Revealed);
+    false
 }
 
 /// Tells each editor the size it was drawn at, and each list how many rows it showed, where that
