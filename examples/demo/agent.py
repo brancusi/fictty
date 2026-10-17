@@ -86,8 +86,9 @@ STOCK = {"type": "col", "gap": 1, "children": [
 ]}
 
 FLOOR = {"type": "col", "gap": 1, "children": [
-    {"type": "row", "size": "120px", "gap": 2, "children": [
-        {"type": "text", "id": f"stat{k}", "title": t, "bind": "floor", "variant": "card", "pad": [1, 0], "text": s} for k, (t, s) in enumerate([
+    # As many cards to a line as fit, up to four: they wrap on a narrow window.
+    {"type": "grid", "id": "stats", "cols": {"min": "220px", "max": 4}, "gap": 2, "size": "fit", "children": [
+        {"type": "text", "id": f"stat{k}", "title": t, "bind": "floor", "variant": "card", "pad": [1, 0], "size": "fit", "text": s} for k, (t, s) in enumerate([
             ("TODAY", "<stat>£{takings}</>\n{±dtakings}% <dim>vs last Tuesday</>"),
             ("ON THE STANDS", "<stat>{stands}</> <dim>of 4</>\n<dim>{waiting} waiting</>"),
             ("AVERAGE JOB", "<stat>{avg}</> <dim>min</>\n{±davg} min <dim>vs last week</>"),

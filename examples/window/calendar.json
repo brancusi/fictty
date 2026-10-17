@@ -4,17 +4,47 @@
   "gap": 1,
   "children": [
    {
-    "type": "text",
-    "text": "<heading>October 2026</>  <dim>Week 42</>\t<dim>\u2039 Today \u203a   Day  Week  Month</>",
-    "size": 1
+    "type": "row",
+    "size": 1,
+    "justify": "between",
+    "children": [
+     {
+      "type": "text",
+      "text": "<heading>October 2026</>  <dim>Week 42</>",
+      "size": "fit",
+      "wrap": false
+     },
+     {
+      "type": "text",
+      "text": "<dim>\u2039 Today \u203a   Day  Week  Month</>",
+      "size": "fit",
+      "wrap": false
+     }
+    ]
    },
    {
     "type": "row",
     "children": [
      {
-      "type": "text",
-      "text": "\n<dim>09:00</>\n\n<dim>10:00</>\n\n<dim>11:00</>\n\n<dim>12:00</>\n\n<dim>13:00</>\n\n<dim>14:00</>\n\n<dim>15:00</>\n\n<dim>16:00</>\n\n<dim>17:00</>",
-      "size": 7
+      "type": "col",
+      "size": 7,
+      "margin": [
+       1,
+       0,
+       0,
+       0
+      ],
+      "children": [
+       {
+        "type": "each",
+        "bind": "hours",
+        "template": {
+         "type": "text",
+         "text": "<dim>{$item}</>",
+         "size": 2
+        }
+       }
+      ]
      },
      {
       "type": "col",
@@ -22,40 +52,26 @@
       "border": true,
       "children": [
        {
-        "type": "text",
-        "text": "",
-        "size": 2
-       },
-       {
-        "type": "text",
-        "text": "<b>Standup</>\n<dim>10:00</>",
-        "size": 4,
-        "variant": "card",
-        "border": true,
-        "pad": [
-         1,
-         0
-        ]
-       },
-       {
-        "type": "text",
-        "text": "",
-        "size": 2
-       },
-       {
-        "type": "text",
-        "text": "<b>Design review</>\n<dim>13:00</>",
-        "size": 6,
-        "variant": "card",
-        "border": true,
-        "pad": [
-         1,
-         0
-        ]
-       },
-       {
-        "type": "text",
-        "text": ""
+        "type": "each",
+        "id": "day0",
+        "bind": "day0",
+        "stack": true,
+        "template": {
+         "type": "text",
+         "text": "<b>{$item.title}</>\n<dim>{$item.at}</>",
+         "id": "ev-{$item.id}",
+         "variant": "card",
+         "border": true,
+         "pad": [
+          1,
+          0
+         ],
+         "float": {
+          "y": "{$item.y}",
+          "height": "{$item.h}",
+          "width": "100%"
+         }
+        }
        }
       ]
      },
@@ -65,35 +81,26 @@
       "border": true,
       "children": [
        {
-        "type": "text",
-        "text": "<b>1:1 Grace</>\n<dim>09:00</>",
-        "size": 2,
-        "variant": "card",
-        "border": true,
-        "pad": [
-         1,
-         0
-        ]
-       },
-       {
-        "type": "text",
-        "text": "",
-        "size": 8
-       },
-       {
-        "type": "text",
-        "text": "<b>Lunch</>\n<dim>14:00</>",
-        "size": 2,
-        "variant": "card",
-        "border": true,
-        "pad": [
-         1,
-         0
-        ]
-       },
-       {
-        "type": "text",
-        "text": ""
+        "type": "each",
+        "id": "day1",
+        "bind": "day1",
+        "stack": true,
+        "template": {
+         "type": "text",
+         "text": "<b>{$item.title}</>\n<dim>{$item.at}</>",
+         "id": "ev-{$item.id}",
+         "variant": "card",
+         "border": true,
+         "pad": [
+          1,
+          0
+         ],
+         "float": {
+          "y": "{$item.y}",
+          "height": "{$item.h}",
+          "width": "100%"
+         }
+        }
        }
       ]
      },
@@ -103,24 +110,26 @@
       "border": true,
       "children": [
        {
-        "type": "text",
-        "text": "",
-        "size": 4
-       },
-       {
-        "type": "text",
-        "text": "<b>Focus: themes</>\n<dim>11:00</>",
-        "size": 8,
-        "variant": "card",
-        "border": true,
-        "pad": [
-         1,
-         0
-        ]
-       },
-       {
-        "type": "text",
-        "text": ""
+        "type": "each",
+        "id": "day2",
+        "bind": "day2",
+        "stack": true,
+        "template": {
+         "type": "text",
+         "text": "<b>{$item.title}</>\n<dim>{$item.at}</>",
+         "id": "ev-{$item.id}",
+         "variant": "card",
+         "border": true,
+         "pad": [
+          1,
+          0
+         ],
+         "float": {
+          "y": "{$item.y}",
+          "height": "{$item.h}",
+          "width": "100%"
+         }
+        }
        }
       ]
      },
@@ -130,40 +139,26 @@
       "border": true,
       "children": [
        {
-        "type": "text",
-        "text": "",
-        "size": 2
-       },
-       {
-        "type": "text",
-        "text": "<b>Hiring</>\n<dim>10:00</>",
-        "size": 2,
-        "variant": "card",
-        "border": true,
-        "pad": [
-         1,
-         0
-        ]
-       },
-       {
-        "type": "text",
-        "text": "",
-        "size": 8
-       },
-       {
-        "type": "text",
-        "text": "<b>Demo prep</>\n<dim>15:00</>",
-        "size": 4,
-        "variant": "card",
-        "border": true,
-        "pad": [
-         1,
-         0
-        ]
-       },
-       {
-        "type": "text",
-        "text": ""
+        "type": "each",
+        "id": "day3",
+        "bind": "day3",
+        "stack": true,
+        "template": {
+         "type": "text",
+         "text": "<b>{$item.title}</>\n<dim>{$item.at}</>",
+         "id": "ev-{$item.id}",
+         "variant": "card",
+         "border": true,
+         "pad": [
+          1,
+          0
+         ],
+         "float": {
+          "y": "{$item.y}",
+          "height": "{$item.h}",
+          "width": "100%"
+         }
+        }
        }
       ]
      },
@@ -173,29 +168,122 @@
       "border": true,
       "children": [
        {
-        "type": "text",
-        "text": "",
-        "size": 6
-       },
-       {
-        "type": "text",
-        "text": "<b>Ship v0.3</>\n<dim>12:00</>",
-        "size": 4,
-        "variant": "card",
-        "border": true,
-        "pad": [
-         1,
-         0
-        ]
-       },
-       {
-        "type": "text",
-        "text": ""
+        "type": "each",
+        "id": "day4",
+        "bind": "day4",
+        "stack": true,
+        "template": {
+         "type": "text",
+         "text": "<b>{$item.title}</>\n<dim>{$item.at}</>",
+         "id": "ev-{$item.id}",
+         "variant": "card",
+         "border": true,
+         "pad": [
+          1,
+          0
+         ],
+         "float": {
+          "y": "{$item.y}",
+          "height": "{$item.h}",
+          "width": "100%"
+         }
+        }
        }
       ]
      }
     ]
    }
   ]
+ },
+ "data": {
+  "hours": {
+   "value": [
+    "09:00",
+    "10:00",
+    "11:00",
+    "12:00",
+    "13:00",
+    "14:00",
+    "15:00",
+    "16:00",
+    "17:00"
+   ]
+  },
+  "day0": {
+   "value": [
+    {
+     "id": "0-1",
+     "title": "Standup",
+     "at": "10:00",
+     "y": 2,
+     "h": 4
+    },
+    {
+     "id": "0-4",
+     "title": "Design review",
+     "at": "13:00",
+     "y": 8,
+     "h": 6
+    }
+   ]
+  },
+  "day1": {
+   "value": [
+    {
+     "id": "1-0",
+     "title": "1:1 Grace",
+     "at": "09:00",
+     "y": 0,
+     "h": 2
+    },
+    {
+     "id": "1-5",
+     "title": "Lunch",
+     "at": "14:00",
+     "y": 10,
+     "h": 2
+    }
+   ]
+  },
+  "day2": {
+   "value": [
+    {
+     "id": "2-2",
+     "title": "Focus: themes",
+     "at": "11:00",
+     "y": 4,
+     "h": 8
+    }
+   ]
+  },
+  "day3": {
+   "value": [
+    {
+     "id": "3-1",
+     "title": "Hiring",
+     "at": "10:00",
+     "y": 2,
+     "h": 2
+    },
+    {
+     "id": "3-6",
+     "title": "Demo prep",
+     "at": "15:00",
+     "y": 12,
+     "h": 4
+    }
+   ]
+  },
+  "day4": {
+   "value": [
+    {
+     "id": "4-3",
+     "title": "Ship v0.3",
+     "at": "12:00",
+     "y": 6,
+     "h": 4
+    }
+   ]
+  }
  }
 }

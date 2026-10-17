@@ -32,12 +32,12 @@ until `fictty screenshot` lands in phase 2.
 |---|---|---|---|
 | `mail` | folders, a message list, a reader, a command palette | none | it looks finished in all six themes after step 2 |
 | `ops` | live stats, services, deploys, a streaming log | none | the same, with its numbers in a large type role (step 2) |
-| `settings` | a form: fields, toggles, a radio group, a select, a slider, a save bar | checkboxes are list rows that toggle; the radio group is tabs with empty pages; the select is a pop-up list; the slider is a gauge that can't move | labels sit beside fields with `items: center` and `fit` (layout step); the form scrolls (`scroll: true`); the checkbox, radio and select are written-down recipes; the slider is `slider` with `add` (phase 2) |
+| `settings` | a form: fields, toggles, a radio group, a select, a slider, a save bar | checkboxes are list rows that toggle; the radio group is tabs with empty pages; the select is a pop-up list; the slider is a gauge that can't move | ~~labels beside fields~~ (`items: center`, `fit`) and ~~the form scrolls~~ (`scroll`), done in step 3; the checkbox, radio and select are written-down recipes; the slider is `slider` with `add` (phase 2) |
 | `chat` | rooms, a thread with bubbles left and right, a composer | bubbles are a background colour behind text; my messages are pushed right with a tab | each message is a row template node: a bubble with `pad`, radius and `fit` width, aligned with `self: end` (step 3) |
 | `kanban` | four columns of cards | one store entry per column; a card is three lines of text | cards are row template nodes (step 3); they move between columns by mouse and key with `drag`, `drop` and `move` (phase 2) |
 | `player` | album art, title, progress, transport, up next | the art is an `svg` placeholder in the window; the title is plain text | the art draws (`svg`, native step 5 / phase 3); the title is a `display` type role (step 2); progress is a `slider` |
-| `landing` | a hero, calls to action, a feature row, pricing | the hero is `big` block digits; cards stretch to fill | `display` type (step 2); cards `fit` their content, and the feature row `wrap`s (layout step); the page scrolls |
-| `calendar` | a week, with events at times and of different lengths | a script computes the gaps between events | events are floats placed from data (`y` from the start time, `size` from the length) (layout step) |
+| `landing` | a hero, calls to action, a feature row, pricing | none since step 3 | done: `display` type (step 2); the page scrolls, the calls to action and nav are justified, and the features and prices are grids of as many as fit, up to three (step 3) |
+| `calendar` | a week, with events at times and of different lengths | none since step 3 | done: each day's events are data, an `each` with `stack`, floated at `y` from the start, as tall as they last (step 3) |
 | `sheet` | a dense table with heat colours and totals | heat and totals are placeholders in the window | heat colours, totals, column widths and alignment (native step 3) |
 
 ## Pushing the styling

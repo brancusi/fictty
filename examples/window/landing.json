@@ -1,12 +1,28 @@
 {
  "root": {
   "type": "col",
+  "id": "page",
+  "scroll": true,
   "gap": 1,
   "children": [
    {
-    "type": "text",
-    "text": "<heading>\u25c6 fictty</>\t<dim>Docs   Blog   Pricing</>   <accent+b>Get started</>",
-    "size": 1
+    "type": "row",
+    "size": 1,
+    "justify": "between",
+    "children": [
+     {
+      "type": "text",
+      "text": "<heading>\u25c6 fictty</>",
+      "size": "fit",
+      "wrap": false
+     },
+     {
+      "type": "text",
+      "text": "<dim>Docs   Blog   Pricing</>   <accent+b>Get started</>",
+      "size": "fit",
+      "wrap": false
+     }
+    ]
    },
    {
     "type": "text",
@@ -18,38 +34,36 @@
    {
     "type": "text",
     "text": "<dim>A screen is one serializable value. Push it from anywhere; agents can read it back.</>",
-    "size": 1,
+    "size": "fit",
     "align": "center"
    },
    {
     "type": "row",
     "size": 1,
+    "gap": 2,
+    "justify": "center",
     "children": [
-     {
-      "type": "text",
-      "text": ""
-     },
      {
       "type": "button",
       "id": "cta",
       "label": "Try it in one line",
-      "size": 24
+      "size": "fit"
      },
      {
       "type": "button",
       "id": "cta2",
       "label": "Read the docs",
-      "size": 18
-     },
-     {
-      "type": "text",
-      "text": ""
+      "size": "fit"
      }
     ]
    },
    {
-    "type": "row",
-    "size": 5,
+    "type": "grid",
+    "id": "features",
+    "cols": {
+     "min": "240px",
+     "max": 3
+    },
     "gap": 2,
     "children": [
      {
@@ -60,6 +74,7 @@
        1,
        0
       ],
+      "size": "fit",
       "text": "<heading+accent>One value</>\nThe whole screen is JSON you can push, patch and diff."
      },
      {
@@ -70,6 +85,7 @@
        1,
        0
       ],
+      "size": "fit",
       "text": "<heading+accent>Agent-native</>\nRead the screen back as text or nodes."
      },
      {
@@ -80,12 +96,18 @@
        1,
        0
       ],
+      "size": "fit",
       "text": "<heading+accent>Fast</>\nThousands of updates a second, drawn at 60 fps."
      }
     ]
    },
    {
-    "type": "row",
+    "type": "grid",
+    "id": "prices",
+    "cols": {
+     "min": "240px",
+     "max": 3
+    },
     "gap": 2,
     "children": [
      {
@@ -105,14 +127,21 @@
        },
        {
         "type": "text",
-        "text": "\u2713 1 screen\n\u2713 Community"
+        "text": "\u2713 1 screen\n\u2713 Community",
+        "size": "fit"
        },
        {
         "type": "button",
         "id": "buy-Hobby",
         "label": "Choose Hobby",
         "size": 1,
-        "align": "center"
+        "align": "center",
+        "margin": [
+         1,
+         0,
+         0,
+         0
+        ]
        }
       ]
      },
@@ -133,14 +162,21 @@
        },
        {
         "type": "text",
-        "text": "\u2713 Unlimited screens\n\u2713 Themes\n\u2713 Priority support"
+        "text": "\u2713 Unlimited screens\n\u2713 Themes\n\u2713 Priority support",
+        "size": "fit"
        },
        {
         "type": "button",
         "id": "buy-Pro",
         "label": "Choose Pro",
         "size": 1,
-        "align": "center"
+        "align": "center",
+        "margin": [
+         1,
+         0,
+         0,
+         0
+        ]
        }
       ]
      },
@@ -161,14 +197,21 @@
        },
        {
         "type": "text",
-        "text": "\u2713 SSO\n\u2713 Audit log\n\u2713 Shared screens"
+        "text": "\u2713 SSO\n\u2713 Audit log\n\u2713 Shared screens",
+        "size": "fit"
        },
        {
         "type": "button",
         "id": "buy-Team",
         "label": "Choose Team",
         "size": 1,
-        "align": "center"
+        "align": "center",
+        "margin": [
+         1,
+         0,
+         0,
+         0
+        ]
        }
       ]
      }

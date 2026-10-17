@@ -808,7 +808,7 @@ pub fn problems(st: &State, nodes: &[&Node]) -> Vec<String> {
             ("float x", n.float.as_ref().and_then(|f| f.x.as_ref()).map(std::slice::from_ref)),
             ("float y", n.float.as_ref().and_then(|f| f.y.as_ref()).map(std::slice::from_ref)),
             ("cols min", match n.cols() {
-                Some(crate::model::Cols::Fill { min }) => Some(std::slice::from_ref(min)),
+                Some(crate::model::Cols::Fill { min, .. }) => Some(std::slice::from_ref(min)),
                 _ => None,
             }),
         ];

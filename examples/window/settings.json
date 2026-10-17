@@ -21,17 +21,20 @@
      },
      {
       "type": "col",
+      "id": "form",
+      "scroll": true,
       "gap": 1,
       "children": [
        {
         "type": "text",
         "text": "<heading>Profile</>\n<dim>How you appear to your team.</>",
-        "size": 2
+        "size": "fit"
        },
        {
         "type": "row",
-        "size": 1,
+        "size": "fit",
         "gap": 2,
+        "items": "center",
         "children": [
          {
           "type": "text",
@@ -48,8 +51,9 @@
        },
        {
         "type": "row",
-        "size": 1,
+        "size": "fit",
         "gap": 2,
+        "items": "center",
         "children": [
          {
           "type": "text",
@@ -66,8 +70,9 @@
        },
        {
         "type": "row",
-        "size": 1,
+        "size": "fit",
         "gap": 2,
+        "items": "center",
         "children": [
          {
           "type": "text",
@@ -148,7 +153,7 @@
         "size": 1,
         "bind": "ui",
         "value": "{vol}",
-        "max": 100
+        "of": 100
        },
        {
         "type": "text",
@@ -167,29 +172,28 @@
         }
        },
        {
-        "type": "text",
-        "text": ""
-       },
-       {
         "type": "row",
         "size": 1,
         "gap": 2,
+        "justify": "end",
+        "margin": [
+         1,
+         0,
+         0,
+         0
+        ],
         "children": [
-         {
-          "type": "text",
-          "text": ""
-         },
          {
           "type": "button",
           "id": "cancel",
           "label": "Cancel",
-          "size": 12
+          "size": "fit"
          },
          {
           "type": "button",
           "id": "save",
           "label": "Save changes",
-          "size": 18,
+          "size": "fit",
           "click": {
            "toast": "Saved",
            "tone": "pos"

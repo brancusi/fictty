@@ -36,7 +36,7 @@ done until the demo shows it in a real window.
 | 2d, type | the header in a `display` role; the Floor's numbers large, tabular; message previews that cut with `…` |
 | 2e, cards, the status bar | done: the Floor's stats wear the theme's `card` variant, and a new beat has the agent patch a card with a typo, read the problem back and fix it, while the status bar shows it |
 | 2f, the styling study | done: the header and the Floor's numbers name type roles (`heading`, `stat`), and the six rewritten themes change type, edges and depth as the agent cycles them |
-| 3, the layout vocabulary | the Floor's cards `fit` and `wrap`; the Notes and Stock tabs scroll; a settings dialog laid out without tricks |
+| 3, the layout vocabulary | the Floor's cards are a grid of as many as fit, up to four, so they wrap (done 17 October 2026); Notes and Stock scroll themselves (an editor, a table); a settings dialog laid out without tricks is still to write |
 | 4, rows as nodes | the Jobs board as real cards; the inbox rows with avatars and badges; a chat with the customer, in bubbles |
 | 5, editors | links and tasks in Notes, clicked |
 | charts and icons | takings as a sparkline and bars on the Floor; icons on the tabs |

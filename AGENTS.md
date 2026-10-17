@@ -73,7 +73,7 @@ embedding apps depend on `fictty` alone.
 - `crates/fictty/tests/`: the library from outside: `components.rs` (each component, driven and
   read back), `editing.rs` (the editing-keys contract), `host.rs` (an embedding app), `window.rs`
   (the native window's layout and mouse, under GPUI's test platform), `journal.rs` (Daybook's
-  flows in the window), `nocturne.rs` (Nocturne's, written with `--no-art`), `fuzz.rs` (random input
+  flows in the window), `nocturne.rs` (Nocturne's, written with `--no-art`), `wringer.rs` (the wringer's screens rebuilt in step 3, in every theme), `demo.rs` (the Kestrel demo as its agent leaves it), `fuzz.rs` (random input
   over editors, every chapter of the tour and Daybook, in the terminal's grid and in the window;
   `FUZZ_RUNS=2000` in a release build to go deeper), `sim.rs` (the binary in a pty)
 - `examples/`: UIs and their feeds. `showcase/` is the demo the one-liners run (the tour's chapters

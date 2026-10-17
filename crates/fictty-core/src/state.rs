@@ -689,7 +689,7 @@ pub fn update(st: &mut State, msg: Msg) -> Vec<Effect> {
     let moves = matches!(msg, Msg::Key { .. } | Msg::Click { .. } | Msg::Pick { .. } | Msg::Set { .. } | Msg::Scroll { .. });
     let was = st.focus.clone();
     let was_row = st.focus.as_deref().and_then(|f| st.local.get(f)).map(|l| l.selected);
-    let keyed = matches!(&msg, Msg::Key { key } if !pages_a_scroller(st, key));
+    let keyed = matches!(&msg, Msg::Key { key } if !pages_a_scroller(st, key)) || matches!(msg, Msg::Paste { .. });
     let fx = apply(st, msg);
     // A tick that took a lasting write away changed the store like any write.
     let quiet = quiet && st.store_writes == writes;
@@ -711,8 +711,8 @@ pub fn update(st: &mut State, msg: Msg) -> Vec<Effect> {
         st.focus = to;
     }
     // Wherever the focus went, or the row it's on in a list, it's brought into view once the
-    // next frame says where it is, and on any key, which acts on it (typing in a field scrolled
-    // away brings it back); not where a UI starts it (a screen opens at its top), nor for the
+    // next frame says where it is, and on any key or paste, which acts on it (typing in a field
+    // scrolled away brings it back); not where a UI starts it (a screen opens at its top), nor for the
     // wheel, which leaves the focus where it is.
     let row = st.focus.as_deref().and_then(|f| st.local.get(f)).map(|l| l.selected);
     if keyed || (was.is_some() && st.focus != was) || (st.focus == was && row != was_row) {

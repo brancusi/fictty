@@ -1049,12 +1049,17 @@ pub enum Justify {
 
 /// How many to a line, and how wide each is: a number of equal columns, as many equal ones as
 /// fit at least `min` wide (a length; how many depends on the width a frame lays them out
-/// across), or a size per column (`["200px", "*", "2*"]`, as a node's `size`).
+/// across), up to `max` if it says, or a size per column (`["200px", "*", "2*"]`, as a node's
+/// `size`).
 #[derive(Clone, Debug, PartialEq, Serialize)]
 #[serde(untagged)]
 pub enum Cols {
     Count(u16),
-    Fill { min: Len },
+    Fill {
+        min: Len,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        max: Option<u16>,
+    },
     Tracks(Vec<Size>),
 }
 
@@ -1063,8 +1068,8 @@ impl Cols {
     pub fn count(&self, width: f32, px: impl Fn(&Len) -> Option<f32>) -> usize {
         match self {
             Cols::Count(n) => (*n).max(1) as usize,
-            Cols::Fill { min } => match px(min) {
-                Some(m) if m > 0. => ((width / m).floor() as usize).max(1),
+            Cols::Fill { min, max } => match px(min) {
+                Some(m) if m > 0. => ((width / m).floor() as usize).min(max.map_or(usize::MAX, |x| x.max(1) as usize)).max(1),
                 _ => 1,
             },
             Cols::Tracks(t) => t.len().max(1),
@@ -1206,9 +1211,12 @@ impl<'de> Deserialize<'de> for Cols {
     fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
         match Value::deserialize(d)? {
             Value::Number(n) if n.as_u64().is_some_and(|n| (1..=u16::MAX as u64).contains(&n)) => Ok(Cols::Count(n.as_u64().unwrap_or(1) as u16)),
-            Value::Object(mut o) if o.len() == 1 && o.contains_key("min") => len_of(o.remove("min").unwrap_or_default()).map(|min| Cols::Fill { min }),
+            Value::Object(mut o) if o.contains_key("min") && o.keys().all(|k| k == "min" || k == "max") && o.get("max").is_none_or(|m| m.as_u64().is_some_and(|m| m >= 1)) => {
+                let max = o.remove("max").and_then(|m| m.as_u64()).map(|m| m.min(u16::MAX as u64) as u16);
+                len_of(o.remove("min").unwrap_or_default()).map(|min| Cols::Fill { min, max })
+            }
             Value::Array(a) if !a.is_empty() && a.iter().all(|t| t.is_string() || t.is_u64()) => serde_json::from_value(Value::Array(a)).map(Cols::Tracks).map_err(serde::de::Error::custom),
-            v => Err(wrong("cols is a count (3), as many as fit at least a length wide ({\"min\": \"180px\"}) or a size per column ([\"200px\", \"*\", \"2*\"])", &v)),
+            v => Err(wrong("cols is a count (3), as many as fit at least a length wide, up to a most ({\"min\": \"180px\", \"max\": 4}), or a size per column ([\"200px\", \"*\", \"2*\"])", &v)),
         }
     }
 }
@@ -2225,15 +2233,17 @@ mod tests {
     fn cols_read_as_a_count_a_minimum_or_a_size_per_column() {
         let c = |v: Value| serde_json::from_value::<Cols>(v);
         assert_eq!(c(json!(3)).unwrap(), Cols::Count(3));
-        assert_eq!(c(json!({"min": "180px"})).unwrap(), Cols::Fill { min: Len::Spec("180px".into()) });
+        assert_eq!(c(json!({"min": "180px"})).unwrap(), Cols::Fill { min: Len::Spec("180px".into()), max: None });
+        assert_eq!(c(json!({"min": 10, "max": 3})).unwrap(), Cols::Fill { min: Len::Cells(10.), max: Some(3) });
         assert_eq!(c(json!(["200px", "*", 12])).unwrap(), Cols::Tracks(vec![Size::Spec("200px".into()), Size::Spec("*".into()), Size::Cells(12)]));
-        for bad in [json!(0), json!("3"), json!({"max": 3}), json!([])] {
+        for bad in [json!(0), json!("3"), json!({"max": 3}), json!({"min": 10, "max": 0}), json!({"min": 10, "most": 3}), json!([])] {
             assert!(c(bad.clone()).unwrap_err().to_string().contains("cols is a count"), "{bad}");
         }
         // Read back as written.
         assert_eq!(serde_json::to_value(c(json!({"min": 10})).unwrap()).unwrap(), json!({"min": 10}));
-        assert_eq!(Cols::Fill { min: Len::Cells(10.) }.count(250., |l| l.px(8.)), 3, "250 px at 80 a column");
-        assert_eq!(Cols::Fill { min: Len::Cells(10.) }.count(50., |l| l.px(8.)), 1, "never none");
+        assert_eq!(Cols::Fill { min: Len::Cells(10.), max: None }.count(250., |l| l.px(8.)), 3, "250 px at 80 a column");
+        assert_eq!(Cols::Fill { min: Len::Cells(10.), max: Some(2) }.count(250., |l| l.px(8.)), 2, "no more than its max");
+        assert_eq!(Cols::Fill { min: Len::Cells(10.), max: None }.count(50., |l| l.px(8.)), 1, "never none");
     }
 
     use super::*;

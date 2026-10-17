@@ -1409,6 +1409,9 @@ fn the_focus_is_scrolled_into_view_and_page_down_pages() {
     let at = node(&mut s, "body").scroll.unwrap().0;
     let shown = s.state().local["body"].extent.unwrap().0;
     assert!((at - (shown - 1.)).abs() < 0.11, "a page is the view less a line: {at} of {shown}");
+    // The page left the focus above the view; a paste acts on it, so brings it back.
+    s.msg(fictty::state::Msg::Paste { text: "x".into() });
+    assert_eq!(node(&mut s, "body").scroll.map(|(a, _)| a), Some(0.), "a paste reveals the focus as a key does");
 }
 
 /// The wheel over a list scrolls the list; at its end, the scroller around it takes the rest.

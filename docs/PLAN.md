@@ -243,7 +243,10 @@ The phases of [design/native.md](design/native.md), where each is broken down.
   - [x] 3d, scroll: `scroll` on a col, row, grid or each, the wheel chained from lists, Page Up
         and Down, the focus scrolled into view, `(scroll a/b)` in the readback
   - [x] 3e, data placement: `{$index}` and `{$count}`, float `x` and `y`, an `each` as a stack
-  - [ ] **Next: 3f**, rebuilding the wringer's screens, the Kestrel demo and Daybook without tricks
+  - [ ] **Next: 3f's look**: `settings`, `landing` and `calendar` are rebuilt without tricks and
+        tested in every theme (`tests/wringer.rs`), the Kestrel Floor wraps (`tests/demo.rs`);
+        left are screenshots in three themes, a look in a real window, Kestrel's settings dialog,
+        and the frame time against the baseline
   - [ ] Step 3, the layout vocabulary, planned in
         [design/layout-step.md](design/layout-step.md). Then: lists and rows as nodes, the rest of
         editors, charts and icons, toasts and layers, embedding and the examples, then the terminal

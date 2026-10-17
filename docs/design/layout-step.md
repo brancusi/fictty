@@ -284,6 +284,15 @@ and the screens that use it looked at in a real window.
 - Nocturne (examples/nocturne): one shelf, not a list per width; the room scrolls instead of
   cutting its shelf at 1280×800; `tests/nocturne.rs` checks it with nothing cut down to
   150×31.
+- Done 17 October 2026, all but the looking: `settings` (labels centred beside their fields,
+  the form scrolls, the save bar justified), `landing` (the page scrolls, justified rows instead
+  of spacers, features and prices as grids of as many as fit, up to three, which is why `cols`
+  takes a `max`) and `calendar` (the hours an `each`, events an `each` with `stack` floated from
+  data) in `screens.py`, tested in every theme at two sizes in `tests/wringer.rs`. Kestrel's
+  Floor cards are a grid of up to four that wraps, tested in every theme in `tests/demo.rs`
+  (Notes and Stock scroll themselves; its settings dialog is still to write). Nocturne's shelf
+  is one list and its room scrolls. Still to do: screenshots in three themes and a look in a
+  real window, which need Aram at the screen.
 - Daybook: the writing column is `max: 72` with `self: "center"`, and zen's top margin is a
   `margin`, not empty texts. Its README drops those two lines from "still open".
 

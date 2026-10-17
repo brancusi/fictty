@@ -7,14 +7,17 @@ def T(text, **k): return {"type": "text", "text": text, **k}
 def save(name, ui):
     with open(f"{L}/{name}.json", "w") as f: json.dump(ui, f, indent=1); f.write("\n")
 
-# 1 · Settings form: labels, fields, toggles, a radio group, a select, a slider, a save bar.
-def field(label, node): return {"type": "row", "size": 1, "gap": 2, "children": [T(f"<dim>{label}</>", size=18, align="right"), node]}
+# 1 · Settings form: labels, fields, toggles, a radio group, a select, a slider, a save bar. The
+# form scrolls; a label sits beside its field, centred on it. Tricks left: the checkboxes are list
+# rows that toggle, the radio group is tabs with empty pages, the select a pop-up list, the slider
+# a gauge (recipes and `slider` are phase 2's).
+def field(label, node): return {"type": "row", "size": "fit", "gap": 2, "items": "center", "children": [T(f"<dim>{label}</>", size=18, align="right"), node]}
 save("settings", {
  "root": {"type": "stack", "children": [
   {"type": "row", "gap": 3, "children": [
    {"type": "list", "id": "nav", "size": 22, "title": "SETTINGS", "items": ["General", "Appearance", "Notifications", "Billing", "Danger zone"]},
-   {"type": "col", "gap": 1, "children": [
-    T("<heading>Profile</>\n<dim>How you appear to your team.</>", size=2),
+   {"type": "col", "id": "form", "scroll": True, "gap": 1, "children": [
+    T("<heading>Profile</>\n<dim>How you appear to your team.</>", size="fit"),
     field("Display name", {"type": "input", "id": "name", "text": "Ada Lovelace"}),
     field("Email", {"type": "input", "id": "email", "text": "ada@example.com"}),
     field("Seats", {"type": "input", "id": "seats", "text": "12", "accept": "number", "size": 10}),
@@ -27,8 +30,7 @@ save("settings", {
     {"type": "gauge", "id": "vol", "size": 1, "bind": "ui", "value": "{vol}", "of": 100},
     T("<b>Region</>", size=1),
     {"type": "button", "id": "region", "label": "{region}  ▾", "bind": "ui", "size": 1, "click": {"put": "picking", "value": True}},
-    T(""),
-    {"type": "row", "size": 1, "gap": 2, "children": [T(""), {"type": "button", "id": "cancel", "label": "Cancel", "size": 12}, {"type": "button", "id": "save", "label": "Save changes", "size": 18, "click": {"toast": "Saved", "tone": "pos"}}]}
+    {"type": "row", "size": 1, "gap": 2, "justify": "end", "margin": [1, 0, 0, 0], "children": [{"type": "button", "id": "cancel", "label": "Cancel", "size": "fit"}, {"type": "button", "id": "save", "label": "Save changes", "size": "fit", "click": {"toast": "Saved", "tone": "pos"}}]}
    ]}
   ]},
   {"type": "list", "id": "regions", "modal": True, "when": "picking", "border": True, "items": ["Europe (Frankfurt)", "US East (Virginia)", "Asia (Singapore)"],
@@ -92,36 +94,34 @@ save("player", {
  "store": {"q": [{"id": str(i), "n": i + 1, "t": t, "a": a, "d": d} for i, (t, a, d) in enumerate([("Afterglow", "Vela Drive", "4:18"), ("Static Bloom", "Halcyon Grid", "3:32"), ("Overclock", "Mono Ferro", "4:07"), ("Low Orbit", "Mono Ferro", "4:33"), ("Coastline", "The Lumen", "5:21")])]},
  "focus": "queue"})
 
-# 5 · Landing page: hero, CTA, a feature grid, pricing.
-def feat(t, d): return {"type": "text", "variant": "card", "border": True, "pad": [1, 0], "text": f"<heading+accent>{t}</>\n{d}"}
-def price(n, p, items, hi=False): return {"type": "col", "border": True, "title": n, "pad": [1, 0], "variant": "hero" if hi else "card", "children": [T(f"<stat>{p}</>  <dim>/ month</>", size="40px"), T("\n".join("✓ " + i for i in items)), {"type": "button", "id": f"buy-{n}", "label": "Choose " + n, "size": 1, "align": "center"}]}
+# 5 · Landing page: hero, CTA, a feature grid, pricing. The page scrolls; the features and the
+# prices are grids of as many as fit, so they wrap on a narrow window with their columns lined up.
+def feat(t, d): return {"type": "text", "variant": "card", "border": True, "pad": [1, 0], "size": "fit", "text": f"<heading+accent>{t}</>\n{d}"}
+def price(n, p, items, hi=False): return {"type": "col", "border": True, "title": n, "pad": [1, 0], "variant": "hero" if hi else "card", "children": [T(f"<stat>{p}</>  <dim>/ month</>", size="40px"), T("\n".join("✓ " + i for i in items), size="fit"), {"type": "button", "id": f"buy-{n}", "label": "Choose " + n, "size": 1, "align": "center", "margin": [1, 0, 0, 0]}]}
 save("landing", {
- "root": {"type": "col", "gap": 1, "children": [
-  T("<heading>◆ fictty</>\t<dim>Docs   Blog   Pricing</>   <accent+b>Get started</>", size=1),
+ "root": {"type": "col", "id": "page", "scroll": True, "gap": 1, "children": [
+  {"type": "row", "size": 1, "justify": "between", "children": [T("<heading>◆ fictty</>", size="fit", wrap=False), T("<dim>Docs   Blog   Pricing</>   <accent+b>Get started</>", size="fit", wrap=False)]},
   T("<display>UI as data</>", id="hero", size="84px", align="center"),
-  T("<dim>A screen is one serializable value. Push it from anywhere; agents can read it back.</>", size=1, align="center"),
-  {"type": "row", "size": 1, "children": [T(""), {"type": "button", "id": "cta", "label": "Try it in one line", "size": 24}, {"type": "button", "id": "cta2", "label": "Read the docs", "size": 18}, T("")]},
-  {"type": "row", "size": 5, "gap": 2, "children": [feat("One value", "The whole screen is JSON you can push, patch and diff."), feat("Agent-native", "Read the screen back as text or nodes."), feat("Fast", "Thousands of updates a second, drawn at 60 fps.")]},
-  {"type": "row", "gap": 2, "children": [price("Hobby", "$0", ["1 screen", "Community"]), price("Pro", "$12", ["Unlimited screens", "Themes", "Priority support"], True), price("Team", "$40", ["SSO", "Audit log", "Shared screens"])]}
+  T("<dim>A screen is one serializable value. Push it from anywhere; agents can read it back.</>", size="fit", align="center"),
+  {"type": "row", "size": 1, "gap": 2, "justify": "center", "children": [{"type": "button", "id": "cta", "label": "Try it in one line", "size": "fit"}, {"type": "button", "id": "cta2", "label": "Read the docs", "size": "fit"}]},
+  {"type": "grid", "id": "features", "cols": {"min": "240px", "max": 3}, "gap": 2, "children": [feat("One value", "The whole screen is JSON you can push, patch and diff."), feat("Agent-native", "Read the screen back as text or nodes."), feat("Fast", "Thousands of updates a second, drawn at 60 fps.")]},
+  {"type": "grid", "id": "prices", "cols": {"min": "240px", "max": 3}, "gap": 2, "children": [price("Hobby", "$0", ["1 screen", "Community"]), price("Pro", "$12", ["Unlimited screens", "Themes", "Priority support"], True), price("Team", "$40", ["SSO", "Audit log", "Shared screens"])]}
  ]}})
 
-# 6 · Calendar: a week grid with events at times, of different lengths.
+# 6 · Calendar: a week grid with events at times, of different lengths. Each day's events are
+# data, floated where they fall: `y` from the start (two rows an hour), the height from the length.
 days = ["MON 12", "TUE 13", "WED 14", "THU 15", "FRI 16"]
 hours = [f"{h:02d}:00" for h in range(9, 18)]
 ev = {0: [(1, 2, "Standup"), (4, 3, "Design review")], 1: [(0, 1, "1:1 Grace"), (5, 1, "Lunch")], 2: [(2, 4, "Focus: themes")], 3: [(1, 1, "Hiring"), (6, 2, "Demo prep")], 4: [(3, 2, "Ship v0.3")]}
-def day(i):
-    kids, at = [], 0
-    for start, length, title in sorted(ev.get(i, [])):
-        if start > at: kids.append(T("", size=(start - at) * 2))
-        kids.append(T(f"<b>{title}</>\n<dim>{hours[start]}</>", size=length * 2, variant="card", border=True, pad=[1, 0]))
-        at = start + length
-    kids.append(T(""))
-    return {"type": "col", "title": days[i], "border": True, "children": kids}
+event = T("<b>{$item.title}</>\n<dim>{$item.at}</>", id="ev-{$item.id}", variant="card", border=True, pad=[1, 0],
+          float={"y": "{$item.y}", "height": "{$item.h}", "width": "100%"})
+def day(i): return {"type": "col", "title": days[i], "border": True, "children": [{"type": "each", "id": f"day{i}", "bind": f"day{i}", "stack": True, "template": event}]}
 save("calendar", {
  "root": {"type": "col", "gap": 1, "children": [
-  T("<heading>October 2026</>  <dim>Week 42</>\t<dim>‹ Today ›   Day  Week  Month</>", size=1),
-  {"type": "row", "children": [T("\n" + "\n\n".join(f"<dim>{h}</>" for h in hours), size=7)] + [day(i) for i in range(5)]}
- ]}})
+  {"type": "row", "size": 1, "justify": "between", "children": [T("<heading>October 2026</>  <dim>Week 42</>", size="fit", wrap=False), T("<dim>‹ Today ›   Day  Week  Month</>", size="fit", wrap=False)]},
+  {"type": "row", "children": [{"type": "col", "size": 7, "margin": [1, 0, 0, 0], "children": [{"type": "each", "bind": "hours", "template": T("<dim>{$item}</>", size=2)}]}] + [day(i) for i in range(5)]}
+ ]},
+ "data": {"hours": {"value": hours}, **{f"day{i}": {"value": [{"id": f"{i}-{s}", "title": t, "at": hours[s], "y": s * 2, "h": n * 2} for s, n, t in sorted(ev.get(i, []))]} for i in range(5)}}})
 
 # 7 · Spreadsheet: dense numbers, heat, totals, sort marks.
 import random
