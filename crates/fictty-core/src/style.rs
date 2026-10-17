@@ -14,7 +14,7 @@ use std::collections::BTreeMap;
 /// The states a part can be suffixed with, in the order their parts layer: `row.selected.blur`
 /// is `row`, then `row.selected`, then `row.blur`, then `row.selected.blur`. `active`,
 /// `selected` and `disabled` don't hold for a node yet (nothing in `State` says so).
-pub const STATES: [&str; 6] = ["hover", "focused", "active", "selected", "disabled", "blur"];
+pub const STATES: [&str; 7] = ["hover", "focused", "active", "selected", "on", "disabled", "blur"];
 
 /// The parts the runtime draws inside a node, besides each component's own (its `type`).
 const INNER: [&str; 30] = [
@@ -580,6 +580,7 @@ pub fn states(st: &State, n: &Node) -> Vec<&'static str> {
         .filter(|s| match *s {
             "hover" => hover,
             "focused" => focused,
+            "on" => state::is_on(st, n),
             "blur" => n.focusable() && !focused,
             _ => false,
         })
@@ -605,6 +606,14 @@ pub fn resolve(st: &State, n: &Node) -> Resolved {
     let mut s = part.map_or(under.clone(), |p| th.layered(p, &states).over(&under));
     if let Some(v) = var.and_then(|v| v.style.as_ref()) {
         s = v.over(&s);
+    }
+    // A variant's own parts for the node's part in the states that hold (`button.on`).
+    if let (Some(p), Some(own)) = (part, var.map(|v| &v.parts).filter(|p| !p.is_empty())) {
+        for name in names(p, &states) {
+            if let Some(x) = own.get(&name) {
+                s = th.whole(x).over(&s);
+            }
+        }
     }
     // A backdrop is a card: its fill (or a gradient down), its border, its corners in cells.
     let cell_h = if st.caps.cell_h > 0. { st.caps.cell_h } else { 24. };
@@ -660,6 +669,19 @@ pub fn resolve(st: &State, n: &Node) -> Resolved {
 pub fn inner(st: &State, part: &str, states: &[&str]) -> Resolved {
     let th = Theme::of(st);
     let s = th.layered(part, states);
+    let edge = th.token("edge").filter(|e| *e != "rounded");
+    Resolved { part: Some(part.to_string()), ..filled(&th, &s, states, edge, false) }
+}
+
+/// A part drawn inside node `n` (its rows, its scrollbar), as `inner` resolves it, with the
+/// parts of the variant `n` wears over the theme's, name by name: the theme's `row`, the
+/// variant's `row`, the theme's `row.selected`, the variant's.
+pub fn inner_in(st: &State, n: &Node, part: &str, states: &[&str]) -> Resolved {
+    let th = Theme::of(st);
+    let Some(own) = n.variant.as_deref().and_then(|v| th.active?.variants.get(v)).map(|v| &v.parts).filter(|p| !p.is_empty()) else {
+        return inner(st, part, states);
+    };
+    let s = names(part, states).iter().flat_map(|name| [th.part_style(name), own.get(name).map(|p| th.whole(p))]).flatten().fold(Style::default(), |s, p| p.over(&s));
     let edge = th.token("edge").filter(|e| *e != "rounded");
     Resolved { part: Some(part.to_string()), ..filled(&th, &s, states, edge, false) }
 }
@@ -762,6 +784,15 @@ pub fn problems(st: &State, nodes: &[&Node]) -> Vec<String> {
             out.extend(var.style.iter().flat_map(|s| th.style_problems(s)).map(|p| format!("theme {name}: variant {v}: {p}")));
             for c in var.backdrop.iter().flat_map(backdrop_colours).filter(|c| !th.knows(c)) {
                 out.push(format!("theme {name}: variant {v}: {c:?} isn't a token or a colour"));
+            }
+            for (part, p) in &var.parts {
+                if !known_part(&th, part) {
+                    out.push(format!("theme {name}: variant {v}: no part is called {part:?}"));
+                }
+                match p {
+                    Part::Ink(spec) => out.extend(th.unknown(spec).into_iter().map(|w| format!("theme {name}: variant {v}: part {part}: {w:?} {ink_words}"))),
+                    Part::Whole(s) => out.extend(th.style_problems(s).into_iter().map(|p| format!("theme {name}: variant {v}: part {part}: {p}"))),
+                }
             }
         }
         for (k, f) in &active.fonts {

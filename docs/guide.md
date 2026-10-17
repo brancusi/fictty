@@ -194,7 +194,11 @@ fictty theme paper                                        # choose a loaded them
   "remove/{id}"` reads the selected row's flag). `$width` and `$height`
   are the size of the area the node's parent lays it out in (a container query): a pane beside a
   sidebar switches on its own width, not the screen's. A hidden node takes no
-  room and no focus. Layers take `when` too. **Toasts** show for a while: the `toast` action,
+  room and no focus. Layers take `when` too. **`on`** is a condition too, read the same way: while
+  it holds the node is in its `on` state, styled by the theme's parts (`button.on`) and its
+  variant's, and the readback says `(on)`. A toggle is one node: `{"type": "button", "label":
+  "⇄", "on": "shuffle", "click": {"toggle": "store.shuffle"}}`, or `"on": "loved/{id}"` for the
+  album it's bound to. **Toasts** show for a while: the `toast` action,
   `fictty toast`, and failed commands and host actions. They sit in the corner, or wherever a
   `{"type": "toasts"}` node is (a line each, in a UI's own bar), styled by the theme part
   `toast.<tone>`, else `toast`; while one shows, a `toasts` node covers its area, and
@@ -219,13 +223,17 @@ fictty theme paper                                        # choose a loaded them
   right-aligned), maps (`{done|true=☑;*=☐}`; `$` in an arm is the value, so a catch-all can
   style what it didn't name: `{kind|done=✓;*=<accent>$</>}`), `{x|?then $}` (only when `x`
   is set) and `{x|!otherwise}` (only when it isn't), and a tab right-aligns the rest of a line.
+  `{$store.key}` reads a store entry beside the bound value, so one text can say what it shows
+  and how things stand: `"bind": "@albums", "text": "{$store.playing|true=NOW PLAYING;*=PAUSED}
+  · {title}"` (a text, a button's label and a title take it).
 - **Actions** on keys: `quit`, `up`, `down` (a line, in a list with `cols`), `next_row` and
   `prev_row` (one row whatever the `cols`, on across line ends), `top`, `bottom`, `page_down` and
   `page_up` (a list's selection by a view, else the scroller around the focus; Page Down and Page
   Up), `focus_next`, `focus_prev`,
   `refresh`, `{"run": [argv with {field} of the selected row]}`, `{"load": "{file}"}`,
   `{"focus": "id"}`, `{"select": "{store.k}", "in": "list"}` (a row by its key, now or once it
-  arrives), `{"theme": "next"}`, `{"copy": "text"}` (onto the system clipboard, through
+  arrives; `"next"` and `"prev"` move that list's selection a row wherever the focus is, so a
+  ⏭︎ button or an `n` key skips a track), `{"theme": "next"}`, `{"copy": "text"}` (onto the system clipboard, through
   the terminal's OSC 52), `{"toast": "Saved", "tone": "pos"}`, `{"host": "name", "args": {…}}`,
   and store actions: `append`, `put`, `remove` (the selected row, or with `where` every row that
   matches), `toggle` (a true/false field of the selected row: a checkbox; `"store.zen"` flips a store
@@ -340,7 +348,10 @@ themes.json` does, and `run --watch` reloads the themes file whenever it changes
 one shown, so a theme being tuned redraws in place. A theme has `tokens`
 (colours), `parts` (how the runtime draws `table.header`, `row.selected`, `border.focused`,
 `title`, `editor.caret`, `input.placeholder`, `status` and the rest, as style specs like
-`accent+b`) and `variants` (named looks: a style, an edge, a backdrop, a title style). Nodes ask
+`accent+b`) and `variants` (named looks: a style, an edge, a backdrop, a title style, and
+`parts` of their own over the theme's: `"shelf": {"parts": {"row": {"pad": "s2"}}}` gives a
+list wearing it its own rows, `"ghost": {"parts": {"button.on": {"fg": "accent"}}}` a button
+its own on look). Nodes ask
 for a `variant` and a `tone`, never a colour. A UI's own `theme` map still works, as tokens under
 every theme. A colour is `#rgb`, `#rrggbb` or a name; `#rrggbbaa` (or `#rgba`) is see-through in
 the window, glass over a picture, and solid in a terminal. `examples/showcase/themes.json` has three: glass, paper and phosphor. In the window, a

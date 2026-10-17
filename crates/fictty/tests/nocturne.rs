@@ -84,21 +84,28 @@ fn the_whole_room_follows_the_album_chosen() {
 #[test]
 fn space_plays_love_loves_and_search_narrows_the_shelf() {
     let mut s = nocturne(300, 56);
-    assert!(has(&mut s, "play") && !has(&mut s, "pause"));
+    // One play button, its label and its on state following `playing`.
+    let on = |s: &mut fictty::Headless, id: &str| shown(s).into_iter().find(|n| n.id.as_deref() == Some(id)).is_some_and(|n| n.style.states.iter().any(|x| x == "on"));
+    assert!(text(&mut s, "play").contains("Play") && !on(&mut s, "play"));
     s.keys(&["space"]);
-    assert!(has(&mut s, "pause"), "space plays");
+    assert!(text(&mut s, "play").contains("Pause") && on(&mut s, "play"), "space plays");
+    assert!(text(&mut s, "status").contains("NOW PLAYING"), "and the hero says so");
     assert_eq!(text(&mut s, "progress"), "40%", "1:38 of 4:08, as seeded");
     s.keys(&["down"]);
     let line = shown(&mut s).into_iter().find(|n| n.id.as_deref() == Some("albums")).and_then(|n| n.cols).unwrap();
     assert_eq!(s.state().local["albums"].selected, line, "↓ goes a line of covers");
     let room = text(&mut s, "room");
     let slug = room.rsplit('/').next().unwrap().trim_end_matches("-room.png");
+    assert!(!on(&mut s, "love"));
     press(&mut s, "love");
-    assert!(has(&mut s, "loved"), "the album shown is loved");
+    assert!(on(&mut s, "love"), "the album shown is loved, and its ♥ lit");
     assert_eq!(s.state().store[&format!("loved/{slug}")].read()["value"], true, "the one a line down");
+    s.msg(fictty::state::Msg::Focus { id: "albums".into() });
+    s.keys(&["n"]);
+    assert!(text(&mut s, "tracks").starts_with("02"), "n moves Up Next on");
+    assert_eq!(s.state().focus.as_deref(), Some("albums"), "and leaves the focus on the shelf");
     press(&mut s, "next");
-    assert!(text(&mut s, "tracks").starts_with("02"), "next moves Up Next on");
-    assert_eq!(s.state().focus.as_deref(), Some("albums"), "and gives the focus back to the shelf");
+    assert!(text(&mut s, "tracks").starts_with("03"), "so does ⏭︎");
     s.msg(fictty::state::Msg::Focus { id: "find".into() });
     s.keys(&["S", "o", "d"]);
     let albums = shown(&mut s).into_iter().find(|n| n.id.as_deref() == Some("albums")).unwrap();

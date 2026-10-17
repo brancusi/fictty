@@ -348,10 +348,15 @@ theme = {
         "card": {"style": {"bg": {"from": "glass", "to": "glass2", "angle": 170}, "radius": "r3", "pad": ["s5", "s4"], "border": {"color": "rim"}, "shadow": "e2"}, "title": "faint"},
         "mini": {"style": {"bg": {"from": "glass", "to": "glass2", "angle": 170}, "radius": "r2", "pad": "s3", "border": {"color": "rim"}}},
         "art": {"style": {"radius": "r3", "shadow": "art"}},
+        # A cover on the shelf: no glow, which its card would clip (a node clips what it holds).
+        "cover": {"style": {"radius": "r3"}},
+        # The shelf's rows are cards: room all round, and corners that follow the cover's (its
+        # radius and the padding between).
+        "shelf": {"parts": {"row": {"radius": 26, "pad": "s2"}}},
         "thumb": {"style": {"radius": "r1", "shadow": "card"}},
         "play": {"style": {"fg": "#1a0f0a", "bg": {"from": "amber", "to": "accent", "angle": 135}, "border": {"color": "accent"}, "shadow": "glow", "pad": ["s6", 0]}},
-        "ghost": {"style": {"fg": "dim", "bg": "#00000000", "border": {"color": "#00000000"}}},
-        "lit": {"style": {"fg": "accent", "bg": "#00000000", "border": {"color": "#00000000"}}},
+        # A quiet button that lights up while it's on (loved, shuffling).
+        "ghost": {"style": {"fg": "dim", "bg": "#00000000", "border": {"color": "#00000000"}}, "parts": {"button.on": {"fg": "accent"}}},
     },
 }
 with open(os.path.join(OUT, "themes.json"), "w") as f:
@@ -373,11 +378,11 @@ def button(id, face, click, **k):
 songs = sum(a["count"] for a in albums)
 secs = sum(t["len"] for a in albums for t in a["tracks"])
 WIDE, SLIM = "$screen.width>=230", "$screen.width<230"
-NOW, BROWSE = "@nav.id=now", "@nav.id=browse"
+NOW = "@nav.id=now"
 PLAY = {"toggle": "store.playing"}
-# The playing track is the one Up Next has selected: ←/→ on it, a click, or these.
-NEXT = {"do": [{"focus": "tracks"}, "down", {"focus": "$prev"}]}
-PREV = {"do": [{"focus": "tracks"}, "up", {"focus": "$prev"}]}
+# The playing track is the one Up Next has selected: ↑/↓ on it, a click, or these.
+NEXT = {"select": "next", "in": "tracks"}
+PREV = {"select": "prev", "in": "tracks"}
 
 # What's playing, small, at the foot of the sidebar.
 mini = {"type": "row", "id": "mini", "variant": "mini", "size": "fit", "gap": 2, "items": "center", "children": [
@@ -385,18 +390,20 @@ mini = {"type": "row", "id": "mini", "variant": "mini", "size": "fit", "gap": 2,
     {"type": "col", "gap": 0, "children": [
         T("<heading>{t}</>", bind="@tracks", size="fit", wrap=False),
         T("<caption>{artist}</>", bind="@albums", tone="dim", size="fit", wrap=False),
-        T("<caption>▶︎  playing</>", tone="accent", size="fit", when="playing"),
-        T("<caption>paused</>", tone="faint", size="fit", when="!playing"),
+        T("<caption>{$store.playing|true=<accent>▶︎  playing</>;*=<faint>paused</>}</>", size="fit"),
     ]},
 ]}
 
-sidebar = {"type": "col", "id": "side", "size": 25, "gap": 0, "when": WIDE, "children": [
-    T("<brand>Nocturne</>", size="fit", margin=[0, 0, "s6", 0]),
-    label("LISTEN", margin=[0, 0, "s1", 0]),
-    {"type": "list", "id": "nav", "size": "fit", "items": [{"id": "now", "t": "◉   Listen Now"}, {"id": "browse", "t": "▦   Browse"}], "item": "{t}"},
-    label("LIBRARY", margin=["s6", 0, "s1", 0]),
-    T(f"<dim>{len(albums)} albums\n{songs} songs\n{secs // 3600} hr {secs % 3600 // 60} min</>", size="fit", pad=[1, 0]),
-    T(""),
+# Where you are: each place names its page's heading and its shelf's.
+places = [{"id": "now", "t": "◉   Listen Now", "name": "Listen Now", "shelf": "Recently played"},
+          {"id": "browse", "t": "▦   Browse", "name": "Browse", "shelf": "Every album"}]
+sidebar = {"type": "col", "id": "side", "size": 25, "justify": "between", "when": WIDE, "children": [
+    {"type": "col", "size": "fit", "gap": 0, "children": [
+        T("<brand>Nocturne</>", size="fit", margin=[0, 0, "s6", 0]),
+        label("LISTEN", margin=[0, 0, "s1", 0]),
+        {"type": "list", "id": "nav", "size": "fit", "items": places, "item": "{t}"},
+        label("LIBRARY", margin=["s6", 0, "s1", 0]),
+        T(f"<dim>{len(albums)} albums\n{songs} songs\n{secs // 3600} hr {secs % 3600 // 60} min</>", size="fit", pad=[1, 0])]},
     mini,
 ]}
 
@@ -404,24 +411,21 @@ sidebar = {"type": "col", "id": "side", "size": 25, "gap": 0, "when": WIDE, "chi
 controls = {"type": "row", "size": "fit", "children": [{"type": "col", "max": "560px", "gap": 0, "children": [
     {"type": "gauge", "id": "progress", "bind": "player", "value": "{at}", "of": "{len}", "size": "5px"},
     T("<num>{el}</>\t<num>−{left}</>", bind="player", tone="faint", size="fit", margin=["s1", 0, "s4", 0]),
-    {"type": "row", "size": 2, "gap": 2, "items": "center", "children": [
-        button("prev", "⏮︎", PREV),
-        button("play", "▶︎   Play", PLAY, variant="play", when="!playing"),
-        button("pause", "❚❚   Pause", PLAY, variant="play", when="playing"),
-        button("next", "⏭︎", NEXT),
-        T(""),
-        button("love", "♡", {"toggle": "store.loved/{id}"}, bind="@albums", variant="ghost", when="!loved/{id}"),
-        button("loved", "♥", {"toggle": "store.loved/{id}"}, bind="@albums", variant="lit", when="loved/{id}"),
-        button("shuffle", "⇄", {"toggle": "store.shuffle"}, variant="ghost", when="!shuffle"),
-        button("shuffled", "⇄", {"toggle": "store.shuffle"}, variant="lit", when="shuffle"),
+    {"type": "row", "size": 2, "justify": "between", "items": "center", "children": [
+        {"type": "row", "size": "fit", "gap": 2, "items": "center", "children": [
+            button("prev", "⏮︎", PREV),
+            button("play", "{$store.playing|true=❚❚   Pause;*=▶︎   Play}", PLAY, variant="play", on="playing"),
+            button("next", "⏭︎", NEXT)]},
+        {"type": "row", "size": "fit", "gap": 2, "items": "center", "children": [
+            button("love", "♥", {"toggle": "store.loved/{id}"}, bind="@albums", variant="ghost", on="loved/{id}"),
+            button("shuffle", "⇄", {"toggle": "store.shuffle"}, variant="ghost", on="shuffle")]},
     ]},
 ]}]}
 
 hero = {"type": "row", "id": "hero", "size": 14, "gap": 5, "items": "center", "when": NOW, "children": [
     {"type": "image", "id": "art", "src": "{art}", "bind": "@albums", "aspect": 1, "self": "stretch", "variant": "art", "fit": "cover"},
     {"type": "col", "id": "playing", "justify": "center", "gap": 0, "children": [
-        T("<label>NOW PLAYING</>     <caption>{label} · {year}</>", bind="@albums", tone="faint", size="fit", wrap=False, when="playing"),
-        T("<label>PAUSED</>     <caption>{label} · {year}</>", bind="@albums", tone="faint", size="fit", wrap=False, when="!playing"),
+        T("<label>{$store.playing|true=NOW PLAYING;*=PAUSED}</>     <caption>{label} · {year}</>", bind="@albums", tone="faint", size="fit", wrap=False, id="status"),
         T("<display>{t}</>", bind="@tracks", size="fit", wrap=False),
         T("<subtitle>{artist}</>    <dim>from</>   <subtitle><i>{title}</></>", bind="@albums", size="fit", wrap=False, margin=[0, 0, "s6", 0]),
         controls,
@@ -429,7 +433,7 @@ hero = {"type": "row", "id": "hero", "size": 14, "gap": 5, "items": "center", "w
 ]}
 
 card = {"type": "col", "gap": 0, "children": [
-    {"type": "image", "src": "{$item.art}", "aspect": 1, "variant": "art", "fit": "cover", "margin": [0, 0, "s2", 0]},
+    {"type": "image", "src": "{$item.art}", "aspect": 1, "variant": "cover", "fit": "cover", "margin": [0, 0, "s2", 0]},
     T("<heading>{$item.title}</>", size="fit", wrap=False),
     T("<caption>{$item.artist}</>", tone="dim", size="fit", wrap=False),
 ]}
@@ -439,21 +443,20 @@ def shelf():
     """The shelf: as many covers to a line as fit at 200 pixels or more each, each card as tall as
     its cover (square, as wide as the card) and its two lines; in the scrolling main column the
     shelf is as tall as all its lines, and the room scrolls."""
-    return {"type": "list", "id": "albums", "bind": "albums", "filter": "find", "row": {**card, "size": "fit"},
+    return {"type": "list", "id": "albums", "variant": "shelf", "bind": "albums", "filter": "find", "row": {**card, "size": "fit"},
             "cols": {"min": "200px"}}
 
 
 main = {"type": "col", "id": "main", "gap": 1, "scroll": True, "children": [
-    {"type": "row", "size": 2, "items": "center", "gap": 3, "children": [
-        T("<brand>Nocturne</>", size="fit", wrap=False, when=SLIM),
-        T("<headline>Listen Now</>", size="fit", wrap=False, when=NOW),
-        T("<headline>Browse</>", size="fit", wrap=False, when=BROWSE),
-        T(""),
+    {"type": "row", "size": 2, "items": "center", "justify": "between", "children": [
+        {"type": "row", "size": "fit", "gap": 3, "items": "center", "children": [
+            T("<brand>Nocturne</>", size="fit", wrap=False, when=SLIM),
+            T("<headline>{name}</>", bind="@nav", size="fit", wrap=False)]},
         {"type": "input", "id": "find", "size": 28, "placeholder": "Search"}]},
     hero,
-    {"type": "row", "size": 1, "items": "center", "margin": ["s4", 0, 0, 0], "children": [
-        T("<heading>Recently played</>", size="fit", when=NOW), T("<heading>Every album</>", size="fit", when=BROWSE),
-        T(""), T("<caption>arrows choose  ·  space plays  ·  n and p skip</>", tone="faint", size="fit", wrap=False)]},
+    {"type": "row", "size": 1, "items": "center", "justify": "between", "margin": ["s4", 0, 0, 0], "children": [
+        T("<heading>{shelf}</>", bind="@nav", size="fit", wrap=False),
+        T("<caption>arrows choose  ·  space plays  ·  n and p skip</>", tone="faint", size="fit", wrap=False)]},
     shelf(),
 ]}
 
@@ -464,7 +467,6 @@ rail = {"type": "col", "id": "rail", "size": "24%", "min": 36, "max": 44, "gap":
      "text": "<lyric>{l1}</>\n<now>{l2}</>\n<lyric>{l3}</>\n<lyric>{l4}</>", "tone": "dim"},
     {"type": "text", "id": "about", "title": "ABOUT THE RECORD", "variant": "card", "size": "fit", "bind": "@albums",
      "text": "{note}\n\n<caption>{count} songs · {label} · {year}</>", "tone": "dim"},
-    T(""),
 ]}
 
 first = albums[0]["tracks"][0]

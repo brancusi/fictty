@@ -1578,3 +1578,63 @@ fn a_short_last_line_of_a_grid_keeps_its_rows_as_wide() {
     let (x3, _) = s.at("g", Some(3), None).unwrap();
     assert_eq!(x3, x0, "the fourth row sits under the first, as wide");
 }
+
+/// `on` puts a node in its `on` state while its condition holds: one toggle button for both
+/// looks, styled by the theme's `button.on` and its variant's own `button.on`, read back.
+#[test]
+fn a_toggle_is_one_node_in_its_on_state() {
+    let ui = json!({"root": {"type": "row", "children": [
+        {"type": "button", "id": "shuffle", "label": "⇄", "on": "shuffle", "click": {"toggle": "store.shuffle"}},
+        {"type": "button", "id": "love", "label": "{loved|true=♥;*=♡}", "bind": "album", "variant": "ghost", "on": "loved/{id}", "click": {"toggle": "store.loved/{id}"}},
+    ]}, "store": {"shuffle": false, "album": {"id": "a1", "loved": false}},
+    "theme": {}});
+    let themes = json!({"t": {"tokens": {"accent": "#ff8800"}, "parts": {"button.on": {"fg": "accent"}},
+        "variants": {"ghost": {"parts": {"button.on": {"bg": "#112233"}}}}}});
+    let dir = std::env::temp_dir().join(format!("fon-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("t.json"), themes.to_string()).unwrap();
+    let mut s = App::new(serde_json::from_value(ui).unwrap()).themes_file(&dir.join("t.json")).unwrap().in_window(40, 4).unwrap();
+    assert!(s.state().problems.is_empty(), "{:?}", s.state().problems);
+    assert!(!node(&mut s, "shuffle").style.states.contains(&"on".to_string()));
+    let (x, y) = s.at("shuffle", None, None).unwrap();
+    s.mouse("press", x, y).mouse("release", x, y);
+    let on = node(&mut s, "shuffle");
+    assert!(on.style.states.contains(&"on".to_string()), "pressed, it's on: {:?}", on.style.states);
+    assert_eq!(on.style.ink.fg.as_deref(), Some("#ff8800"), "the theme's button.on");
+    let outline = fictty::readback::outline(&s.readback());
+    assert!(outline.lines().any(|l| l.contains("button shuffle") && l.contains("(on)")), "{outline}");
+    // A variant's own on look, and a `{field}` in `on` read from the bound value.
+    let (x, y) = s.at("love", None, None).unwrap();
+    s.mouse("press", x, y).mouse("release", x, y);
+    let love = node(&mut s, "love");
+    assert!(love.style.states.contains(&"on".to_string()), "loved/a1 is set: {:?}", s.state().store.keys().collect::<Vec<_>>());
+    assert_eq!(love.style.ink.bg.as_deref(), Some("#112233"), "ghost's button.on");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// `{$store.key}` reads a store entry in a template beside the bound value: one text says what
+/// the album is and whether it's playing.
+#[test]
+fn a_template_reads_the_store_beside_its_bound_value() {
+    let ui = json!({"root": {"type": "text", "id": "t", "bind": "album", "text": "{$store.playing|true=NOW PLAYING;*=PAUSED} · {title}"},
+        "store": {"album": {"title": "Night Ferry"}, "playing": false}});
+    let mut s = window(ui, 40, 3);
+    assert_eq!(node(&mut s, "t").text, "PAUSED · Night Ferry");
+    s.request(json!({"op": "write", "write": "put", "key": "playing", "value": true}));
+    assert_eq!(node(&mut s, "t").text, "NOW PLAYING · Night Ferry");
+}
+
+/// `{"select": "next", "in": id}` moves another list's selection a row, the focus where it was.
+#[test]
+fn select_next_moves_a_list_without_the_focus() {
+    let ui = json!({"root": {"type": "row", "children": [
+        {"type": "list", "id": "albums", "items": ["a", "b"]},
+        {"type": "list", "id": "tracks", "items": ["1", "2", "3"]},
+    ]}, "keys": {"n": {"select": "next", "in": "tracks"}, "p": {"select": "prev", "in": "tracks"}}, "focus": "albums"});
+    let mut s = window(ui, 40, 6);
+    s.keys(&["n", "n", "n"]);
+    assert_eq!(s.state().local["tracks"].selected, 2, "to the last, no further");
+    s.keys(&["p"]);
+    assert_eq!(s.state().local["tracks"].selected, 1);
+    assert_eq!(s.state().focus.as_deref(), Some("albums"), "the focus stays");
+}

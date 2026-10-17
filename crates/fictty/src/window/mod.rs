@@ -465,7 +465,8 @@ impl Portal {
         let fits = n.size.as_ref().is_some_and(|s| s.measure() == Measure::Fit);
         self.fitting += fits as usize;
         let rs = style::resolve(st, n);
-        let v = state::bound(st, n).unwrap_or(&Value::Null);
+        let scope = state::scope(st, n);
+        let v = scope.as_ref();
         let c = (cell.w, cell.h);
         // `pad` inside, over the style's own; a button's style is its face's.
         let extra = sides(&th, n.pad.as_ref(), cell);
@@ -520,35 +521,7 @@ impl Portal {
                 if scrolls { self.scroller(st, lk, &id, !row, d, cx) } else { d.into_any_element() }
             }
             Kind::Grid { .. } => self.grid(st, lk, n, &id, &key, &th, cx),
-            Kind::Stack { children } => {
-                let shown: Vec<(usize, Node)> = children.iter().enumerate().filter(|(_, c)| state::shown(st, c)).map(|(k, c)| (k, c.clone())).collect();
-                let mut kids: Vec<AnyElement> = Vec::new();
-                for (k, c) in shown {
-                    let path = format!("{key}.{k}");
-                    if c.modal {
-                        // What's behind a dialog dims, and a press there goes nowhere.
-                        kids.push(
-                            div()
-                                .id(SharedString::from(format!("scrim-{path}")))
-                                .absolute()
-                                .inset_0()
-                                .bg(lk.scrim)
-                                .occlude()
-                                .child(measure(&self.laid, |l, b| l.hits.push((b, hit(String::new(), None, None, false)))))
-                                .into_any_element(),
-                        );
-                    }
-                    kids.push(match c.float.clone() {
-                        Some(fl) => self.float(st, lk, c, &fl, &path, cx),
-                        None => {
-                            let covers = c.modal;
-                            let shown = self.node(st, lk, &c, false, &path, cx);
-                            div().absolute().inset_0().flex().when(covers, |d| d.bg(lk.bg).occlude()).child(shown).into_any_element()
-                        }
-                    });
-                }
-                div().relative().size_full().children(kids).into_any_element()
-            }
+            Kind::Stack { .. } => self.stack(st, lk, n, &key, cx),
             Kind::Text { text, wrap, lines } => text::lines(&tx, text, v, Ink::default(), wrap.unwrap_or(true), *lines),
             Kind::Spinner { text } => {
                 let (glyph, next) = state::spinner(st.now_ms);
@@ -597,88 +570,9 @@ impl Portal {
             }
             Kind::Rule { .. } => div().h(px(1.)).w_full().bg(lk.ink(&rs.ink).fg.unwrap_or(lk.border)).into_any_element(),
             Kind::List { .. } | Kind::Tree { .. } => self.list(st, lk, n, &id, fits || loose, cx),
-            Kind::Table { columns, .. } => {
-                let rows = state::items(st, n).to_vec();
-                let columns = columns.clone();
-                // The header sits over the rows' text: the rows' pad, the header's own look.
-                let [_, row_r, _, row_l] = Look::pad(&style::inner(st, "row", &[]), c);
-                let head = lk.boxed(div().flex().flex_row().h(px(cell.h)), &style::inner(st, "table.header", &[]), c, [0., row_r, 0., row_l]).children(columns.iter().map(|c| div().flex_1().child(c.title.clone())));
-                let body: Vec<AnyElement> = shown_rows(st, n)
-                    .map(|k| (k, &rows[k]))
-                    .map(|(k, r)| {
-                        let target = id.clone();
-                        let under = id.clone();
-                        lk.boxed(div().id(k).relative().flex().flex_row().h(px(cell.h)), &style::inner(st, "row", &style::row_states(st, n, k)), c, [0.; 4])
-                            .child(measure(&self.laid, move |l, b| l.hits.push((b, hit(under, Some(k), None, false)))))
-                            .on_mouse_down(MouseButton::Left, cx.listener(move |this, e: &MouseDownEvent, _, cx| {
-                        cx.stop_propagation();
-                        this.send(row_press(&target, k, e), cx)
-                    }))
-                            .children(columns.iter().map(|c| div().flex_1().min_w_0().child(text::line(&tx, &c.value, r, Ink::default(), false))))
-                            .into_any_element()
-                    })
-                    .collect();
-                // The rows it has room for, below the header.
-                let fits = id.clone();
-                let wheel = id.clone();
-                let rows_area = div()
-                    .id(SharedString::from(format!("rows-{key}")))
-                    .relative()
-                    .flex()
-                    .flex_col()
-                    .flex_1()
-                    .min_h(px(0.))
-                    .overflow_hidden()
-                    .child(measure_whole(&self.laid, move |l, b| l.sizes.push((fits, b))))
-                    .on_scroll_wheel(cx.listener(move |this, e: &ScrollWheelEvent, _, cx| this.wheel(&wheel, e, cx)))
-                    .children(body);
-                div().flex().flex_col().size_full().child(head).child(rows_area).into_any_element()
-            }
+            Kind::Table { .. } => self.table(st, lk, n, &id, &key, tx, cx),
             Kind::Editor { .. } | Kind::Input { .. } => self.editor(st, lk, n, &id, focused, cx),
-            Kind::Tabs { tabs, children, lead, trail, .. } => {
-                let at = state::tab_of(st, n).min(children.len().saturating_sub(1));
-                let tabs = tabs.clone();
-                let (mut active, mut idle) = (style::inner(st, "tabs.selected", &[]), style::inner(st, "tabs.idle", &[]));
-                // The shape the theme gives the tabs: pills (the default), an underline under the
-                // shown one, segments joined in one box, or plain text.
-                let shape = rs.shape.as_deref().unwrap_or("pill");
-                let line = style::inner(st, "tabs.underline", &[]).ink.fg.or_else(|| active.ink.bg.clone());
-                if matches!(shape, "underline" | "plain") {
-                    for t in [&mut active, &mut idle] {
-                        t.ink.bg = None;
-                        t.gradient = None;
-                        t.radius = None;
-                    }
-                    active.ink.fg = line.clone();
-                }
-                let mut bar = div().flex().flex_row().gap_2();
-                if shape == "segment" {
-                    let mut frame = style::inner(st, "panel", &[]);
-                    frame.pad = None;
-                    frame.border = style::inner(st, "input", &[]).border;
-                    bar = lk.boxed(bar.gap_0().flex_none().overflow_hidden(), &frame, c, [0.; 4]);
-                    active.radius = None;
-                    idle.radius = None;
-                }
-                let underline = (shape == "underline").then(|| line.as_deref().and_then(look::parse)).flatten();
-                let child = children.get(at).cloned();
-                let (lead, trail) = (lead.as_deref().map(|t| text::whole(lk, t, v, Ink::default())), trail.as_deref().map(|t| text::whole(lk, t, v, Ink::default())));
-                let bar = bar.children(tabs.iter().enumerate().map(|(k, t)| {
-                    let target = id.clone();
-                    let under = id.clone();
-                    lk.boxed(div().id(SharedString::from(format!("tab-{key}-{k}"))).relative(), if k == at { &active } else { &idle }, c, [0.; 4])
-                        .when_some(underline.filter(|_| k == at), |d, u| d.border_b_2().border_color(u))
-                        .child(measure(&self.laid, move |l, b| l.hits.push((b, hit(under, None, Some(k), false)))))
-                        .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, _, cx| {
-                        cx.stop_propagation();
-                        this.send(Msg::Click { id: target.clone(), row: None, tab: Some(k) }, cx)
-                    }))
-                        .child(text::plain(t, v))
-                }));
-                let shown = child.map(|c| self.node(st, lk, &c, false, &format!("{key}.{at}"), cx)).unwrap_or_else(|| div().into_any_element());
-                // In a row of its own, so a segmented bar is as wide as its tabs.
-                div().flex().flex_col().size_full().gap_1().child(div().flex().flex_row().items_center().gap_4().children(lead).child(bar).child(div().flex_1()).children(trail)).child(div().flex().flex_1().min_h(px(0.)).child(shown)).into_any_element()
-            }
+            Kind::Tabs { .. } => self.tabs(st, lk, n, &id, &key, &rs, v, cx),
             Kind::Toasts {} => {
                 if let Some(at) = st.toasts.iter().map(|t| t.until).min() {
                     self.soon(at);
@@ -774,6 +668,132 @@ impl Portal {
         let shown = self.node(st, lk, &n, false, path, cx);
         let face = div().id(SharedString::from(format!("float-{path}"))).flex().flex_col().flex_none().w(w).h(h).max_w_full().max_h_full().bg(lk.bg).occlude().child(shown);
         wrap.child(face).into_any_element()
+    }
+
+    /// A stack: its children over each other, a float where it says, a modal over a scrim.
+    /// (This and the next two are methods of their own so `node`'s frame stays small: it
+    /// recurses as deep as the tree.)
+    fn stack(&mut self, st: &State, lk: &Look, n: &Node, key: &str, cx: &mut Context<Self>) -> AnyElement {
+        let Kind::Stack { children } = &n.kind else { unreachable!("a stack") };
+        let shown: Vec<(usize, Node)> = children.iter().enumerate().filter(|(_, c)| state::shown(st, c)).map(|(k, c)| (k, c.clone())).collect();
+        let mut kids: Vec<AnyElement> = Vec::new();
+        for (k, c) in shown {
+            let path = format!("{key}.{k}");
+            if c.modal {
+                // What's behind a dialog dims, and a press there goes nowhere.
+                kids.push(
+                    div()
+                        .id(SharedString::from(format!("scrim-{path}")))
+                        .absolute()
+                        .inset_0()
+                        .bg(lk.scrim)
+                        .occlude()
+                        .child(measure(&self.laid, |l, b| l.hits.push((b, hit(String::new(), None, None, false)))))
+                        .into_any_element(),
+                );
+            }
+            kids.push(match c.float.clone() {
+                Some(fl) => self.float(st, lk, c, &fl, &path, cx),
+                None => {
+                    let covers = c.modal;
+                    let shown = self.node(st, lk, &c, false, &path, cx);
+                    div().absolute().inset_0().flex().when(covers, |d| d.bg(lk.bg).occlude()).child(shown).into_any_element()
+                }
+            });
+        }
+        div().relative().size_full().children(kids).into_any_element()
+    }
+
+    /// A table: its header over its rows, as many as it has room for.
+    #[allow(clippy::too_many_arguments)]
+    fn table(&mut self, st: &State, lk: &Look, n: &Node, id: &str, key: &str, tx: text::Tx, cx: &mut Context<Self>) -> AnyElement {
+        let Kind::Table { columns, .. } = &n.kind else { unreachable!("a table") };
+        let cell = self.cell;
+        let c = (cell.w, cell.h);
+        let rows = state::items(st, n).to_vec();
+        let columns = columns.clone();
+        // The header sits over the rows' text: the rows' pad, the header's own look.
+        let [_, row_r, _, row_l] = Look::pad(&style::inner_in(st, n, "row", &[]), c);
+        let head = lk.boxed(div().flex().flex_row().h(px(cell.h)), &style::inner(st, "table.header", &[]), c, [0., row_r, 0., row_l]).children(columns.iter().map(|c| div().flex_1().child(c.title.clone())));
+        let body: Vec<AnyElement> = shown_rows(st, n)
+            .map(|k| (k, &rows[k]))
+            .map(|(k, r)| {
+                let target = id.to_string();
+                let under = id.to_string();
+                lk.boxed(div().id(k).relative().flex().flex_row().h(px(cell.h)), &style::inner_in(st, n, "row", &style::row_states(st, n, k)), c, [0.; 4])
+                    .child(measure(&self.laid, move |l, b| l.hits.push((b, hit(under, Some(k), None, false)))))
+                    .on_mouse_down(MouseButton::Left, cx.listener(move |this, e: &MouseDownEvent, _, cx| {
+                cx.stop_propagation();
+                this.send(row_press(&target, k, e), cx)
+            }))
+                    .children(columns.iter().map(|c| div().flex_1().min_w_0().child(text::line(&tx, &c.value, r, Ink::default(), false))))
+                    .into_any_element()
+            })
+            .collect();
+        // The rows it has room for, below the header.
+        let fits = id.to_string();
+        let wheel = id.to_string();
+        let rows_area = div()
+            .id(SharedString::from(format!("rows-{key}")))
+            .relative()
+            .flex()
+            .flex_col()
+            .flex_1()
+            .min_h(px(0.))
+            .overflow_hidden()
+            .child(measure_whole(&self.laid, move |l, b| l.sizes.push((fits, b))))
+            .on_scroll_wheel(cx.listener(move |this, e: &ScrollWheelEvent, _, cx| this.wheel(&wheel, e, cx)))
+            .children(body);
+        div().flex().flex_col().size_full().child(head).child(rows_area).into_any_element()
+    }
+
+    /// A tab bar over the shown tab, in the shape the theme gives it.
+    #[allow(clippy::too_many_arguments)]
+    fn tabs(&mut self, st: &State, lk: &Look, n: &Node, id: &str, key: &str, rs: &style::Resolved, v: &Value, cx: &mut Context<Self>) -> AnyElement {
+        let Kind::Tabs { tabs, children, lead, trail, .. } = &n.kind else { unreachable!("tabs") };
+        let c = (self.cell.w, self.cell.h);
+        let at = state::tab_of(st, n).min(children.len().saturating_sub(1));
+        let tabs = tabs.clone();
+        let (mut active, mut idle) = (style::inner(st, "tabs.selected", &[]), style::inner(st, "tabs.idle", &[]));
+        // The shape the theme gives the tabs: pills (the default), an underline under the
+        // shown one, segments joined in one box, or plain text.
+        let shape = rs.shape.as_deref().unwrap_or("pill");
+        let line = style::inner(st, "tabs.underline", &[]).ink.fg.or_else(|| active.ink.bg.clone());
+        if matches!(shape, "underline" | "plain") {
+            for t in [&mut active, &mut idle] {
+                t.ink.bg = None;
+                t.gradient = None;
+                t.radius = None;
+            }
+            active.ink.fg = line.clone();
+        }
+        let mut bar = div().flex().flex_row().gap_2();
+        if shape == "segment" {
+            let mut frame = style::inner(st, "panel", &[]);
+            frame.pad = None;
+            frame.border = style::inner(st, "input", &[]).border;
+            bar = lk.boxed(bar.gap_0().flex_none().overflow_hidden(), &frame, c, [0.; 4]);
+            active.radius = None;
+            idle.radius = None;
+        }
+        let underline = (shape == "underline").then(|| line.as_deref().and_then(look::parse)).flatten();
+        let child = children.get(at).cloned();
+        let (lead, trail) = (lead.as_deref().map(|t| text::whole(lk, t, v, Ink::default())), trail.as_deref().map(|t| text::whole(lk, t, v, Ink::default())));
+        let bar = bar.children(tabs.iter().enumerate().map(|(k, t)| {
+            let target = id.to_string();
+            let under = id.to_string();
+            lk.boxed(div().id(SharedString::from(format!("tab-{key}-{k}"))).relative(), if k == at { &active } else { &idle }, c, [0.; 4])
+                .when_some(underline.filter(|_| k == at), |d, u| d.border_b_2().border_color(u))
+                .child(measure(&self.laid, move |l, b| l.hits.push((b, hit(under, None, Some(k), false)))))
+                .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, _, cx| {
+                cx.stop_propagation();
+                this.send(Msg::Click { id: target.clone(), row: None, tab: Some(k) }, cx)
+            }))
+                .child(text::plain(t, v))
+        }));
+        let shown = child.map(|c| self.node(st, lk, &c, false, &format!("{key}.{at}"), cx)).unwrap_or_else(|| div().into_any_element());
+        // In a row of its own, so a segmented bar is as wide as its tabs.
+        div().flex().flex_col().size_full().gap_1().child(div().flex().flex_row().items_center().gap_4().children(lead).child(bar).child(div().flex_1()).children(trail)).child(div().flex().flex_1().min_h(px(0.)).child(shown)).into_any_element()
     }
 
     /// A grid: lines of columns. The core places each child (`grid_lines`), and each line is a
@@ -895,7 +915,7 @@ impl Portal {
                 measure_whole(&self.laid, move |l, b| l.heights.push((list, key, b)))
             });
             let row = lk
-                .boxed(div().id(k).relative().flex_none(), &style::inner(st, "row", &style::row_states(st, n, k)), (cell.w, cell.h), [0.; 4])
+                .boxed(div().id(k).relative().flex_none(), &style::inner_in(st, n, "row", &style::row_states(st, n, k)), (cell.w, cell.h), [0.; 4])
                 .child(measure(&self.laid, move |l, b| l.hits.push((b, hit(under, Some(k), None, false)))))
                 .children(here)
                 .children(tall)
@@ -947,7 +967,9 @@ impl Portal {
         // list's take what it's given.
         let rows_box = div().id(SharedString::from(format!("rows-{id}"))).relative().flex().flex_col().min_h(px(0.)).overflow_hidden();
         let rows_box = if whole {
-            let mut b = rows_box.flex_basis(px(lines.total() * cell.h)).flex_shrink();
+            // Whole cells, since the frame tells the view's height in whole cells: else a
+            // list as tall as its lines is part of one short and scrolls by it.
+            let mut b = rows_box.flex_basis(px(lines.total().ceil() * cell.h)).flex_shrink();
             b.style().flex_grow = Some(0.);
             b
         } else {

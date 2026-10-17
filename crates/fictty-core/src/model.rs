@@ -247,6 +247,10 @@ pub struct Variant {
     /// The style of the node's title.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub title: Option<String>,
+    /// Parts drawn inside a node wearing it, over the theme's (`row`, `row.selected`,
+    /// `scrollbar`): a shelf of cards whose rows look unlike a list of tracks' rows.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub parts: BTreeMap<String, Part>,
 }
 
 /// One layer, anchored to a node (`on`) or one of its rows (`row`).
@@ -369,6 +373,11 @@ pub struct Node {
     /// takes no room and no focus.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub when: Option<String>,
+    /// While this holds (a condition, as `when` is), the node is in its `on` state: a toggle
+    /// (`"on": "playing"`, `"on": "loved/{id}"`) styled by the theme's `button.on` or its
+    /// variant's, one node for both looks.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub on: Option<String>,
     /// In a `stack`: where the node floats over the ones before it, instead of filling it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub float: Option<Float>,
@@ -441,6 +450,7 @@ impl Default for Node {
             pad: None,
             margin: None,
             when: None,
+            on: None,
             float: None,
             modal: false,
             min: None,
@@ -1607,7 +1617,8 @@ pub enum Action {
     /// it was before it last moved.
     Focus { focus: String },
     /// Select the row of list or tree `in` whose key is `select` (a template), now or as soon
-    /// as it arrives.
+    /// as it arrives; `"next"` and `"prev"` move its selection by a row, as ↓ and ↑ would, wherever
+    /// the focus is.
     Select {
         select: String,
         #[serde(rename = "in")]
@@ -1857,6 +1868,16 @@ impl Node {
 
     /// The nodes from this one down to the node with this id, both included; empty when there
     /// is none.
+    /// The templates it fills from its bound value: its text, a button's label, its title.
+    pub fn templates(&self) -> impl Iterator<Item = &str> {
+        let own = match &self.kind {
+            Kind::Text { text, .. } => Some(text.as_str()),
+            Kind::Button { label } => Some(label.as_str()),
+            _ => None,
+        };
+        own.into_iter().chain(self.title.as_deref())
+    }
+
     /// The node at `path` under this one, child indexes joined by dots (`0.2`; empty is this
     /// one), as a row's buttons are named.
     pub fn at_path(&self, path: &str) -> Option<&Node> {

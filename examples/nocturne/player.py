@@ -54,12 +54,13 @@ def main():
         if was is not None and now != was:
             at = 0
         was = now
-        playing = "pause" in nodes
+        store = lambda k: ask({"op": "read", "key": k}).get("value")
+        playing = store("playing") is True
         if playing:
             at += TICK
         if at >= length:
             at, n = 0, len(lens)
-            if "shuffled" in nodes and n > 1:
+            if store("shuffle") is True and n > 1:
                 k = random.choice([i for i in range(n) if i != k])
             elif k + 1 < n:
                 k += 1

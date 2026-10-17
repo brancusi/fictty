@@ -104,7 +104,8 @@ fn lines(template: &str, v: &Value) -> String {
 }
 
 fn shown(st: &State, n: &Node, depth: usize, key: &str, (rects, cut): Frame) -> Shown {
-    let v = state::bound(st, n).unwrap_or(&Value::Null);
+    let scope = state::scope(st, n);
+    let v = scope.as_ref();
     let id = n.id.clone();
     let mut s = Shown {
         depth,
@@ -246,6 +247,9 @@ fn outline_with(shown: &[Shown], styled: bool) -> String {
         }
         if s.cut {
             line.push_str(" (cut)");
+        }
+        if s.style.states.iter().any(|x| x == "on") {
+            line.push_str(" (on)");
         }
         match (s.selected, s.rows) {
             (Some(k), Some(n)) => line.push_str(&format!(" ({}/{n})", k + 1)),

@@ -2454,6 +2454,17 @@ fn act(st: &mut State, a: Action) -> Vec<Effect> {
             }
             vec![]
         }
+        Action::Select { select, of } if select == "next" || select == "prev" => {
+            if st.node(&of).is_none() {
+                st.status = Some(format!("select: no node {of}"));
+                return vec![];
+            }
+            if select == "next" {
+                step_in(st, &of, |sel, len| (sel + 1).min(len.saturating_sub(1)))
+            } else {
+                step_in(st, &of, |sel, _| sel.saturating_sub(1))
+            }
+        }
         Action::Select { select, of } => {
             let key = crate::model::fill(&select, &action_context(st));
             if st.node(&of).is_none() {
@@ -3086,6 +3097,13 @@ fn cycle(st: &mut State, dir: isize) -> Vec<Effect> {
 
 fn step(st: &mut State, f: impl Fn(usize, usize) -> usize) -> Vec<Effect> {
     let Some(id) = st.focus.clone() else { return vec![] };
+    step_in(st, &id, f)
+}
+
+/// Move list `id`'s selection to `f(at, len)`, past rows that can't be selected, wherever the
+/// focus is.
+fn step_in(st: &mut State, id: &str, f: impl Fn(usize, usize) -> usize) -> Vec<Effect> {
+    let id = id.to_string();
     let Some(n) = st.node(&id) else { return vec![] };
     let rows = items(st, n);
     let at = st.local.get(&id).map(|l| l.selected).unwrap_or(0);
@@ -3557,6 +3575,50 @@ pub fn shown_in(st: &State, n: &Node, size: Option<(u16, u16)>) -> bool {
         return true;
     }
     holds_in(st, &w, size)
+}
+
+/// Whether node `n` is in its `on` state: its `on` condition holds, `{field}`s filled from its
+/// bound value as a `when`'s are.
+pub fn is_on(st: &State, n: &Node) -> bool {
+    let Some(c) = n.on.as_deref() else { return false };
+    let c: std::borrow::Cow<str> = if c.contains('{') { crate::model::fill_raw(c, bound(st, n).unwrap_or(&Value::Null)).into() } else { c.into() };
+    holds(st, &c)
+}
+
+/// The value node `n`'s templates fill from: its bound value, and under `$store` the store
+/// entries they name (`{$store.playing}`), so a text can say what it shows and how things stand.
+pub fn scope<'a>(st: &'a State, n: &Node) -> std::borrow::Cow<'a, Value> {
+    let v = bound(st, n).unwrap_or(&Value::Null);
+    let mut named: Vec<&str> = Vec::new();
+    for t in n.templates() {
+        let mut rest = t;
+        while let Some(i) = rest.find("{$store.") {
+            rest = &rest[i + "{$store.".len()..];
+            let end = rest.find(['}', '|', ':', '.']).unwrap_or(rest.len());
+            named.push(&rest[..end]);
+        }
+    }
+    if named.is_empty() {
+        return std::borrow::Cow::Borrowed(v);
+    }
+    let mut out = match v {
+        Value::Object(m) => m.clone(),
+        Value::Null => serde_json::Map::new(),
+        other => [("$".to_string(), other.clone())].into_iter().collect(),
+    };
+    let entries: serde_json::Map<String, Value> = named
+        .into_iter()
+        .map(|k| {
+            let value = match st.store.get(k).map(|e| &e.body) {
+                Some(Body::Value { value }) => value.clone(),
+                Some(Body::Text { doc }) => Value::String(doc.text.to_string()),
+                None => Value::Null,
+            };
+            (k.to_string(), value)
+        })
+        .collect();
+    out.insert("$store".into(), Value::Object(entries));
+    std::borrow::Cow::Owned(Value::Object(out))
 }
 
 /// Whether a condition reads the size it's laid out in.
