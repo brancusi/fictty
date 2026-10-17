@@ -44,6 +44,10 @@ it all afternoon on a real catalog; what that found and fixed is in
 [design/gallery-notes.md](design/gallery-notes.md). Old terminal-only to-dos are gone from this
 file (they're in its history). **Where to start:** 3b, from "Start here" in layout-step.md.
 
+**17 October 2026:** 3b is on `main`, and Nocturne (examples/nocturne), a listening room, pushed
+the window as far as it goes; the gaps it found are fixed or placed in step 3. **Where to
+start:** 3c, from "Start here" in layout-step.md.
+
 ## Done
 
 ### Extraction (2026-10-10)
@@ -233,7 +237,8 @@ The phases of [design/native.md](design/native.md), where each is broken down.
         with `doc`, so a one-line field follows a selection; the keys an editor takes, listed,
         and a problem when a UI key can't reach a focused editor; an image that can't be read
         is a problem (handed back with the frame, as fonts are); clearing a mixed field at once
-  - [ ] **Next: 3b, 3c and 3d**, then 3e and 3f
+  - [x] 3b, fit and alignment: `self`, `justify`, `items`, `aspect`, `size: "fit"`
+  - [ ] **Next: 3c and 3d**, then 3e and 3f
   - [ ] Step 3, the layout vocabulary, planned in
         [design/layout-step.md](design/layout-step.md). Then: lists and rows as nodes, the rest of
         editors, charts and icons, toasts and layers, embedding and the examples, then the terminal

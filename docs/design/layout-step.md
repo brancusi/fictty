@@ -51,7 +51,13 @@ The Kestrel demo plays in a real window on it.
 - **The release fuzz at 400 runs takes about five and a half minutes** (the tour and the long
   list are the slow ones). Run it in the background while writing the guide.
 
-**Next, 3b (fit and alignment), as these commits, each with its tests in `tests/window.rs`:**
+**3b is done** (16 October 2026, through 89d560c), and Nocturne (examples/nocturne) followed
+it on 17 October as a test of how far the window goes. What it found in fictty was fixed then
+(hidden nodes leave no gap, lookups by id prefer the shown node, gauges and `of`, alpha colours,
+actions on a bound node's value, a grid's short last line); what's left for step 3 is in 3c, 3d
+and 3f below. **Next is 3c.**
+
+**3b (fit and alignment), as it landed, each with its tests in `tests/window.rs`:**
 
 1. **`self`, `justify`, `items`.** Done 16 October 2026: `Align` and `Justify` in the core,
    `justify` and `items` beside `gap` on `col`, `row` and `each` (a node-level `items` would
@@ -196,7 +202,7 @@ and the screens that use it looked at in a real window.
 - Problems: a malformed length, an unknown `space` name, `margin` on a float's anchor that
   can't take it.
 
-### 3b · Fit and alignment (M) · next
+### 3b · Fit and alignment (M) · done 16 October 2026
 
 - `size: "fit"`: as big as the content along the parent's direction. Text is measured with the
   window's own text layout (as step 2d's ellipsis does). A `fit` list is as tall as its rows
@@ -208,11 +214,16 @@ and the screens that use it looked at in a real window.
   widths in `in_window`, and add a fuzz check that a `fit` node is never cut while its parent
   has room.
 
-### 3c · Wrap and grid (M)
+### 3c · Wrap and grid (M) · next
 
 - `wrap: true` on a row: children flow onto the next line.
 - `{"type": "grid", "cols": 3}` or `"cols": ["200px", "*", "2*"]`, with `span` on children.
   Rows come from the children; no `rows` field until a screen needs one.
+- **As many columns as fit**: `"cols": {"min": "180px"}` on a grid and on a list (whose `cols`
+  lays its rows out as cards). Keys need the count (↓ moves a line of cards), so it can't live
+  in the view: the window hands each list's laid-out width back with the frame, as it does
+  rectangles, and the state works the count out from it. Nocturne's shelf, today one list per
+  width stop, becomes one list; it's the first test.
 - The readback gives each child's rectangle as now, so an agent sees the reflow.
 
 ### 3d · Scroll (M, the one new behaviour)
@@ -239,6 +250,9 @@ and the screens that use it looked at in a real window.
 - The Kestrel demo: the Floor's cards `fit` and `wrap`; Notes and Stock scroll; a settings
   dialog laid out without tricks (docs/design/demo.md, step 3's row). The demo plays clean in a
   real window, and its log's commands still work as typed.
+- Nocturne (examples/nocturne): one shelf, not a list per width; the room scrolls instead of
+  cutting its shelf at 1280×800; `tests/nocturne.rs` checks it with nothing cut down to
+  150×31.
 - Daybook: the writing column is `max: 72` with `self: "center"`, and zen's top margin is a
   `margin`, not empty texts. Its README drops those two lines from "still open".
 
@@ -246,7 +260,8 @@ and the screens that use it looked at in a real window.
 
 - Every field above has a test in the window, and the fuzz is clean at 400 runs in release.
 - `settings`, `landing` and `calendar` run with no tricks, in three themes, in screenshots.
-- The Kestrel demo shows step 3 in a real window, and Daybook loses its spacers.
+- The Kestrel demo shows step 3 in a real window, Daybook loses its spacers, and Nocturne its
+  per-width copies.
 - `fictty screen --nodes` shows scroll offsets and content sizes, and the guide documents every
   field.
 - The release build's frame build time is measured with `examples/stress/play.sh` and set
