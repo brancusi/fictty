@@ -143,11 +143,21 @@ fn shown(st: &State, n: &Node, depth: usize, key: &str, (rects, cut): Frame) -> 
             s.rows = Some(items.len());
             if !items.is_empty() {
                 s.selected = Some(at);
-                s.text = match (&rows.item, &rows.row, items.get(at)) {
+                let text = match (&rows.item, &rows.row, items.get(at)) {
                     (Some(t), _, Some(r)) => lines(t, r),
                     (None, Some(row), Some(r)) => row_text(st, row, r, (at, items.len())),
+                    // A tree's row without a template shows its `text`.
+                    (None, None, Some(r)) if matches!(n.kind, Kind::Tree { .. }) => scalar(r.get("text").or(r.get("value"))),
                     (None, _, r) => scalar(r),
                     _ => String::new(),
+                };
+                // A tree's row after its indent and fold glyph, as it's drawn.
+                s.text = match (&n.kind, items.get(at)) {
+                    (Kind::Tree { leaf, .. }, Some(r)) => {
+                        let (depth, glyph) = crate::model::fold_lead(r, leaf.as_deref());
+                        format!("{}{glyph}{text}", "  ".repeat(depth))
+                    }
+                    _ => text,
                 };
             }
         }

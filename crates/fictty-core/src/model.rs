@@ -1954,6 +1954,18 @@ impl Rows {
     }
 }
 
+/// What a tree shows before a row: its depth (two cells a level) and its fold glyph, `▾` open,
+/// `▸` folded, or the tree's `leaf` (`· ` unless it says) when nothing is under it.
+pub fn fold_lead<'a>(row: &Value, leaf: Option<&'a str>) -> (usize, &'a str) {
+    let depth = row["$depth"].as_u64().unwrap_or(0) as usize;
+    let glyph = match (row["$kids"].as_u64().unwrap_or(0) > 0, row["$open"].as_bool().unwrap_or(false)) {
+        (true, true) => "▾ ",
+        (true, false) => "▸ ",
+        _ => leaf.unwrap_or("· "),
+    };
+    (depth, glyph)
+}
+
 /// A template node for one item of an `each` (or a list's row), `index` of `count` (from 0):
 /// every `{$item}` and `{$item.path}` in its strings filled from the item (with a filter as any
 /// placeholder takes: `{$item.side|me=end;*=start}`) but those in a template inside it (a list's

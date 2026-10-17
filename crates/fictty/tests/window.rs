@@ -1624,6 +1624,71 @@ fn a_template_reads_the_store_beside_its_bound_value() {
     assert_eq!(node(&mut s, "t").text, "NOW PLAYING · Night Ferry");
 }
 
+fn outline(row: Value) -> Value {
+    let mut ui = json!({"root": {"type": "tree", "id": "t", "bind": "plan"},
+        "store": {"plan": [
+            {"id": "a", "text": "Launch", "children": [
+                {"id": "a1", "text": "Write the post"},
+                {"id": "a2", "text": "Record the demo", "children": [{"id": "a2x", "text": "Script it"}]}
+            ]},
+            {"id": "b", "text": "Rest"}
+        ]}});
+    if let Value::Object(m) = row {
+        ui["root"].as_object_mut().unwrap().extend(m);
+    }
+    ui
+}
+
+/// A tree's rows sit after their indent and fold glyph, two cells a level; a press on the glyph
+/// folds or opens that row (and selects it), a press on the rest only selects; the readback
+/// shows the glyph and indent.
+#[test]
+fn a_tree_shows_nested_rows_and_folds_them() {
+    let mut s = window(outline(json!({})), 50, 10);
+    assert_eq!(node(&mut s, "t").text, "▾ Launch");
+    let (x0, _) = s.at_part("t", 0, "fold").expect("the first row's glyph");
+    let (x2, _) = s.at_part("t", 2, "fold").expect("a second level's glyph");
+    let (x3, _) = s.at_part("t", 3, "fold").expect("a third level's glyph");
+    assert_eq!((x2 - x0, x3 - x0), (2, 4), "two cells a level");
+    // A press on Record the demo's text selects it and leaves it open.
+    let (x, y) = s.at("t", Some(2), None).unwrap();
+    s.mouse("press", x + 10, y).mouse("release", x + 10, y);
+    assert_eq!((s.state().local["t"].selected, node(&mut s, "t").rows), (2, Some(5)));
+    assert_eq!(node(&mut s, "t").text, "  ▾ Record the demo");
+    // A press on its glyph folds it: Script it goes.
+    let (x, y) = s.at_part("t", 2, "fold").unwrap();
+    s.mouse("press", x, y).mouse("release", x, y);
+    assert_eq!(node(&mut s, "t").rows, Some(4));
+    assert_eq!(node(&mut s, "t").text, "  ▸ Record the demo");
+    // On Launch's glyph from elsewhere: it's chosen and folded.
+    let (x, y) = s.at_part("t", 0, "fold").unwrap();
+    s.mouse("press", x, y).mouse("release", x, y);
+    assert_eq!((s.state().local["t"].selected, node(&mut s, "t").rows), (0, Some(2)));
+    // A leaf's glyph only selects.
+    let (x, y) = s.at_part("t", 1, "fold").unwrap();
+    s.mouse("press", x, y).mouse("release", x, y);
+    assert_eq!((s.state().local["t"].selected, node(&mut s, "t").rows), (1, Some(2)));
+    assert_eq!(node(&mut s, "t").text, "· Rest");
+}
+
+/// A tree's rows can be node templates, `fit` and with their own buttons, after the runtime's
+/// indent and glyph.
+#[test]
+fn a_tree_takes_a_row_template() {
+    let row = json!({"row": {"type": "row", "size": 1, "gap": 1, "children": [
+        {"type": "text", "text": "<b>{$item.text}</>", "size": "fit", "wrap": false},
+        {"type": "button", "label": "✓", "size": "fit", "click": {"toggle": "done"}}]}});
+    let mut s = window(outline(row), 50, 10);
+    assert_eq!(s.state().problems, Vec::<String>::new());
+    assert_eq!(node(&mut s, "t").text, "▾ Launch · ✓");
+    let (x, y) = s.at_part("t", 3, "1").expect("Script it's ✓");
+    s.mouse("press", x, y).mouse("release", x, y);
+    assert_eq!(s.state().local["t"].selected, 3);
+    assert_eq!(s.state().store["plan"].read()["value"][0]["children"][1]["children"][0]["done"], json!(true), "the ✓ is that row's");
+    let (gx, _) = s.at_part("t", 3, "fold").unwrap();
+    assert!(x > gx, "the row's nodes sit after its glyph");
+}
+
 /// Tabs without pages are a bar of choices (a radio group): the titles are the choices, → and a
 /// press pick one, and nothing shows under them. More pages than tabs is a problem.
 #[test]

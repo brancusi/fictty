@@ -739,9 +739,10 @@ pub enum Msg {
     Revealed,
     /// How tall a frame built a list's `fit` rows, in cells, by row key.
     Heights { id: String, heights: Vec<(String, f32)> },
-    /// A press on a button in row `row` of list `id`, by its path in the row template (`0.2`):
-    /// the row is selected as a click selects it, without the list's own `click`, then the
-    /// button's `click` runs on it (`{"toggle": "store.loved/{id}"}` loves that row's album).
+    /// A press on a part of row `row` of list or tree `id`: a button by its path in the row
+    /// template (`0.2`), or a tree row's fold glyph (`fold`). The row is selected as a click
+    /// selects it, without the list's own `click`, then the button's `click` runs on it
+    /// (`{"toggle": "store.loved/{id}"}` loves that row's album), or the row folds or opens.
     Press { id: String, row: usize, part: String },
     /// A click inside an editor's or input's text, at a cell relative to it: focus it and put the
     /// caret there, or with `extend` (Shift held) stretch the selection to it. A second click on
@@ -1016,8 +1017,13 @@ fn apply(st: &mut State, msg: Msg) -> Vec<Effect> {
         Msg::Click { id, .. } | Msg::Pick { id, .. } | Msg::Point { id, .. } | Msg::Scroll { id, .. } | Msg::Press { id, .. } if !reachable(st, &id) => vec![],
         Msg::Press { id, row, part } => {
             let Some(n) = st.node(&id) else { return vec![] };
-            let Some(click) = n.rows().and_then(|r| r.row.as_deref()).and_then(|t| t.at_path(&part)).filter(|b| matches!(b.kind, Kind::Button { .. })).and_then(|b| b.click.clone()) else {
-                return vec![];
+            let click = if part == "fold" && matches!(n.kind, Kind::Tree { .. }) {
+                None
+            } else {
+                let Some(click) = n.rows().and_then(|r| r.row.as_deref()).and_then(|t| t.at_path(&part)).filter(|b| matches!(b.kind, Kind::Button { .. })).and_then(|b| b.click.clone()) else {
+                    return vec![];
+                };
+                Some(click)
             };
             if row >= items(st, n).len() {
                 return vec![];
@@ -1031,7 +1037,10 @@ fn apply(st: &mut State, msg: Msg) -> Vec<Effect> {
             local.key = anchor.clone();
             local.picked.clear();
             local.anchor = anchor;
-            act(st, click)
+            match click {
+                Some(click) => act(st, click),
+                None => fold(st, Fold::Toggle),
+            }
         }
         Msg::Pick { id, row, how } => {
             if !st.node(&id).is_some_and(|n| n.multi) {

@@ -127,8 +127,11 @@ fictty theme paper                                        # choose a loaded them
   the right side, after a tab, is cut), `key` (default `id`: the selection follows its row when
   rows come and go) and `filter` (a store entry whose words every shown row must contain). A
   `tree` nests rows under each row's `nest` (default `children`), folds with ←/→ and space, keeps
-  its folds by key, and gives templates `{$depth}`, `{$kids}` and `{$open}`; its `leaf` is the
-  glyph for rows with nothing under them. A shown row carries `$ptr`, where it sits in the bound
+  its folds by key, and gives templates `{$depth}`, `{$kids}` and `{$open}`. Each row sits
+  after its indent (two cells a level) and its fold glyph, `▾` or `▸`, or `leaf` (default `· `)
+  for rows with nothing under them, styled by the `tree.guide` part; a press on the glyph folds
+  or opens the row (the part `fold` of the row's hit), and the readback shows both. Its rows are
+  `item` text, the row's `text`, or a `row` template as a list's. A shown row carries `$ptr`, where it sits in the bound
   entry, so store actions reach it through a filter or deep in a tree. **`"multi": true`** (a
   list, tree or table) lets the person pick several rows: ⌘-click (⌥-click in a terminal) picks
   one in or out, ⇧-click picks the range from the row last clicked, ⇧↑/⇧↓ (`J`/`K`) grow it,

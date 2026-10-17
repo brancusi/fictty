@@ -870,6 +870,27 @@ impl Portal {
             .into_any_element()
     }
 
+    /// A tree's row: its indent, its fold glyph (a press on it folds or opens the row, its hit
+    /// the row's with the part `fold`), then what the row shows beside them.
+    #[allow(clippy::too_many_arguments)]
+    fn tree_row(&self, st: &State, lk: &Look, id: &str, k: usize, r: &Value, leaf: Option<&str>, body: AnyElement, cx: &mut Context<Self>) -> AnyElement {
+        let cell = self.cell;
+        let (depth, glyph) = crate::model::fold_lead(r, leaf);
+        // The guide's look, but a selected row's own ink, as the terminal drew it.
+        let guide = if state::selected(st, id) == k { style::Resolved::default() } else { style::inner(st, "tree.guide", &[]) };
+        let under = Hit { part: Some("fold".into()), ..hit(id.to_string(), Some(k), None, false) };
+        let target = id.to_string();
+        let fold = lk
+            .boxed(div().flex_none().relative(), &guide, (cell.w, cell.h), [0.; 4])
+            .child(measure(&self.laid, move |l, b| l.hits.push((b, under))))
+            .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, _, cx| {
+                cx.stop_propagation();
+                this.send(Msg::Press { id: target.clone(), row: k, part: "fold".into() }, cx)
+            }))
+            .child(glyph.to_string());
+        div().flex().flex_row().items_start().w_full().pl(px(depth as f32 * 2. * cell.w)).child(fold).child(div().flex_1().min_w_0().child(body)).into_any_element()
+    }
+
     /// A list's rows, from where the state says it's scrolled: as many as fit, each the rows its
     /// item template takes. The wheel scrolls the state, as the terminal's does.
     /// `whole`: it's as long as its lines (`fit`, or in a scroller along it), not the room it's
@@ -905,7 +926,13 @@ impl Portal {
                     let tx = text::Tx { lk, laid: &laid, id, keep: look.keep.map_or(0., |k| k as f32 * cell.w), line_h: cell.h, fitting: self.fitting > 0 };
                     text::lines(&tx, t, r, Ink::default(), false, None)
                 }
+                // A tree's row without a template shows its `text`.
+                (None, None) if matches!(n.kind, Kind::Tree { .. }) => div().child(crate::model::scalar(r.get("text").or(r.get("value")))).into_any_element(),
                 (None, None) => div().child(crate::model::scalar(Some(r))).into_any_element(),
+            };
+            let body = match &n.kind {
+                Kind::Tree { leaf, .. } => self.tree_row(st, lk, id, k, r, leaf.as_deref(), body, cx),
+                _ => body,
             };
             let (target, under) = (id.to_string(), id.to_string());
             // A focused list's place is its selected row: that's what a scroller brings into view.
