@@ -879,8 +879,10 @@ impl Portal {
                 )
                 .child(body);
             // In its column's slot on the line, a plain box: a slot's own padding would count
-            // before the shares, so a short last line's rows would come out wider.
-            let row = if cols > 1 { track_slot(&tracks[k % cols..k % cols + 1], 0., cell).child(row).into_any_element() } else { row.into_any_element() };
+            // before the shares, so a short last line's rows would come out wider. The slot is
+            // the row's height, known, so the line isn't measured from what each row holds
+            // (that measuring cost Nocturne's shelf a quarter of its frame).
+            let row = if cols > 1 { track_slot(&tracks[k % cols..k % cols + 1], 0., cell).h(px(cell.h * per as f32)).child(row).into_any_element() } else { row.into_any_element() };
             shown.push(row);
         }
         // Rows `cols` to a line, each line as tall as a row and each row an equal share of it.
@@ -890,7 +892,7 @@ impl Portal {
             while it.peek().is_some() {
                 let mut line: Vec<AnyElement> = it.by_ref().take(cols).collect();
                 for t in line.len()..cols {
-                    line.push(track_slot(&tracks[t..t + 1], 0., cell).into_any_element());
+                    line.push(track_slot(&tracks[t..t + 1], 0., cell).h(px(cell.h * per as f32)).into_any_element());
                 }
                 lines.push(div().flex().flex_row().flex_none().w_full().children(line).into_any_element());
             }

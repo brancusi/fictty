@@ -296,6 +296,23 @@ and the screens that use it looked at in a real window.
 - Daybook: the writing column is `max: 72` with `self: "center"`, and zen's top margin is a
   `margin`, not empty texts. Its README drops those two lines from "still open".
 
+**After 3c to 3f** (17 October 2026), headless in the window's test platform, release, frame,
+update and readback timed together, best of three runs of 200 frames (100 for Nocturne), on an
+Apple M5 Max: 32fd722 (before 3c) against 9880b4a with the fix below.
+
+| screen | 32fd722 ms | after ms |
+|---|---|---|
+| a 160×50 text frame rewritten | 0.27 | 0.26 |
+| a 50k-row list, ↓ each frame | 5.5–5.8 | 5.5 |
+| 96 padded, bordered cards | 2.9–3.0 | 2.9 |
+| Nocturne at 171×36, ← and → | 3.7 | 3.4 (its scrolling room now draws all twelve covers) |
+
+The first run said 4.4 ms for Nocturne's old screen on the new build. Bisected to 3c: each of a
+list's `cols` rows sat in a slot whose height Taffy measured from the card inside it. The slot
+takes the row's known height now, and the cost went. A grid's slots are measured by design (a
+line is as tall as its tallest child), so a grid of heavy cards costs that measuring; a list
+of them doesn't. Measure in a real window at one refresh rate too before calling step 3 done.
+
 ## Done when
 
 - Every field above has a test in the window, and the fuzz is clean at 400 runs in release.
