@@ -15,8 +15,10 @@ fictty --socket /tmp/fnoct.sock screen --nodes
 track plays it, ♡ loves the album shown, ⇄ shuffles, the search narrows the shelf, and Browse
 gives the shelf the hero's room. `player.py` stands in for an audio engine: it plays no sound,
 but keeps time over the socket, reading the screen back as an agent does, moving the progress
-on while `playing` holds and selecting the next track at the end of one. `open.sh` starts it
-beside the window.
+on while `playing` holds and selecting the next track at the end of one. It knows the track
+lengths from `library.json`, as an engine knows its files, so it keeps time with Up Next hidden.
+`open.sh` starts it beside the window, which watches its files: run `nocturne.py` again while
+it's open and the new UI and theme show in place.
 
 `nocturne.py` draws every cover and room with Pillow, and writes the theme (`nocturne`) and the
 UI beside them, into `$TMPDIR/fictty-nocturne`, so nothing binary is checked in. Every artist,

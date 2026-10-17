@@ -485,6 +485,9 @@ ui = {
     "focus": "albums",
     "status_bar": False,
 }
+# What the player knows, as an audio engine would: each album's track lengths, by its room.
+with open(os.path.join(OUT, "library.json"), "w") as f:
+    json.dump({a["room"]: [t["len"] for t in a["tracks"]] for a in albums}, f)
 with open(os.path.join(OUT, "nocturne.json"), "w") as f:
     json.dump(ui, f, indent=1, ensure_ascii=False)
 print(OUT)
