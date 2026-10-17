@@ -815,6 +815,22 @@ pub fn problems(st: &State, nodes: &[&Node]) -> Vec<String> {
         for (field, ls) in lens {
             out.extend(th.len_problems(field, ls.unwrap_or_default()).into_iter().map(|p| format!("{who}: {p}")));
         }
+        // A placeholder only fills in an `each` or a list's row template; one in the tree wasn't.
+        let holes = [
+            ("self", n.align_self.as_ref()),
+            ("items", match &n.kind {
+                Kind::Col { items, .. } | Kind::Row { items, .. } | Kind::Grid { items, .. } => items.as_ref(),
+                _ => None,
+            }),
+        ];
+        for (field, h) in holes {
+            if let Some(crate::model::Filled::Hole(h)) = h {
+                out.push(format!("{who}: {field} {h:?} is a placeholder, filled only in an each or a list's row template"));
+            }
+        }
+        if let Kind::Col { justify: Some(crate::model::Filled::Hole(h)), .. } | Kind::Row { justify: Some(crate::model::Filled::Hole(h)), .. } = &n.kind {
+            out.push(format!("{who}: justify {h:?} is a placeholder, filled only in an each or a list's row template"));
+        }
         if n.scroll && n.scrolls_down().is_none() {
             out.push(format!("{} {who}: only a col, row, grid or each scrolls (a list, a text and an editor scroll themselves)", n.kind_name()));
         } else if n.scroll && n.id.is_none() {

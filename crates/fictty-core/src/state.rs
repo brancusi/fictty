@@ -183,7 +183,7 @@ fn expand_node(st: &State, n: &Node) -> Node {
             let items = n.bind.as_deref().and_then(|b| value_of(st, b)).and_then(Value::as_array).cloned().unwrap_or_default();
             let count = items.len();
             let children: Vec<Node> = items.iter().enumerate().map(|(k, it)| expand_node(st, &crate::model::instance(template, it, (k, count)))).collect();
-            let (gap, justify, items, wrap) = (gap.clone(), *justify, *across, *wrap);
+            let (gap, justify, items, wrap) = (gap.clone(), justify.clone(), across.clone(), *wrap);
             let kind = match cols {
                 Some(cols) => Kind::Grid { children, cols: cols.clone(), gap, items },
                 None if *stack => Kind::Stack { children },

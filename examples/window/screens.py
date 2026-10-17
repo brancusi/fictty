@@ -41,42 +41,50 @@ save("settings", {
              {"id": "c", "label": "Show avatars", "hint": "", "on": True}, {"id": "d", "label": "Reduce motion", "hint": "accessibility", "on": False}]},
  "focus": "name"})
 
-# 2 · Chat: bubbles left and right, avatars, a typing line, a composer.
+# 2 · Chat: bubbles left and right, a typing line, a composer. A message is a row template: a
+# bubble as wide as its text (up to 44 cells), on its side, mine in the accent, from its data. (The
+# column is a share held to 44, its bubble only as wide as its text: a `fit` held by `max` in a
+# `fit` row is measured on one line, Taffy's, see rows-step.md.)
 msgs = [("them", "Grace", "Did the build go out?", "09:12"), ("me", "You", "Yes, v2.14 is live in eu-west.", "09:13"),
-        ("them", "Grace", "Latency looks better already 🎉", "09:13"), ("me", "You", "p95 dropped from 140 to 96 ms.", "09:14"),
+        ("them", "Grace", "Latency looks better already 🎉", "09:13"), ("me", "You", "p95 dropped from 140 to 96 ms, and the error rate is flat since the deploy.", "09:14"),
         ("them", "Grace", "Ship the US region after lunch?", "09:15"), ("me", "You", "Deal.", "09:15")]
+bubble = {"type": "row", "size": "fit", "justify": "{$item.side|me=end;*=start}", "children": [
+    {"type": "col", "max": 44, "margin": [0, 0, 1, 0], "children": [
+        T("<dim>{$item.who} · {$item.at}</>", size="fit", wrap=False, self="{$item.side|me=end;*=start}"),
+        T("{$item.text}", variant="{$item.side|me=hero;*=card}", pad=[1, 0], size="fit", self="{$item.side|me=end;*=start}")]}]}
 save("chat", {
  "root": {"type": "row", "gap": 2, "children": [
-  {"type": "list", "id": "rooms", "size": 30, "title": "MESSAGES", "lines": 2, "bind": "rooms", "item": "<b>{name}</>\t<dim>{when}</>\n<dim>{last}</>"},
+  {"type": "list", "id": "rooms", "size": 34, "title": "MESSAGES", "lines": 2, "bind": "rooms", "item": "<b>{name}</>\t<dim>{when}</>\n<dim>{last}</>"},
   {"type": "col", "gap": 1, "children": [
-   T("<heading>Grace Hopper</>  <pos>●</> <dim>online</>\t<dim>⌕  ⋯</>", size=1),
+   {"type": "row", "size": 1, "justify": "between", "children": [T("<heading>Grace Hopper</>  <pos>●</> <dim>online</>", size="fit", wrap=False), T("<dim>⌕  ⋯</>", size="fit", wrap=False)]},
    {"type": "rule", "size": 1},
-   {"type": "list", "id": "thread", "bind": "msgs", "lines": 2, "row_variant": "side",
-    "variants": {"them": "<dim>{who} · {at}</>\n<fg+on-panel> {text} </>", "me": "\t<dim>{at}</>\n\t<bg+on-accent> {text} </>"}},
+   {"type": "list", "id": "thread", "bind": "msgs", "row": bubble},
    T("<dim>Grace is typing…</>", size=1),
    {"type": "row", "size": 1, "gap": 1, "children": [{"type": "input", "id": "compose", "placeholder": "Message Grace…",
      "keys": {"enter": {"do": [{"append": "msgs", "value": {"side": "me", "who": "You", "text": "{store.compose.text}", "at": "now"}}, {"put": "compose", "value": ""}]}}},
-     {"type": "button", "id": "send", "label": "Send", "size": 10}]}
+     {"type": "button", "id": "send", "label": "Send", "size": "fit"}]}
   ]}
  ]},
  "store": {"msgs": [{"id": str(i), "side": s, "who": w, "text": t, "at": a} for i, (s, w, t, a) in enumerate(msgs)],
    "rooms": [{"id": "g", "name": "Grace Hopper", "when": "09:15", "last": "Deal."}, {"id": "a", "name": "Ada Lovelace", "when": "Mon", "last": "The table on page four…"}, {"id": "t", "name": "#launch", "when": "Sun", "last": "Alan: rollout plan attached"}]},
  "focus": "compose"})
 
-# 3 · Kanban: columns of cards with chips, counts, a "+ add".
-cards = {"todo": [("Ellipsis for cut lines", "window", "S"), ("Cards: radius, gradient", "themes", "M"), ("IME composition", "input", "S")],
+# 3 · Kanban: columns of cards with a tag and a size, counts. Each column is a list of cards, a row
+# template as tall as its title wraps to.
+cards = {"todo": [("Ellipsis for cut lines", "window", "S"), ("Cards: radius, gradient and a shadow in every theme", "themes", "M"), ("IME composition", "input", "S")],
          "doing": [("Parts as styles", "themes", "L"), ("Charts on canvas", "charts", "M")],
          "review": [("Layout parity", "window", "M")], "done": [("Window under test", "tests", "M"), ("Fuzz through the window", "tests", "S")]}
-cols = [{"id": k, "title": t, "n": len(cards[k]), "cards": [{"id": f"{k}{i}", "t": c[0], "tag": c[1], "size": c[2]} for i, c in enumerate(cards[k])]}
-        for k, t in [("todo", "TO DO"), ("doing", "IN PROGRESS"), ("review", "REVIEW"), ("done", "DONE")]]
+cols = [{"id": k, "title": t, "n": len(cards[k])} for k, t in [("todo", "TO DO"), ("doing", "IN PROGRESS"), ("review", "REVIEW"), ("done", "DONE")]]
+card = {"type": "col", "size": "fit", "variant": "card", "border": True, "pad": [1, 0], "margin": [0, 0, 1, 0], "children": [
+    T("<b>{$item.t}</>", size="fit"),
+    {"type": "row", "size": 1, "justify": "between", "children": [T("<accent>#{$item.tag}</>", size="fit", wrap=False), T("<dim>{$item.size}</>", size="fit", wrap=False)]}]}
 save("kanban", {
  "root": {"type": "col", "gap": 1, "children": [
-  T("<heading>Phase 1 · the window</>   <dim>12 cards · 3 people</>\t<dim>+ New card   ⌕ Filter</>", size=1),
+  {"type": "row", "size": 1, "justify": "between", "children": [T("<heading>Phase 1 · the window</>   <dim>8 cards · 3 people</>", size="fit", wrap=False), T("<dim>+ New card   ⌕ Filter</>", size="fit", wrap=False)]},
   {"type": "each", "id": "board", "bind": "cols", "row": True, "gap": 2, "template":
-   {"type": "list", "id": "col-{$item.id}", "title": "{$item.title} · {$item.n}", "bind": "cols", "lines": 3,
-    "item": "<b>{t}</>\n<violet>#{tag}</>  <dim>{size}</>\n", "empty": "drop cards here"}}
+   {"type": "list", "id": "col-{$item.id}", "title": "{$item.title} · {$item.n}", "bind": "cards.{$item.id}", "row": card, "empty": "drop cards here"}}
  ]},
- "store": {"cols": cols}})
+ "store": {"cols": cols, "cards": {k: [{"id": f"{k}{i}", "t": c[0], "tag": c[1], "size": c[2]} for i, c in enumerate(v)] for k, v in cards.items()}}})
 
 # 4 · Media player: art, big title, progress, transport, up next.
 save("player", {

@@ -17,7 +17,7 @@ mod text;
 use crate::engine::{Drawn, Hit, Live, Rect};
 use look::{Ink, Look, inked, padded};
 use crate::style;
-use crate::model::{Align, Aspect, Fit, Float, Justify, Kind, Len, Lens, Md, Measure, Node, Size, md_roles};
+use crate::model::{Align, Aspect, Filled, Fit, Float, Justify, Kind, Len, Lens, Md, Measure, Node, Size, md_roles};
 use crate::state::{self, Msg, State};
 use anyhow::Result;
 use gpui::{
@@ -343,7 +343,7 @@ fn sized(el: gpui::Stateful<gpui::Div>, n: &Node, along_row: bool, loose: bool, 
     if [t, r, b, l] != [0.; 4] {
         el = el.mt(px(t)).mr(px(r)).mb(px(b)).ml(px(l));
     }
-    el.style().align_self = n.align_self.map(across);
+    el.style().align_self = n.align_self.as_ref().and_then(Filled::get).map(across);
     el
 }
 
@@ -508,7 +508,7 @@ impl Portal {
                     (true, false) => d.w_full().flex_none(),
                 };
                 let mut d = if row { d.flex_row() } else { d.flex_col() };
-                (d.style().justify_content, d.style().align_items) = (justify.map(along), items.map(across));
+                (d.style().justify_content, d.style().align_items) = (justify.as_ref().and_then(Filled::get).map(along), items.as_ref().and_then(Filled::get).map(across));
                 // Wrapped lines pack from the start, each as tall (or wide) as its biggest child.
                 if *wrap {
                     d = d.flex_wrap().content_start();
@@ -802,7 +802,7 @@ impl Portal {
             }
             slots.extend((end..tracks.len()).map(|t| track_slot(&tracks[t..t + 1], gx, cell).into_any_element()));
             let mut line = div().flex().flex_row().flex_none().w_full().gap_x(px(gx));
-            line.style().align_items = items.map(across);
+            line.style().align_items = items.as_ref().and_then(Filled::get).map(across);
             lines.push(line.children(slots).into_any_element());
         }
         // The width it was laid out across, for `cols` that fit as many as there's room for.

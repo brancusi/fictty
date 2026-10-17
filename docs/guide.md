@@ -173,9 +173,11 @@ fictty theme paper                                        # choose a loaded them
   `{$item}` and `{$item.path}` are filled from the item (`"id": "panel-{$item.id}"`,
   `"doc": "page/{$item.ref}"`, `"size": "{$item.h}"`), and `{$index}` and `{$count}` say where
   it is (from 0) and of how many (`"id": "step-{$index}"`, `"{$index} of {$count}"`; a list's
-  row template has them too); the template's own placeholders are left for it. A string
-  filled whole is read as whatever its field takes, so sizes and a float's `x` and `y` come
-  from data. `"cols": 3` (or any grid `cols`) makes the instances a grid's children, and
+  row template has them too); the template's own placeholders are left for it. `{$item.x}`
+  takes the filters any placeholder does, so a field can follow the data:
+  `"justify": "{$item.side|me=end;*=start}"`, `"variant": "{$item.side|me=hero;*=card}"`. A
+  string filled whole is read as whatever its field takes, so sizes and a float's `x` and `y`
+  come from data. `"cols": 3` (or any grid `cols`) makes the instances a grid's children, and
   `"stack": true` a stack's, each floating where its `float` says: a calendar's events,
   `{"float": {"x": "{$item.col}", "y": "{$item.start}", "width": 12, "height": "{$item.len}"}}`. The expanded tree is what's drawn and focused (`tree` in `get --state`); a push or a
   patch changes the template. A `State` read back from `get --state` leaves the tree out (it's

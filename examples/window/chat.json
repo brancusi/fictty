@@ -6,7 +6,7 @@
    {
     "type": "list",
     "id": "rooms",
-    "size": 30,
+    "size": 34,
     "title": "MESSAGES",
     "lines": 2,
     "bind": "rooms",
@@ -17,9 +17,23 @@
     "gap": 1,
     "children": [
      {
-      "type": "text",
-      "text": "<heading>Grace Hopper</>  <pos>\u25cf</> <dim>online</>\t<dim>\u2315  \u22ef</>",
-      "size": 1
+      "type": "row",
+      "size": 1,
+      "justify": "between",
+      "children": [
+       {
+        "type": "text",
+        "text": "<heading>Grace Hopper</>  <pos>\u25cf</> <dim>online</>",
+        "size": "fit",
+        "wrap": false
+       },
+       {
+        "type": "text",
+        "text": "<dim>\u2315  \u22ef</>",
+        "size": "fit",
+        "wrap": false
+       }
+      ]
      },
      {
       "type": "rule",
@@ -29,11 +43,42 @@
       "type": "list",
       "id": "thread",
       "bind": "msgs",
-      "lines": 2,
-      "row_variant": "side",
-      "variants": {
-       "them": "<dim>{who} \u00b7 {at}</>\n<fg+on-panel> {text} </>",
-       "me": "\t<dim>{at}</>\n\t<bg+on-accent> {text} </>"
+      "row": {
+       "type": "row",
+       "size": "fit",
+       "justify": "{$item.side|me=end;*=start}",
+       "children": [
+        {
+         "type": "col",
+         "max": 44,
+         "margin": [
+          0,
+          0,
+          1,
+          0
+         ],
+         "children": [
+          {
+           "type": "text",
+           "text": "<dim>{$item.who} \u00b7 {$item.at}</>",
+           "size": "fit",
+           "wrap": false,
+           "self": "{$item.side|me=end;*=start}"
+          },
+          {
+           "type": "text",
+           "text": "{$item.text}",
+           "variant": "{$item.side|me=hero;*=card}",
+           "pad": [
+            1,
+            0
+           ],
+           "size": "fit",
+           "self": "{$item.side|me=end;*=start}"
+          }
+         ]
+        }
+       ]
       }
      },
      {
@@ -74,7 +119,7 @@
         "type": "button",
         "id": "send",
         "label": "Send",
-        "size": 10
+        "size": "fit"
        }
       ]
      }
@@ -109,7 +154,7 @@
     "id": "3",
     "side": "me",
     "who": "You",
-    "text": "p95 dropped from 140 to 96 ms.",
+    "text": "p95 dropped from 140 to 96 ms, and the error rate is flat since the deploy.",
     "at": "09:14"
    },
    {

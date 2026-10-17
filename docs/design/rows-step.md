@@ -78,17 +78,35 @@ use it looked at.
   action wrote the store sent the selection back to the row it left (`step` already guarded
   against that). `a_click_that_writes_keeps_the_row_it_chose` covers it.
 
-### 4c · Trees and tables (M) · next
+### 4c · Trees and tables (M)
 
 - A tree's `row` template, with its indent and fold glyph drawn by the runtime around it.
 - A table's cells as templates per column (`cell`), with column widths and alignment.
 
-### 4d · Rebuild (M)
+### 4d · Rebuild (M) · chat and kanban done; Kestrel next
 
 - The wringer's `chat` (bubbles: a row template with `pad`, a radius, `fit` width, `self: end`
   for mine) and `kanban` (cards with a title, a tag chip and a size badge), in every theme, in
   `tests/wringer.rs`.
 - Kestrel's inbox and Jobs board as row templates.
+- `chat` and `kanban` landed on 17 October 2026, in every theme in `tests/wringer.rs`. What they
+  needed and found:
+  - **A template's typed fields from data.** `justify`, `items` and `self` are `Filled<T>`: a
+    value, or a placeholder kept as written until a template fills it
+    (`"justify": "{$item.side|me=end;*=start}"`); unfilled it's a problem. `{$item.x}` takes
+    filters as any placeholder does (`picked`, one implementation for both).
+  - **A bug in nested templates:** an `each`'s instance filled the `$item` inside a list's `row`
+    (and a nested `each`'s `template`) with its own item, so every kanban card's title was
+    empty. Filling stops at a template inside the template now.
+  - **A `fit` node held by `max`, in a row whose height is `fit`, is measured one line tall.**
+    Taffy measures a leaf under a max-content width without the `max` around it and clamps the
+    width afterwards, so the height comes from one line; GPUI's text cache answers a
+    widthless question with whatever it measured last, which happened to hide it for a share
+    with a `max`. A paragraph element of our own measuring each width apart fixed GPUI's half
+    and exposed Taffy's, so it's not in; the bubble is a share held to 44 cells, its text only
+    as wide as it is with `self`. Fixing it for real is a Taffy change (or measuring `fit` nodes
+    ourselves); it's written here so the next screen that meets it knows why.
+- Still to do in 4d: Kestrel's inbox and Jobs board.
 
 ## Done when
 

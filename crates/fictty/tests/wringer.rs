@@ -1,4 +1,4 @@
-//! The wringer's screens (`examples/window/`) rebuilt without tricks in step 3, in the native
+//! The wringer's screens (`examples/window/`) rebuilt without tricks in steps 3 and 4, in the native
 //! window: each in every theme at a big window and a small one, with no problems and nothing cut,
 //! and what each rebuild was for.
 #![cfg(target_os = "macos")]
@@ -23,7 +23,7 @@ fn node(s: &mut fictty::Headless, id: &str) -> Shown {
 #[test]
 fn the_rebuilt_screens_wear_every_theme_with_nothing_cut() {
     let themes: Vec<String> = fictty::engine::load_themes(&dir().join("themes.json")).unwrap().into_keys().collect();
-    for name in ["settings", "landing", "calendar"] {
+    for name in ["settings", "landing", "calendar", "chat", "kanban"] {
         for theme in &themes {
             for (w, h) in [(160, 44), (110, 30)] {
                 let mut s = screen(name, theme, w, h);
@@ -69,4 +69,21 @@ fn calendar_events_sit_at_their_times() {
     assert_eq!((standup.height, review.height), (4, 6), "two hours and three");
     let thu = node(&mut s, "ev-3-6").rect.unwrap();
     assert!(thu.x > review.x, "Thursday's to the right of Monday's");
+}
+
+/// A message is as tall as it wraps to: the long one takes more lines than a short one.
+#[test]
+fn chat_messages_are_as_tall_as_their_text() {
+    let mut s = screen("chat", "glass", 140, 34);
+    let h = s.state().local["thread"].heights.clone();
+    assert!(h["3"] > h["5"] + 0.5, "the long message is taller: {h:?}");
+}
+
+/// A card is as tall as its title wraps to, in its own column's list.
+#[test]
+fn kanban_cards_are_as_tall_as_their_titles() {
+    let mut s = screen("kanban", "paper", 140, 34);
+    let h = s.state().local["col-todo"].heights.clone();
+    assert!(h["todo1"] > h["todo0"] + 0.5, "the long title's card is taller: {h:?}");
+    assert_eq!(node(&mut s, "col-doing").rows, Some(2), "each column lists its own cards");
 }

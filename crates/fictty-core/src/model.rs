@@ -382,7 +382,7 @@ pub struct Node {
     pub max: Option<Len>,
     /// Where it sits across its row or column, over the container's `items`.
     #[serde(rename = "self", default, skip_serializing_if = "Option::is_none")]
-    pub align_self: Option<Align>,
+    pub align_self: Option<Filled<Align>>,
     /// Width over height, a number (`1.5`) or `"16/9"`. With no `size`, its length along its
     /// row or column comes from how big it is across.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -465,9 +465,9 @@ pub enum Kind {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         gap: Option<Gap>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
-        justify: Option<Justify>,
+        justify: Option<Filled<Justify>>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
-        items: Option<Align>,
+        items: Option<Filled<Align>>,
         #[serde(default, skip_serializing_if = "std::ops::Not::not")]
         wrap: bool,
     },
@@ -478,9 +478,9 @@ pub enum Kind {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         gap: Option<Gap>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
-        justify: Option<Justify>,
+        justify: Option<Filled<Justify>>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
-        items: Option<Align>,
+        items: Option<Filled<Align>>,
         #[serde(default, skip_serializing_if = "std::ops::Not::not")]
         wrap: bool,
     },
@@ -494,7 +494,7 @@ pub enum Kind {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         gap: Option<Gap>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
-        items: Option<Align>,
+        items: Option<Filled<Align>>,
     },
     /// Children over each other, the last on top: each fills the stack, or floats where its
     /// `float` says (a dialog, a popup, a corner badge). With `when`, a layer comes and goes.
@@ -521,9 +521,9 @@ pub enum Kind {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         gap: Option<Gap>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
-        justify: Option<Justify>,
+        justify: Option<Filled<Justify>>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
-        items: Option<Align>,
+        items: Option<Filled<Align>>,
     },
     /// Where toasts show, newest first, a line each, instead of the screen's corner (a bar of
     /// the UI's own). Each takes the theme part `toast.<tone>`, else `toast`.
@@ -1045,6 +1045,43 @@ pub enum Justify {
     End,
     Between,
     Around,
+}
+
+/// A field a template may fill from data: its value, or a placeholder kept as written
+/// (`"justify": "{$item.side|me=end;*=start}"`) until an `each` or a list's row fills it, when
+/// it's read again as the value. Unfilled it counts as unset, and is a problem.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Filled<T> {
+    Is(T),
+    Hole(String),
+}
+
+impl<T: Copy> Filled<T> {
+    /// The value, if it's been filled.
+    pub fn get(&self) -> Option<T> {
+        match self {
+            Filled::Is(t) => Some(*t),
+            Filled::Hole(_) => None,
+        }
+    }
+}
+
+impl<T: Serialize> Serialize for Filled<T> {
+    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Filled::Is(t) => t.serialize(s),
+            Filled::Hole(h) => s.serialize_str(h),
+        }
+    }
+}
+
+impl<'de, T: serde::de::DeserializeOwned> Deserialize<'de> for Filled<T> {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        match Value::deserialize(d)? {
+            Value::String(h) if h.contains('{') => Ok(Filled::Hole(h)),
+            v => serde_json::from_value(v).map(Filled::Is).map_err(serde::de::Error::custom),
+        }
+    }
 }
 
 /// How many to a line, and how wide each is: a number of equal columns, as many equal ones as
@@ -1884,7 +1921,9 @@ impl Rows {
 }
 
 /// A template node for one item of an `each` (or a list's row), `index` of `count` (from 0):
-/// every `{$item}` and `{$item.path}` in its strings filled from the item, `{$index}` and
+/// every `{$item}` and `{$item.path}` in its strings filled from the item (with a filter as any
+/// placeholder takes: `{$item.side|me=end;*=start}`) but those in a template inside it (a list's
+/// `row`, an `each`'s `template`, which have their own items), `{$index}` and
 /// `{$count}` from where it is, the rest left as they are. A string filled whole is read again
 /// as whatever the field takes, so `"size": "{$item.h}"` and a float's `"y": "{$item.start}"`
 /// come from data.
@@ -1895,14 +1934,20 @@ pub fn instance(template: &Node, item: &Value, (index, count): (usize, usize)) -
         while let Some(i) = rest.find("{$item") {
             let Some(j) = rest[i..].find('}') else { break };
             let inner = &rest[i + 1..i + j];
-            let path = inner.strip_prefix("$item").unwrap_or("");
-            let path = path.strip_prefix('.').unwrap_or(path);
-            if !path.is_empty() && !inner["$item".len()..].starts_with('.') {
+            let after = &inner["$item".len()..];
+            // A path into the item, and a filter as any placeholder takes (`|me=end;*=start`).
+            let (path, filter) = match after.split_once('|') {
+                Some((p, f)) => (p, Some(f)),
+                None => (after, None),
+            };
+            if !path.is_empty() && !path.starts_with('.') {
                 // `{$items}` or the like: not ours.
                 out.push_str(&rest[..i + j + 1]);
             } else {
+                let path = path.strip_prefix('.').unwrap_or(path);
+                let value = scalar(if path.is_empty() { Some(item) } else { lookup(item, path) });
                 out.push_str(&rest[..i]);
-                out.push_str(&scalar(if path.is_empty() { Some(item) } else { lookup(item, path) }));
+                out.push_str(&filter.map_or(value.clone(), |f| picked(f, &value)));
             }
             rest = &rest[i + j + 1..];
         }
@@ -1918,7 +1963,9 @@ pub fn instance(template: &Node, item: &Value, (index, count): (usize, usize)) -
                 *s = s.replace("{$index}", &at.0).replace("{$count}", &at.1);
             }
             Value::Array(a) => a.iter_mut().for_each(|x| walk(x, item, at)),
-            Value::Object(m) => m.values_mut().for_each(|x| walk(x, item, at)),
+            // A list's `row` and a nested `each`'s `template` are templates of their own: their
+            // `$item` is their rows', filled when they're drawn, not this one's.
+            Value::Object(m) => m.iter_mut().filter(|(k, v)| !(v.is_object() && (*k == "row" || *k == "template"))).for_each(|(_, x)| walk(x, item, at)),
             _ => {}
         }
     }
@@ -2002,27 +2049,7 @@ pub fn segments(template: &str, v: &Value) -> Vec<Seg> {
                 push(&mut out, &value, cur.clone(), sign);
             }
             Some("markup") => markup_in(&value, base.as_deref(), &mut out),
-            Some(f) => {
-                let picked = if let Some(then) = f.strip_prefix('?') {
-                    if value.is_empty() { String::new() } else { then.replace('$', &value) }
-                } else if let Some(other) = f.strip_prefix('!') {
-                    if value.is_empty() { other.to_string() } else { String::new() }
-                } else {
-                    let mut hit = None;
-                    let mut any = None;
-                    for arm in f.split(';') {
-                        if let Some((k, x)) = arm.split_once('=') {
-                            if k == value {
-                                hit = Some(x);
-                            } else if k == "*" {
-                                any = Some(x);
-                            }
-                        }
-                    }
-                    hit.or(any).unwrap_or("").replace('$', &value)
-                };
-                markup_in(&picked, base.as_deref(), &mut out);
-            }
+            Some(f) => markup_in(&picked(f, &value), base.as_deref(), &mut out),
         }
         if let Some((n, right)) = width {
             let mine = out.split_off(start);
@@ -2031,6 +2058,28 @@ pub fn segments(template: &str, v: &Value) -> Vec<Seg> {
     }
     out.retain(|s| !s.text.is_empty() || s.tab || s.fill.is_some());
     out
+}
+
+/// What a placeholder's filter makes of its value, as template text (markup and all): `?then $`
+/// only when it's set, `!otherwise` only when it isn't, or a map `a=x;b=y;*=z`; `$` is the value.
+fn picked(filter: &str, value: &str) -> String {
+    if let Some(then) = filter.strip_prefix('?') {
+        return if value.is_empty() { String::new() } else { then.replace('$', value) };
+    }
+    if let Some(other) = filter.strip_prefix('!') {
+        return if value.is_empty() { other.to_string() } else { String::new() };
+    }
+    let (mut hit, mut any) = (None, None);
+    for arm in filter.split(';') {
+        if let Some((k, x)) = arm.split_once('=') {
+            if k == value {
+                hit = Some(x);
+            } else if k == "*" {
+                any = Some(x);
+            }
+        }
+    }
+    hit.or(any).unwrap_or("").replace('$', value)
 }
 
 fn push(out: &mut Vec<Seg>, text: &str, style: Option<String>, sign: Option<bool>) {
@@ -2236,6 +2285,16 @@ pub fn is_colour(name: &str) -> bool {
 #[cfg(test)]
 mod tests {
     #[test]
+    fn an_instance_leaves_the_templates_inside_it_to_their_own_items() {
+        let t: Node = serde_json::from_value(json!({"type": "list", "id": "col-{$item.id}", "bind": "cards.{$item.id}",
+            "row": {"type": "text", "text": "{$item.t}"}})).unwrap();
+        let n = instance(&t, &json!({"id": "todo"}), (0, 1));
+        assert_eq!((n.id.as_deref(), n.bind.as_deref()), (Some("col-todo"), Some("cards.todo")));
+        let Kind::Text { text, .. } = &n.rows().unwrap().row.as_ref().unwrap().kind else { panic!() };
+        assert_eq!(text, "{$item.t}", "the row's $item is the list's rows'");
+    }
+
+    #[test]
     fn a_grid_places_children_a_line_at_a_time_by_their_spans() {
         // Three columns: a, b; c spanning two doesn't fit after them, so starts the next line.
         assert_eq!(grid_lines(&[1, 1, 2, 1, 5], 3), vec![vec![(0, 0, 1), (1, 1, 1)], vec![(2, 0, 2), (3, 2, 1)], vec![(4, 0, 3)]]);
@@ -2384,7 +2443,14 @@ mod tests {
         let v = json!({"type": "row", "justify": "between", "items": "center", "children": [{"type": "text", "text": "x", "self": "end"}]});
         let n: Node = serde_json::from_value(v.clone()).unwrap();
         let Kind::Row { justify, items, children, .. } = &n.kind else { panic!() };
-        assert_eq!((*justify, *items, children[0].align_self), (Some(Justify::Between), Some(Align::Center), Some(Align::End)));
+        assert_eq!((justify.clone(), items.clone(), children[0].align_self.clone()), (Some(Filled::Is(Justify::Between)), Some(Filled::Is(Align::Center)), Some(Filled::Is(Align::End))));
+        // A placeholder is kept as written, for a template to fill.
+        let t: Node = serde_json::from_value(json!({"type": "row", "children": [], "justify": "{$item.side|me=end;*=start}"})).unwrap();
+        let Kind::Row { justify, .. } = &t.kind else { panic!() };
+        assert_eq!(justify.as_ref().and_then(Filled::get), None);
+        let filled = instance(&t, &json!({"side": "me"}), (0, 1));
+        let Kind::Row { justify, .. } = &filled.kind else { panic!() };
+        assert_eq!(justify.as_ref().and_then(Filled::get), Some(Justify::End), "filled, it's read as the value");
         assert_eq!(serde_json::to_value(&n).unwrap(), v, "read back as written");
         for (v, says) in [
             (json!({"type": "row", "children": [], "justify": "middle"}), "`start`, `center`, `end`, `between`, `around`"),
