@@ -62,7 +62,7 @@ use it looked at.
   every row built, every frame, which is why a list of node rows costs twice a list of `item`
   text (10.9 ms against 5.4).
 
-### 4b · A row's own buttons (S) · next
+### 4b · A row's own buttons (S) · done 17 October 2026
 
 - A button in a row template keeps its `click`. A press on it selects the row, then runs the
   click with that row as the selected one (so `{"toggle": "store.loved/{id}"}` loves that row's
@@ -71,8 +71,14 @@ use it looked at.
 - Keys still go to the list: a row's buttons aren't in the focus order (Enter on a row is the
   list's).
 - Tests: a ♡ in a card loves that card's row and not the selected one; a press beside it selects.
+- How it landed: `Msg::Press { id, row, part }`; a filled row template keeps its buttons'
+  `click` (only theirs); the window sends a press from a button built inside a row, and leaves
+  a hit naming the part (`Hit::part`, `Headless::at_part`); the socket's `click` takes `part`.
+  It found a bug in clicks: a click on a row didn't set the selection's key, so a click whose
+  action wrote the store sent the selection back to the row it left (`step` already guarded
+  against that). `a_click_that_writes_keeps_the_row_it_chose` covers it.
 
-### 4c · Trees and tables (M)
+### 4c · Trees and tables (M) · next
 
 - A tree's `row` template, with its indent and fold glyph drawn by the runtime around it.
 - A table's cells as templates per column (`cell`), with column widths and alignment.

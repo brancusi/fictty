@@ -156,7 +156,12 @@ fictty theme paper                                        # choose a loaded them
   (`heights` in the list's `get --state` view state, dropped when the list's width changes);
   rows not built yet count as the average, and the view follows the selection, scrolls and
   pages by those heights. A line of `cols` rows is as tall as its tallest. A press anywhere in it is a press on the row, so selection, `multi` picking, keys and
-  scrolling are the list's as ever; its nodes take no ids or clicks of their own. `cols: 3`
+  scrolling are the list's as ever; its nodes take no ids or focus of their own. Its buttons
+  keep their `click`, though (the window's): a press on one selects its row and runs the
+  button's click on that row, not the list's own click, so a card's ♡ with `{"toggle":
+  "store.loved/{id}"}` loves that card. Keys stay the list's. An agent presses one with
+  `{"op": "click", "id": "albums", "row": 2, "part": "1"}`, `part` being the button's path in
+  the row template (child indexes, dotted). `cols: 3`
   lays rows three to a line: a grid, where ↑/↓ move a line and ←/→ a row, and the view scrolls
   by whole lines. `cols: {"min": "180px"}` fits as many to a line as there's room for, each at
   least that wide (a length: cells, pixels or a `space` name): a shelf of covers that reflows
@@ -547,7 +552,8 @@ python3 examples/finance/tour.py        # from another terminal
   node (`on`) or row (`row`), each with its own `look` (colours and `edge`), signed by `by`. `bind`
   fills a callout from live data.
 - **Master-detail**: `bind: "@positions"` is the selected row of node `positions`.
-- **Agents drive it** like a person: `click`, `mouse` (move, click, wheel at a cell) and `screen`
+- **Agents drive it** like a person: `click` (a node, a row or tab of it, or a button in a row
+  with `part`), `mouse` (move, click, wheel at a cell) and `screen`
   (the current frame as text, to see what's there).
 
 ## thc's Today, as a scene UI

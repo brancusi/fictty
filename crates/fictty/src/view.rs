@@ -128,7 +128,7 @@ impl Cx<'_> {
     }
 
     fn mark(&mut self, id: &str, row: Option<usize>, tab: Option<usize>, rect: Rect) {
-        self.hits.push(Hit { rect: cells(rect), id: id.to_string(), row, tab, text: false });
+        self.hits.push(Hit { rect: cells(rect), id: id.to_string(), row, tab, text: false, part: None });
         if row.is_none() && tab.is_none() {
             self.rects.push((id.to_string(), cells(rect)));
         }
@@ -711,7 +711,7 @@ fn node(cx: &mut Cx, n: &Node, f: &mut Frame, area: Rect) {
                             cell.modifier.insert(Modifier::DIM);
                         }
                     }
-                    cx.hits.push(Hit { rect: cells(inner), id: String::new(), row: None, tab: None, text: false });
+                    cx.hits.push(Hit { rect: cells(inner), id: String::new(), row: None, tab: None, text: false, part: None });
                 }
                 // A floating or modal layer covers what's under it, characters and all.
                 if c.float.is_some() || c.modal {
@@ -858,7 +858,7 @@ fn node(cx: &mut Cx, n: &Node, f: &mut Frame, area: Rect) {
             };
             // An input is one row, in the middle of what it's given.
             let area = if field.line && inner.height > 1 { Rect::new(inner.x, inner.y + (inner.height - 1) / 2, inner.width, 1) } else { inner };
-            cx.hits.push(Hit { rect: cells(area), id: id.clone(), row: None, tab: None, text: true });
+            cx.hits.push(Hit { rect: cells(area), id: id.clone(), row: None, tab: None, text: true, part: None });
             editor(f.buffer_mut(), area, doc, view, &looks, field.placeholder, focused);
         }
         Kind::Rule { glyph } => {
@@ -1146,7 +1146,7 @@ fn node(cx: &mut Cx, n: &Node, f: &mut Frame, area: Rect) {
                 f.buffer_mut().set_style(r, ts);
                 draw_parts(f.buffer_mut(), Rect { x: r.x + 1, width: w - 1, ..r }, cx.parts(t, v, ts), 0);
                 if !id.is_empty() {
-                    cx.hits.push(Hit { rect: cells(r), id: id.clone(), row: Some(1000 + k), tab: Some(k), text: false });
+                    cx.hits.push(Hit { rect: cells(r), id: id.clone(), row: Some(1000 + k), tab: Some(k), text: false, part: None });
                 }
                 if k == shown {
                     active = Some(r);

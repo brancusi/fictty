@@ -1375,6 +1375,48 @@ fn the_wheel_scrolls_fit_rows_by_cells() {
     assert!((at - 1.5).abs() < 0.11, "a notch is three lines of two-line rows: 1.5 rows, not {at}");
 }
 
+/// A click on a row whose action writes the store keeps the row it chose: the selection's key is
+/// the clicked row's before the action runs, or the write would send it back to the row it left.
+#[test]
+fn a_click_that_writes_keeps_the_row_it_chose() {
+    let ui = json!({"root": {"type": "list", "id": "l", "items": [{"id": "a"}, {"id": "b"}, {"id": "c"}], "item": "{id}", "click": {"put": "chosen", "value": "{id}"}}, "focus": "l"});
+    let mut s = window(ui, 30, 8);
+    for row in [2, 1, 0, 2] {
+        let (x, y) = s.at("l", Some(row), None).unwrap();
+        s.mouse("press", x, y).mouse("release", x, y);
+        assert_eq!(s.state().local["l"].selected, row, "row {row} chosen");
+    }
+    assert_eq!(s.state().store["chosen"].read()["value"], json!("c"));
+}
+
+/// A button in a list's row template takes its own presses: its click runs on that row (selected
+/// first, the list's own click not run), and a press beside it is the row's as ever.
+#[test]
+fn a_rows_own_button_acts_on_that_row() {
+    let albums: Vec<Value> = ["a", "b", "c", "d"].iter().map(|k| json!({"id": k, "title": format!("album {k}")})).collect();
+    let row = json!({"type": "row", "size": 2, "children": [
+        {"type": "text", "text": "{$item.title}"},
+        {"type": "button", "label": "♡", "size": "fit", "click": {"toggle": "store.loved/{id}"}},
+    ]});
+    let ui = json!({"root": {"type": "list", "id": "albums", "bind": "albums", "row": row, "click": {"put": "played", "value": "{id}"}},
+        "store": {"albums": albums}, "focus": "albums"});
+    let mut s = window(ui, 40, 12);
+    let (x, y) = s.at_part("albums", 2, "1").expect("row 2's ♡");
+    s.mouse("press", x, y).mouse("release", x, y);
+    assert_eq!(s.state().local["albums"].selected, 2, "the row is selected");
+    assert_eq!(s.state().store.get("loved/c").map(|e| e.read()["value"].clone()), Some(json!(true)), "that row's album is loved");
+    assert!(!s.state().store.contains_key("played"), "the list's own click didn't run");
+    // Beside it, the row's press: the list's click.
+    let (x, y) = s.at("albums", Some(1), None).unwrap();
+    s.mouse("press", x - 10, y).mouse("release", x - 10, y);
+    assert_eq!(s.state().local["albums"].selected, 1);
+    assert_eq!(s.state().store["played"].read()["value"], json!("b"));
+    assert!(!s.state().store.contains_key("loved/b"));
+    // An agent presses it over the socket the same way.
+    s.request(json!({"op": "click", "id": "albums", "row": 3, "part": "1"}));
+    assert_eq!(s.state().store.get("loved/d").map(|e| e.read()["value"].clone()), Some(json!(true)));
+}
+
 /// A grid's columns can each have a size: cells and pixels as written, shares of what's left.
 #[test]
 fn a_grids_columns_take_sizes_and_shares() {

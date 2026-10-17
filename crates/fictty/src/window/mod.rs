@@ -101,7 +101,7 @@ type DrawnHits = Vec<(Bounds<Pixels>, Hit)>;
 
 /// What's under the mouse in `id`: the whole node, or one row or tab of it, or an editor's text.
 fn hit(id: String, row: Option<usize>, tab: Option<usize>, text: bool) -> Hit {
-    Hit { rect: Rect::default(), id, row, tab, text }
+    Hit { rect: Rect::default(), id, row, tab, text, part: None }
 }
 
 /// A canvas that notes, as it's laid out, the bounds it filled: absolute, so it takes no room.
@@ -189,6 +189,8 @@ struct Portal {
     /// Set while a scroller builds its children: the way it scrolls (true across a row), where
     /// they have all the room they want, so a share is as long as what it shows.
     loose: Option<bool>,
+    /// The list and row whose template is being built, so its buttons press on that row.
+    row: Option<(String, usize)>,
 }
 
 impl Portal {
@@ -201,7 +203,7 @@ impl Portal {
         engine.send(Msg::Caps { caps: state::Caps { graphics: false, cell_w: cell.w, cell_h: cell.h }, text_sizing: false });
         let focus = cx.focus_handle();
         focus.focus(window);
-        Portal { engine, focus, cell, screen: (0, 0), laid: Shared::default(), shown: Rc::default(), drag: None, wheel: (String::new(), 0.0), wake: None, faces: HashMap::new(), fitting: 0, loose: None }
+        Portal { engine, focus, cell, screen: (0, 0), laid: Shared::default(), shown: Rc::default(), drag: None, wheel: (String::new(), 0.0), wake: None, faces: HashMap::new(), fitting: 0, loose: None, row: None }
     }
 
     fn send(&mut self, msg: Msg, cx: &mut Context<Self>) {
@@ -564,16 +566,31 @@ impl Portal {
                     _ => el.items_start(),
                 }
                 .justify_center();
-                let face = (!id.is_empty()).then(|| {
-                    let under = id.clone();
-                    measure(&self.laid, move |l, b| l.hits.push((b, hit(under, None, None, false))))
+                // In a list's row, it presses on that row by its path in the row template.
+                let press = self.row.clone().filter(|_| id.is_empty() && n.click.is_some()).map(|(list, k)| {
+                    let part = key.strip_prefix(&format!("{list}/row{k}")).unwrap_or_default().trim_start_matches('.').to_string();
+                    (list, k, part)
                 });
+                let face = match &press {
+                    Some((list, k, part)) => {
+                        let under = Hit { part: Some(part.clone()), ..hit(list.clone(), Some(*k), None, false) };
+                        Some(measure(&self.laid, move |l, b| l.hits.push((b, under))))
+                    }
+                    None => (!id.is_empty()).then(|| {
+                        let under = id.clone();
+                        measure(&self.laid, move |l, b| l.hits.push((b, hit(under, None, None, false))))
+                    }),
+                };
+                let msg = match press {
+                    Some((id, row, part)) => Msg::Press { id, row, part },
+                    None => Msg::Click { id: target.clone(), row: None, tab: None },
+                };
                 // As tall as its row, the label in the middle, so a border stays inside the row.
                 lk.boxed(div().id(SharedString::from(format!("btn-{key}"))).relative().flex_none().h_full().flex().items_center(), &rs, c, [0.; 4])
                     .children(face)
                     .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, _, cx| {
                         cx.stop_propagation();
-                        this.send(Msg::Click { id: target.clone(), row: None, tab: None }, cx)
+                        this.send(msg.clone(), cx)
                     }))
                     .child(label)
                     .into_any_element()
@@ -858,7 +875,12 @@ impl Portal {
             let r = &rows[k];
             // A row is its template's nodes, or its item's text.
             let body = match (&look.row, &look.item) {
-                (Some(t), _) => self.node(st, lk, &crate::model::row_instance(t, r, (k, rows.len())), false, &format!("{id}/row{k}"), cx),
+                (Some(t), _) => {
+                    let was = self.row.replace((id.to_string(), k));
+                    let built = self.node(st, lk, &crate::model::row_instance(t, r, (k, rows.len())), false, &format!("{id}/row{k}"), cx);
+                    self.row = was;
+                    built
+                }
                 (None, Some(t)) => {
                     let tx = text::Tx { lk, laid: &laid, id, keep: look.keep.map_or(0., |k| k as f32 * cell.w), line_h: cell.h, fitting: self.fitting > 0 };
                     text::lines(&tx, t, r, Ink::default(), false, None)

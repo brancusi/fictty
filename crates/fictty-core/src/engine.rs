@@ -84,13 +84,16 @@ pub enum Request {
         #[serde(default)]
         binary: Option<String>,
     },
-    /// Click a node as the mouse would: a row of it, or a tab.
+    /// Click a node as the mouse would: a row of it, or a tab; with `part` (a path in the row
+    /// template), the button there in that row.
     Click {
         id: String,
         #[serde(default)]
         row: Option<usize>,
         #[serde(default)]
         tab: Option<usize>,
+        #[serde(default)]
+        part: Option<String>,
     },
     Get,
     State,
@@ -125,6 +128,9 @@ pub struct Hit {
     pub tab: Option<usize>,
     /// The text area of an editor or input: a click there places the caret.
     pub text: bool,
+    /// A button in a list's row, by its path in the row template (`0.2`): a press there runs
+    /// its own click on the row (`Msg::Press`).
+    pub part: Option<String>,
 }
 
 /// What a frame drew, besides what's shown: what the engine needs back from it.
@@ -299,6 +305,9 @@ fn pointer(kind: Pointer, x: u16, y: u16, hits: &[Hit], st: &State, drag: &mut O
             if h.text {
                 *drag = Some((h.id.clone(), h.rect));
                 return Some(Msg::Point { id: h.id.clone(), col: x - h.rect.x, row: y - h.rect.y, extend: shift });
+            }
+            if let (Some(row), Some(part)) = (h.row, &h.part) {
+                return Some(Msg::Press { id: h.id.clone(), row, part: part.clone() });
             }
             if let Some(row) = h.row.filter(|r| *r < 1000 && (shift || toggle)) {
                 let how = if toggle { crate::state::Pick::Toggle } else { crate::state::Pick::Range };
@@ -762,7 +771,8 @@ impl Driver {
             Request::Theme { add, choose } => Msg::Theme { add, choose },
             Request::Layers { layers } => Msg::Layers { layers },
             Request::Toast { text, tone, ms } => Msg::Toast { text, tone, ms },
-            Request::Click { id, row, tab } => Msg::Click { id, row, tab },
+            Request::Click { id, row: Some(row), part: Some(part), .. } => Msg::Press { id, row, part },
+            Request::Click { id, row, tab, .. } => Msg::Click { id, row, tab },
             // The loop answers these itself (they need the last frame).
             Request::Mouse { .. } | Request::Screen | Request::Readback | Request::Upgrade { .. } => return json!({"ok": false}),
         };
@@ -1592,7 +1602,15 @@ impl Headless {
     /// where a test points the mouse to press it.
     pub fn at(&mut self, id: &str, row: Option<usize>, tab: Option<usize>) -> Option<(u16, u16)> {
         self.frame();
-        let h = self.hits.iter().rev().find(|h| h.id == id && h.row == row && h.tab == tab && (row.is_some() || tab.is_some() || !h.text))?;
+        let h = self.hits.iter().rev().find(|h| h.id == id && h.row == row && h.tab == tab && h.part.is_none() && (row.is_some() || tab.is_some() || !h.text))?;
+        Some((h.rect.x + h.rect.width.saturating_sub(1) / 2, h.rect.y + h.rect.height.saturating_sub(1) / 2))
+    }
+
+    /// Where the last frame drew the button at `part` (its path in the row template) in row
+    /// `row` of list `id`: a test presses there.
+    pub fn at_part(&mut self, id: &str, row: usize, part: &str) -> Option<(u16, u16)> {
+        self.frame();
+        let h = self.hits.iter().rev().find(|h| h.id == id && h.row == Some(row) && h.part.as_deref() == Some(part))?;
         Some((h.rect.x + h.rect.width.saturating_sub(1) / 2, h.rect.y + h.rect.height.saturating_sub(1) / 2))
     }
 

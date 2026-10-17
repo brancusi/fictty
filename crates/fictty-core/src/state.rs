@@ -739,6 +739,10 @@ pub enum Msg {
     Revealed,
     /// How tall a frame built a list's `fit` rows, in cells, by row key.
     Heights { id: String, heights: Vec<(String, f32)> },
+    /// A press on a button in row `row` of list `id`, by its path in the row template (`0.2`):
+    /// the row is selected as a click selects it, without the list's own `click`, then the
+    /// button's `click` runs on it (`{"toggle": "store.loved/{id}"}` loves that row's album).
+    Press { id: String, row: usize, part: String },
     /// A click inside an editor's or input's text, at a cell relative to it: focus it and put the
     /// caret there, or with `extend` (Shift held) stretch the selection to it. A second click on
     /// the same cell soon after selects a word, a third the line.
@@ -862,7 +866,7 @@ pub fn update(st: &mut State, msg: Msg) -> Vec<Effect> {
     };
     // Messages from the person or an agent move selections on purpose: note the rows they're
     // on now, before re-deriving rows makes a selection follow its old row instead.
-    let moves = matches!(msg, Msg::Key { .. } | Msg::Click { .. } | Msg::Pick { .. } | Msg::Set { .. } | Msg::Scroll { .. });
+    let moves = matches!(msg, Msg::Key { .. } | Msg::Click { .. } | Msg::Pick { .. } | Msg::Set { .. } | Msg::Scroll { .. } | Msg::Press { .. });
     let was = st.focus.clone();
     let was_row = st.focus.as_deref().and_then(|f| st.local.get(f)).map(|l| l.selected);
     let keyed = matches!(&msg, Msg::Key { key } if !pages_a_scroller(st, key)) || matches!(msg, Msg::Paste { .. });
@@ -1009,7 +1013,26 @@ fn apply(st: &mut State, msg: Msg) -> Vec<Effect> {
             fx.extend(release(st));
             fx
         }
-        Msg::Click { id, .. } | Msg::Pick { id, .. } | Msg::Point { id, .. } | Msg::Scroll { id, .. } if !reachable(st, &id) => vec![],
+        Msg::Click { id, .. } | Msg::Pick { id, .. } | Msg::Point { id, .. } | Msg::Scroll { id, .. } | Msg::Press { id, .. } if !reachable(st, &id) => vec![],
+        Msg::Press { id, row, part } => {
+            let Some(n) = st.node(&id) else { return vec![] };
+            let Some(click) = n.rows().and_then(|r| r.row.as_deref()).and_then(|t| t.at_path(&part)).filter(|b| matches!(b.kind, Kind::Button { .. })).and_then(|b| b.click.clone()) else {
+                return vec![];
+            };
+            if row >= items(st, n).len() {
+                return vec![];
+            }
+            let anchor = items(st, n).get(row).and_then(|v| key_of(n, v));
+            if n.focusable() {
+                st.focus = Some(id.clone());
+            }
+            let local = st.local.entry(id).or_default();
+            local.selected = row;
+            local.key = anchor.clone();
+            local.picked.clear();
+            local.anchor = anchor;
+            act(st, click)
+        }
         Msg::Pick { id, row, how } => {
             if !st.node(&id).is_some_and(|n| n.multi) {
                 return apply(st, Msg::Click { id, row: Some(row), tab: None });
@@ -1040,6 +1063,9 @@ fn apply(st: &mut State, msg: Msg) -> Vec<Effect> {
             let local = st.local.entry(id.clone()).or_default();
             if let Some(r) = row {
                 local.selected = r;
+                // Its key now, as `step` does: a store write by the click would have the
+                // selection follow the row it left.
+                local.key = anchor.clone();
                 local.picked.clear();
                 local.anchor = anchor;
             }

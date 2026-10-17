@@ -248,7 +248,8 @@ The phases of [design/native.md](design/native.md), where each is broken down.
         left are screenshots in three themes, a look in a real window, Kestrel's settings dialog,
         and the frame time against the baseline
   - [ ] Step 4, rows as nodes, planned in [design/rows-step.md](design/rows-step.md): 4a (one
-        model of a list's view, `fit` rows) is done; next 4b, a row's own buttons
+        model of a list's view, `fit` rows) and 4b (a row's own buttons) are done; next 4c,
+        trees and tables
   - [ ] Step 3, the layout vocabulary, planned in
         [design/layout-step.md](design/layout-step.md). Then: lists and rows as nodes, the rest of
         editors, charts and icons, toasts and layers, embedding and the examples, then the terminal

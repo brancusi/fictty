@@ -1820,6 +1820,12 @@ impl Node {
 
     /// The nodes from this one down to the node with this id, both included; empty when there
     /// is none.
+    /// The node at `path` under this one, child indexes joined by dots (`0.2`; empty is this
+    /// one), as a row's buttons are named.
+    pub fn at_path(&self, path: &str) -> Option<&Node> {
+        path.split('.').filter(|p| !p.is_empty()).try_fold(self, |n, k| n.children().get(k.parse::<usize>().ok()?))
+    }
+
     pub fn path_to(&self, id: &str) -> Vec<&Node> {
         if self.id.as_deref() == Some(id) {
             return vec![self];
@@ -1845,11 +1851,14 @@ impl Node {
 }
 
 /// A list's row template for row `item`, `at` (index, count): filled as an `each` instance is,
-/// with every id taken off, since the row takes the presses and the focus for all of it.
+/// with every id taken off, since the row takes the presses and the focus for all of it. Its
+/// buttons keep their `click`, which a press on one runs on the row (`Msg::Press`).
 pub fn row_instance(template: &Node, item: &Value, at: (usize, usize)) -> Node {
     fn bare(n: &mut Node) {
         n.id = None;
-        n.click = None;
+        if !matches!(n.kind, Kind::Button { .. }) {
+            n.click = None;
+        }
         if let Some(cs) = n.children_mut() {
             cs.iter_mut().for_each(bare);
         }
