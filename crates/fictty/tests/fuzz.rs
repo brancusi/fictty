@@ -264,6 +264,21 @@ mod window {
     }
 
     #[test]
+    fn fit_rows_in_the_window() {
+        let long = "a message long enough to wrap onto a few lines at this width";
+        let msgs: Vec<Value> = (0..40).map(|i| json!({"id": format!("m{i}"), "text": if i % 3 == 0 { long.to_string() } else { format!("message {i}") }})).collect();
+        let cards: Vec<Value> = (0..14).map(|i| json!({"id": format!("c{i}"), "name": format!("card {i}"), "note": if i % 2 == 0 { "two\nlines" } else { "one" }})).collect();
+        fuzzed(json!({"root": {"type": "row", "children": [
+            {"type": "list", "id": "chat", "bind": "msgs", "row": {"type": "text", "size": "fit", "text": "{$item.text}"}},
+            {"type": "col", "id": "side", "scroll": true, "children": [
+                {"type": "input", "id": "find", "placeholder": "find"},
+                {"type": "list", "id": "cards", "bind": "cards", "filter": "find", "cols": {"min": 12}, "row": {"type": "col", "size": "fit", "border": true, "children": [
+                    {"type": "text", "size": "fit", "text": "<b>{$item.name}</>"}, {"type": "text", "size": "fit", "text": "{$item.note}"}]}},
+                {"type": "text", "id": "end", "text": "the end"}]}]},
+            "store": {"msgs": msgs, "cards": cards}, "focus": "chat"}), 60, 14);
+    }
+
+    #[test]
     fn an_editor_in_the_window() {
         let text = "# Notes\n\nHello world, a line\n- one\n  - nested\n- [ ] a task\n\n1. first\n2. second\n\nwide 漢字 and 🙂\n";
         let links = json!([{"kind": "wiki"}, {"kind": "tag"}, {"kind": "url"}]);

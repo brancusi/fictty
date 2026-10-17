@@ -426,7 +426,8 @@ deleted, and the window fuzz runs stay clean.
    offset in `State` (the wheel, page keys, focus scrolled into view, the offset in the readback).
    Each maps onto GPUI's Taffy style; a test per field in `tests/window.rs`. Done when `settings`,
    `landing` and `calendar` are rebuilt in `screens.py` without their tricks.
-4. **Lists, trees, tables, and rows as nodes (L).** Row templates as nodes (expressive.md,
+4. **Lists, trees, tables, and rows as nodes (L). The plan is [rows-step.md](rows-step.md); 4a
+   (one model of a list's view, `fit` rows) landed on 17 October 2026.** Row templates as nodes (expressive.md,
    "Content"): a list, table or tree's `row` is a node template filled from `$item`, virtualised,
    its height the template's `size` or `fit`; clicks on a row's own buttons reach them. (A
    list's `row`, with `cols`, came forward for the gallery on 14 October; `fit` heights, its

@@ -274,12 +274,14 @@ fn a_list_of_rows_drawn_from_a_node_lays_them_out_in_cols_and_picks_from_a_pictu
     // Far down, the view follows by whole lines: the first row shown starts a line.
     s.keys(&["down", "down", "down", "down", "down"]);
     assert_eq!(s.state().local["g"].selected, 22);
-    let fit = s.state().local["g"].rows as usize;
-    assert!(fit >= 6 && fit.is_multiple_of(3), "whole lines of rows fit: {fit}");
-    let st = s.state();
-    let from = fictty::state::first_shown(st.local.get("g"), 30, fit, 3);
-    assert!(from.is_multiple_of(3));
-    assert!((from..from + fit).contains(&22), "{from} + {fit}");
+    let st = s.state().clone();
+    let g = st.node("g").unwrap();
+    let lines = fictty::state::Lines::of(&st, g);
+    let at = lines.offset(st.local.get("g"));
+    let fit = lines.fitting_from(at.floor() as usize);
+    assert!(fit >= 2, "whole lines of rows fit: {fit}");
+    assert_eq!(at.fract(), 0., "the view starts at a line");
+    assert!((at as usize..at as usize + fit).contains(&(22 / 3)), "line {} in {at} + {fit}", 22 / 3);
 }
 
 #[test]
@@ -1326,6 +1328,51 @@ fn events_float_where_their_data_puts_them() {
     let (a, b, day) = (node(&mut s, "ev-a").rect.unwrap(), node(&mut s, "ev-b").rect.unwrap(), node(&mut s, "day").rect.unwrap());
     assert_eq!((a.x - day.x, a.y - day.y, a.width, a.height), (0, 1, 12, 2), "standup: {a:?} in {day:?}");
     assert_eq!((b.x - day.x, b.y - day.y, b.height), (14, 5, 3), "lunch: {b:?}");
+}
+
+/// A list whose row template is `fit` has rows as tall as what they show: a long message wraps
+/// to more lines than a short one, the view follows the selection by those heights, a measured
+/// row keeps its height when a row comes in above it, and a new width measures them again.
+#[test]
+fn fit_rows_are_as_tall_as_what_they_show() {
+    let long = "a message long enough to wrap onto three or four lines in a narrow window like this one";
+    let msgs: Vec<Value> = (0..12).map(|i| json!({"id": format!("m{i}"), "text": if i % 3 == 0 { long.to_string() } else { format!("short {i}") }})).collect();
+    let ui = json!({"root": {"type": "list", "id": "chat", "bind": "msgs", "row": {"type": "text", "size": "fit", "text": "{$item.text}"}},
+        "store": {"msgs": msgs}, "focus": "chat"});
+    let mut s = window(ui, 30, 12);
+    let heights = s.state().local["chat"].heights.clone();
+    let (m0, m1) = (heights["m0"], heights["m1"]);
+    assert!((0.9..=1.1).contains(&m1), "a short one is a line: {m1}");
+    assert!(m0 >= 3., "a long one wraps: {m0}");
+    // Down to the last: the view follows, by the rows' own heights.
+    s.keys(&["G"]);
+    let st = s.state().clone();
+    let lines = fictty::state::Lines::of(&st, st.node("chat").unwrap());
+    let at = lines.offset(st.local.get("chat"));
+    assert!(at > 0., "it scrolled: {at}");
+    assert!(lines.in_view(Some(at), 11), "the last row shows whole from {at}");
+    assert!(node(&mut s, "chat").scroll.is_some_and(|(a, n)| a > 0. && n == 12));
+    // A message comes in at the top: the others keep their measured heights.
+    let mut more = vec![json!({"id": "new", "text": "hi"})];
+    more.extend(st.store["msgs"].read()["value"].as_array().unwrap().iter().cloned());
+    s.request(json!({"op": "write", "write": "put", "key": "msgs", "value": more}));
+    assert_eq!(s.state().local["chat"].heights.get("m0").copied(), Some(m0), "kept by key");
+    // Wider, a long one wraps to fewer lines.
+    s.resize(90, 12);
+    let wide = s.state().local["chat"].heights.get("m0").copied().unwrap_or(0.);
+    assert!(wide < m0, "measured again at the new width: {wide} from {m0}");
+}
+
+/// The wheel moves a list of `fit` rows by cells, part of a row at a time.
+#[test]
+fn the_wheel_scrolls_fit_rows_by_cells() {
+    let msgs: Vec<Value> = (0..30).map(|i| json!({"id": format!("m{i}"), "text": format!("line {i}\nand a second line")})).collect();
+    let ui = json!({"root": {"type": "list", "id": "l", "bind": "msgs", "row": {"type": "text", "size": "fit", "text": "{$item.text}"}}, "store": {"msgs": msgs}});
+    let mut s = window(ui, 30, 10);
+    let r = node(&mut s, "l").rect.unwrap();
+    s.mouse("wheel-down", r.x + 2, r.y + 2);
+    let at = node(&mut s, "l").scroll.unwrap().0;
+    assert!((at - 1.5).abs() < 0.11, "a notch is three lines of two-line rows: 1.5 rows, not {at}");
 }
 
 /// A grid's columns can each have a size: cells and pixels as written, shares of what's left.

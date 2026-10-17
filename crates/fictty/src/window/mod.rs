@@ -76,11 +76,11 @@ struct Laid {
     /// Hit regions, innermost last: a node, maybe a row or a tab, maybe an editor's text. Their
     /// own rectangles are filled in from the bounds when the frame is handed over.
     hits: DrawnHits,
-    /// Each editor's text area and each list's rows, as bounds to fit cells into, with the
-    /// rows a list's item takes (1 for an editor).
-    /// Each node's bounds with how tall one of its rows is in cells and how many go to a line,
-    /// so a list is told how many rows it has room for.
-    sizes: Vec<(String, Bounds<Pixels>, u16, u16)>,
+    /// Each editor's text area, each list's and table's rows' box, and each fitting grid's
+    /// bounds, to fit cells into: the room each has.
+    sizes: Vec<(String, Bounds<Pixels>)>,
+    /// How tall each `fit` row a list built is: the list, the row's key, its bounds.
+    heights: Vec<(String, String, Bounds<Pixels>)>,
     /// The area each node whose `when` reads `$width` or `$height` was laid out in.
     areas: Vec<(String, Bounds<Pixels>)>,
     /// The nodes it cut text in.
@@ -579,14 +579,14 @@ impl Portal {
                     .into_any_element()
             }
             Kind::Rule { .. } => div().h(px(1.)).w_full().bg(lk.ink(&rs.ink).fg.unwrap_or(lk.border)).into_any_element(),
-            Kind::List { .. } | Kind::Tree { .. } => self.list(st, lk, n, &id, cx),
+            Kind::List { .. } | Kind::Tree { .. } => self.list(st, lk, n, &id, fits || loose, cx),
             Kind::Table { columns, .. } => {
                 let rows = state::items(st, n).to_vec();
                 let columns = columns.clone();
                 // The header sits over the rows' text: the rows' pad, the header's own look.
                 let [_, row_r, _, row_l] = Look::pad(&style::inner(st, "row", &[]), c);
                 let head = lk.boxed(div().flex().flex_row().h(px(cell.h)), &style::inner(st, "table.header", &[]), c, [0., row_r, 0., row_l]).children(columns.iter().map(|c| div().flex_1().child(c.title.clone())));
-                let body: Vec<AnyElement> = shown_rows(st, &id, rows.len(), 1, 1)
+                let body: Vec<AnyElement> = shown_rows(st, n)
                     .map(|k| (k, &rows[k]))
                     .map(|(k, r)| {
                         let target = id.clone();
@@ -612,7 +612,7 @@ impl Portal {
                     .flex_1()
                     .min_h(px(0.))
                     .overflow_hidden()
-                    .child(measure_whole(&self.laid, move |l, b| l.sizes.push((fits, b, 1, 1))))
+                    .child(measure_whole(&self.laid, move |l, b| l.sizes.push((fits, b))))
                     .on_scroll_wheel(cx.listener(move |this, e: &ScrollWheelEvent, _, cx| this.wheel(&wheel, e, cx)))
                     .children(body);
                 div().flex().flex_col().size_full().child(head).child(rows_area).into_any_element()
@@ -791,7 +791,7 @@ impl Portal {
         // The width it was laid out across, for `cols` that fit as many as there's room for.
         let width = (!id.is_empty() && matches!(cols, crate::model::Cols::Fill { .. })).then(|| {
             let fits = id.to_string();
-            measure_whole(&self.laid, move |l, b| l.sizes.push((fits, b, 1, 1)))
+            measure_whole(&self.laid, move |l, b| l.sizes.push((fits, b)))
         });
         let sized: Vec<String> = children.iter().filter(|c| c.when.as_deref().is_some_and(state::sized)).filter_map(|c| c.id.clone()).collect();
         let areas = (!sized.is_empty()).then(|| measure(&self.laid, move |l, b| l.areas.extend(sized.into_iter().map(|id| (id, b)))));
@@ -835,19 +835,26 @@ impl Portal {
 
     /// A list's rows, from where the state says it's scrolled: as many as fit, each the rows its
     /// item template takes. The wheel scrolls the state, as the terminal's does.
-    fn list(&mut self, st: &State, lk: &Look, n: &Node, id: &str, cx: &mut Context<Self>) -> AnyElement {
+    /// `whole`: it's as long as its lines (`fit`, or in a scroller along it), not the room it's
+    /// given.
+    fn list(&mut self, st: &State, lk: &Look, n: &Node, id: &str, whole: bool, cx: &mut Context<Self>) -> AnyElement {
         let (Kind::List { rows: look, .. } | Kind::Tree { rows: look, .. }) = &n.kind else { unreachable!("a list or tree") };
         let cell = self.cell;
         let rows = state::items(st, n);
         let per = look.height();
-        let cols = state::per_line(st, n);
+        let lines = state::Lines::of(st, n);
+        let cols = lines.cols;
+        // `fit` rows are as tall as what they show, measured as they're built; others the
+        // template's height.
+        let fits = look.fits();
+        let row_h = (!fits).then(|| px(cell.h * per as f32));
         let tracks = look.cols.as_ref().map_or_else(|| vec![Measure::Share(1)], |c| c.tracks(cols));
         let laid = self.laid.clone();
         if rows.is_empty() {
             return lk.boxed(div(), &style::inner(st, "empty", &[]), (cell.w, cell.h), [0., 8., 0., 8.]).child(look.empty.clone().unwrap_or_else(|| "(nothing)".into())).into_any_element();
         }
         let mut shown: Vec<AnyElement> = Vec::new();
-        for k in shown_rows(st, id, rows.len(), per, cols) {
+        for k in shown_rows(st, n) {
             let r = &rows[k];
             // A row is its template's nodes, or its item's text.
             let body = match (&look.row, &look.item) {
@@ -861,11 +868,16 @@ impl Portal {
             let (target, under) = (id.to_string(), id.to_string());
             // A focused list's place is its selected row: that's what a scroller brings into view.
             let here = (st.focus.as_deref() == Some(id) && k == state::selected(st, id)).then(|| measure_whole(&self.laid, |l, b| l.focused = Some(b)));
+            let tall = fits.then(|| {
+                let (list, key) = (id.to_string(), state::height_key(n, r, k));
+                measure_whole(&self.laid, move |l, b| l.heights.push((list, key, b)))
+            });
             let row = lk
                 .boxed(div().id(k).relative().flex_none(), &style::inner(st, "row", &style::row_states(st, n, k)), (cell.w, cell.h), [0.; 4])
                 .child(measure(&self.laid, move |l, b| l.hits.push((b, hit(under, Some(k), None, false)))))
                 .children(here)
-                .h(px(cell.h * per as f32))
+                .children(tall)
+                .when_some(row_h, |d, h| d.h(h))
                 .flex()
                 .flex_col()
                 .justify_center()
@@ -882,7 +894,10 @@ impl Portal {
             // before the shares, so a short last line's rows would come out wider. The slot is
             // the row's height, known, so the line isn't measured from what each row holds
             // (that measuring cost Nocturne's shelf a quarter of its frame).
-            let row = if cols > 1 { track_slot(&tracks[k % cols..k % cols + 1], 0., cell).h(px(cell.h * per as f32)).child(row).into_any_element() } else { row.into_any_element() };
+            // A `fit` row's slot is its line's height as last measured, so the line isn't measured
+            // from what's in it either; the row inside is its own height, and says so.
+            let slot_h = row_h.unwrap_or_else(|| px(lines.height(k / cols) * cell.h));
+            let row = if cols > 1 { track_slot(&tracks[k % cols..k % cols + 1], 0., cell).h(slot_h).child(row).into_any_element() } else { row.into_any_element() };
             shown.push(row);
         }
         // Rows `cols` to a line, each line as tall as a row and each row an equal share of it.
@@ -892,7 +907,7 @@ impl Portal {
             while it.peek().is_some() {
                 let mut line: Vec<AnyElement> = it.by_ref().take(cols).collect();
                 for t in line.len()..cols {
-                    line.push(track_slot(&tracks[t..t + 1], 0., cell).h(px(cell.h * per as f32)).into_any_element());
+                    line.push(track_slot(&tracks[t..t + 1], 0., cell).into_any_element());
                 }
                 lines.push(div().flex().flex_row().flex_none().w_full().children(line).into_any_element());
             }
@@ -900,26 +915,29 @@ impl Portal {
         }
         // Where the view is, to the pixel: the part of its first line scrolled past moves the
         // rows up by that much.
-        let local = st.local.get(id);
-        let fit = local.map_or(0, |l| l.rows as usize);
-        let at = state::view_offset(local, rows.len(), fit, cols);
-        let line_h = cell.h * per as f32;
-        let lines = div().flex().flex_col().flex_none().w_full().mt(px(-(at - at.floor()) * line_h)).children(shown);
-        let bar = self.scrollbar(st, lk, at, rows.len().div_ceil(cols) as f32, (fit / cols).max(1) as f32);
-        let (fits, wheel) = (id.to_string(), id.to_string());
-        div()
-            .id(SharedString::from(format!("rows-{id}")))
-            .relative()
-            .flex()
-            .flex_col()
-            .flex_1()
-            .min_h(px(0.))
-            .overflow_hidden()
-            // The items it has room for: the wheel and paging move by them. Its whole box, not
-            // the part a scroller around it shows: scrolling that is the scroller's.
-            .child(measure_whole(&self.laid, move |l, b| l.sizes.push((fits, b, per, cols as u16))))
-            .on_scroll_wheel(cx.listener(move |this, e: &ScrollWheelEvent, _, cx| this.pan(&wheel, e, line_h, cx)))
-            .child(lines)
+        let at = lines.offset(st.local.get(id));
+        let first = at.floor() as usize;
+        let body = div().flex().flex_col().flex_none().w_full().mt(px(-(at - at.floor()) * lines.height(first) * cell.h)).children(shown);
+        let bar = self.scrollbar(st, lk, at, lines.count as f32, lines.fitting_from(first) as f32);
+        let (room, wheel) = (id.to_string(), id.to_string());
+        // A `fit` list's rows (or a list's in a scroller) want room for all its lines (its `max`
+        // and the room around it hold it to less), whatever the view built last; any other
+        // list's take what it's given.
+        let rows_box = div().id(SharedString::from(format!("rows-{id}"))).relative().flex().flex_col().min_h(px(0.)).overflow_hidden();
+        let rows_box = if whole {
+            let mut b = rows_box.flex_basis(px(lines.total() * cell.h)).flex_shrink();
+            b.style().flex_grow = Some(0.);
+            b
+        } else {
+            rows_box.flex_1()
+        };
+        rows_box
+            // The room it has for rows: its whole box, not the part a scroller around it shows
+            // (scrolling that is the scroller's).
+            .child(measure_whole(&self.laid, move |l, b| l.sizes.push((room, b))))
+            // The wheel moves it by cells.
+            .on_scroll_wheel(cx.listener(move |this, e: &ScrollWheelEvent, _, cx| this.pan(&wheel, e, cell.h, cx)))
+            .child(body)
             .children(bar)
             .into_any_element()
     }
@@ -959,7 +977,7 @@ impl Portal {
             text = text.h(px(rows.max(1) as f32 * cell.h)).flex_none();
         }
         let (fits, under) = (id.to_string(), id.to_string());
-        text = text.child(measure_whole(&self.laid, move |l, b| l.sizes.push((fits, b, 1, 1))));
+        text = text.child(measure_whole(&self.laid, move |l, b| l.sizes.push((fits, b))));
         text = text.child(measure(&self.laid, move |l, b| {
             l.hits.push((b, hit(under, None, None, true)));
         }));
@@ -1240,16 +1258,14 @@ fn md_inks<'a>(st: &'a State, lk: &'a Look<'a>) -> impl Fn(Md) -> Ink + 'a {
     }
 }
 
-/// The rows of a list or table to draw: from its first shown row (`state::first_row`), as many
-/// as the last frame said fit, and one more for a row partly in view. Before any frame has said,
-/// up to 200 rows (clipped to what shows).
-fn shown_rows(st: &State, id: &str, len: usize, per: u16, cols: usize) -> std::ops::Range<usize> {
-    let local = st.local.get(id);
-    let fit = local.map_or(0, |l| l.rows as usize);
-    let fit = if fit == 0 { 200 / per.max(1) as usize * cols } else { fit };
-    let from = state::first_shown(local, len, fit, cols);
-    // A line more than fits, so a partly shown one at the bottom is drawn.
-    from..(from + fit + cols).min(len)
+/// The rows of a list or table to build: the lines its view reaches from where it starts
+/// (`state::Lines`), a part-shown one at either end included. Before any frame has said how tall
+/// the view is, a screenful (clipped to what shows).
+fn shown_rows(st: &State, n: &Node) -> std::ops::Range<usize> {
+    let lines = state::Lines::of(st, n);
+    let shown = lines.shown(lines.offset(n.id.as_deref().and_then(|id| st.local.get(id))));
+    let len = state::items(st, n).len();
+    (shown.start * lines.cols).min(len)..(shown.end * lines.cols).min(len)
 }
 
 /// A selected row's ink, focused or not.
@@ -1273,7 +1289,8 @@ fn handover(laid: &Shared, shown: &RefCell<DrawnHits>, engine: &Engine, cell: Ce
         // and nothing lands on it.
         rects: l.rects.into_iter().filter(|(_, b)| !b.is_empty()).map(|(id, b)| (id, cell.rect(b))).collect(),
         hits: l.hits.iter().filter(|(b, _)| !b.is_empty()).map(|(b, h)| Hit { rect: cell.rect(*b), ..h.clone() }).collect(),
-        sizes: l.sizes.into_iter().map(|(id, b, per, cols)| { let (w, h) = cell.fit(b); (id, w, h / per.max(1) * cols.max(1)) }).collect(),
+        sizes: l.sizes.into_iter().map(|(id, b)| { let (w, h) = cell.fit(b); (id, w, h) }).collect(),
+        heights: l.heights.into_iter().map(|(id, key, b)| (id, key, f32::from(b.size.height) / cell.h)).collect(),
         areas: l.areas.into_iter().map(|(id, b)| { let (w, h) = cell.fit(b); (id, w, h) }).collect(),
         wake,
         cut: l.cut,

@@ -436,14 +436,11 @@ card = {"type": "col", "gap": 0, "children": [
 
 
 def shelf():
-    """The shelf: as many covers to a line as fit at 200 pixels or more each, so a cover is
-    under 4/3 of that wide wherever three or more fit (the main column always holds three). A
-    row is as tall as the widest cover and its two lines; rows as tall as what they show are
-    step 4's. In the scrolling main column it's as tall as all its rows: the room scrolls."""
-    cell_h, least = 24, 200
-    rows = math.ceil((least * 4 / 3 + 8) / cell_h + 2.2)
-    return {"type": "list", "id": "albums", "bind": "albums", "filter": "find", "row": {**card, "size": rows},
-            "cols": {"min": f"{least}px"}}
+    """The shelf: as many covers to a line as fit at 200 pixels or more each, each card as tall as
+    its cover (square, as wide as the card) and its two lines; in the scrolling main column the
+    shelf is as tall as all its lines, and the room scrolls."""
+    return {"type": "list", "id": "albums", "bind": "albums", "filter": "find", "row": {**card, "size": "fit"},
+            "cols": {"min": "200px"}}
 
 
 main = {"type": "col", "id": "main", "gap": 1, "scroll": True, "children": [

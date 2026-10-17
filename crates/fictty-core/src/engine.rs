@@ -134,8 +134,8 @@ pub struct Drawn {
     pub hits: Vec<Hit>,
     /// Where each node with an id was laid out, for the readback.
     pub rects: Vec<(String, Rect)>,
-    /// The cells each editor got (id, width, height), and the rows each list showed: an editor
-    /// told its size keeps the caret in view.
+    /// The cells each editor got (id, width, height), and the box each list's rows show in: an
+    /// editor told its size keeps the caret in view, a list fits its rows into it.
     pub sizes: Vec<(String, u16, u16)>,
     /// The area each node whose `when` reads `$width` or `$height` was laid out in.
     pub areas: Vec<(String, u16, u16)>,
@@ -152,6 +152,8 @@ pub struct Drawn {
     /// Where the focused node was laid out, in cells, whether or not a scroller showed it (so
     /// it can be off the screen: before its top, below its bottom): x, y, width, height.
     pub focused: Option<[f32; 4]>,
+    /// How tall each `fit` row a list built is, in cells: the list, the row's key, the height.
+    pub heights: Vec<(String, String, f32)>,
 }
 
 /// A scrolling container as a frame laid it out (`Drawn::scrolls`), in cells along it.
@@ -1840,9 +1842,25 @@ fn clock() -> String {
 /// keeps of the frame (hits, rectangles, cut nodes), and whether the state changed.
 #[allow(clippy::type_complexity)]
 fn report(d: &mut Driver, st: &mut State, drawn: Drawn) -> (Vec<Hit>, Vec<(String, Rect)>, Vec<String>, bool) {
-    let Drawn { hits, rects, sizes, areas, cut, fonts, scrolls, focused, .. } = drawn;
-    let changed = resize_editors(d, st, sizes) | report_areas(d, st, areas) | report_fonts(d, st, fonts) | report_scrolls(d, st, &scrolls);
+    let Drawn { hits, rects, sizes, areas, cut, fonts, scrolls, focused, heights, .. } = drawn;
+    let changed = resize_editors(d, st, sizes) | report_areas(d, st, areas) | report_fonts(d, st, fonts) | report_scrolls(d, st, &scrolls) | report_heights(d, st, heights);
     (hits, rects, cut, changed | reveal(d, st, &scrolls, focused))
+}
+
+/// Tells each list how tall the `fit` rows it built are, where they differ from what it has.
+fn report_heights(d: &mut Driver, st: &mut State, heights: Vec<(String, String, f32)>) -> bool {
+    let mut by: BTreeMap<String, Vec<(String, f32)>> = BTreeMap::new();
+    for (id, key, h) in heights {
+        let had = st.local.get(&id).and_then(|l| l.heights.get(&key)).copied();
+        if had.is_none_or(|x| (x - h).abs() > 0.05) {
+            by.entry(id).or_default().push((key, h));
+        }
+    }
+    let changed = !by.is_empty();
+    for (id, heights) in by {
+        d.apply(st, Msg::Heights { id, heights });
+    }
+    changed
 }
 
 /// Tells each scroller the view and content it was laid out with, where they changed.

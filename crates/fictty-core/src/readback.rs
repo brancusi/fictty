@@ -207,10 +207,9 @@ fn s_scroll(st: &State, n: &Node) -> Option<(f32, usize)> {
         return (content > view + 0.5).then(|| ((local.offset * 10.).round() / 10., content.round() as usize));
     }
     n.rows()?;
-    let cols = state::per_line(st, n);
-    let (len, fit) = (state::items(st, n).len(), local.rows as usize);
-    let total = len.div_ceil(cols);
-    (fit > 0 && total > (fit / cols).max(1)).then(|| (state::view_offset(Some(local), len, fit, cols), total))
+    let lines = state::Lines::of(st, n);
+    let at = lines.offset(Some(local));
+    (local.rows > 0 && lines.count > lines.fitting_from(at.floor() as usize)).then(|| ((at * 100.).round() / 100., lines.count))
 }
 
 /// A `multi` node's picked rows while it has more than one.

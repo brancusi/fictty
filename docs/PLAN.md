@@ -247,6 +247,8 @@ The phases of [design/native.md](design/native.md), where each is broken down.
         tested in every theme (`tests/wringer.rs`), the Kestrel Floor wraps (`tests/demo.rs`);
         left are screenshots in three themes, a look in a real window, Kestrel's settings dialog,
         and the frame time against the baseline
+  - [ ] Step 4, rows as nodes, planned in [design/rows-step.md](design/rows-step.md): 4a (one
+        model of a list's view, `fit` rows) is done; next 4b, a row's own buttons
   - [ ] Step 3, the layout vocabulary, planned in
         [design/layout-step.md](design/layout-step.md). Then: lists and rows as nodes, the rest of
         editors, charts and icons, toasts and layers, embedding and the examples, then the terminal

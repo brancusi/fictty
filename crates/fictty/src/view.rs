@@ -883,9 +883,9 @@ fn node(cx: &mut Cx, n: &Node, f: &mut Frame, area: Rect) {
             let per = look.lines.unwrap_or(1).max(1) as usize;
             let fit = (inner.height as usize / per).max(1);
             let sel = n.id.as_ref().map(|id| selected(st, id));
-            let from = crate::state::first_row(n.id.as_ref().and_then(|i| st.local.get(i)), rows.len(), fit);
+            let from = crate::state::Lines::of(st, n).offset(n.id.as_ref().and_then(|i| st.local.get(i))).floor() as usize;
             if !id.is_empty() {
-                cx.sizes.push((id.clone(), inner.width, fit as u16));
+                cx.sizes.push((id.clone(), inner.width, inner.height));
             }
             scrollbar(cx, f.buffer_mut(), Rect { height: (fit * per).min(inner.height as usize) as u16, ..inner }, from * per, rows.len() * per);
             let over = (rows.len() > fit) as u16;
@@ -972,7 +972,7 @@ fn node(cx: &mut Cx, n: &Node, f: &mut Frame, area: Rect) {
                 f.render_widget(Paragraph::new(c.title.clone()).style(head).alignment(al), a);
             }
             let sel = n.id.as_ref().map(|id| selected(st, id));
-            let from = crate::state::first_row(n.id.as_ref().and_then(|i| st.local.get(i)), rows.len(), visible);
+            let from = crate::state::Lines::of(st, n).offset(n.id.as_ref().and_then(|i| st.local.get(i))).floor() as usize;
             if !id.is_empty() {
                 cx.sizes.push((id.clone(), inner.width, visible as u16));
             }

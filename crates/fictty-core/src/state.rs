@@ -330,9 +330,14 @@ pub struct Local {
     /// scrolls smoothly; a terminal shows whole lines.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub top: Option<f32>,
-    /// How many rows it showed in the last frame (the view reports it), for the wheel.
+    /// How tall the box its rows show in is, in cells, as the last frame laid it out (the view
+    /// reports it): what `Lines` fits rows into.
     #[serde(default, skip_serializing_if = "is_zero")]
     pub rows: u16,
+    /// The heights of the `fit` rows it has built, in cells, by row key (see `Lines`); dropped
+    /// when its width changes, since what wraps does too.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub heights: BTreeMap<String, f32>,
     /// The cells its rows were laid out across in the last frame (the view reports it), for
     /// `cols` that fit as many as there's room for.
     #[serde(default, skip_serializing_if = "is_zero")]
@@ -370,49 +375,224 @@ fn is_zero(n: &u16) -> bool {
     *n == 0
 }
 
-/// The first row a list of `len` rows shows in `fit` rows: where the wheel left it, else where
-/// the selection is in view (at the bottom when it's further down).
-pub fn first_row(local: Option<&Local>, len: usize, fit: usize) -> usize {
-    first_shown(local, len, fit, 1)
+/// A list's (tree's, table's) lines as its view lays them out: rows `cols` to a line, each line as
+/// tall as its tallest row in cells (the template's height, or as measured for `fit` rows), and
+/// the view's height in cells (`Local::rows`, from the frame). `top` is in lines, fractions too.
+/// Following the selection, the wheel, paging, what's in view, what the window builds and the
+/// readback's scroll all ask here, so every list scrolls by the same arithmetic.
+pub struct Lines<'a> {
+    pub count: usize,
+    pub cols: usize,
+    pub view: f32,
+    tall: Tall<'a>,
 }
 
-/// The first row shown when rows go `cols` to a line: always the start of a line, and `fit`
-/// rows (whole lines of them) from there show.
-pub fn first_shown(local: Option<&Local>, len: usize, fit: usize, cols: usize) -> usize {
-    view_offset(local, len, fit, cols).floor() as usize * cols.max(1)
+enum Tall<'a> {
+    Each(f32),
+    /// `fit` rows: each line's height worked out when it's asked for (only those near the view
+    /// are, but for a list as long as all its lines), from the heights measured by row key, a
+    /// row not yet measured taken as `guess`.
+    Measured { node: &'a Node, rows: &'a [Value], heights: Option<&'a BTreeMap<String, f32>>, guess: f32 },
 }
 
-/// Where the view starts, in lines (`cols` rows to a line), fractions included: the line that
-/// keeps the selection in view, or where the wheel left it, never past the last whole view.
-pub fn view_offset(local: Option<&Local>, len: usize, fit: usize, cols: usize) -> f32 {
-    let cols = cols.max(1);
-    let lines = (fit / cols).max(1);
-    let sel = local.map(|l| l.selected).unwrap_or(0);
-    let follow = (sel / cols + 1).saturating_sub(lines);
-    let total = len.div_ceil(cols);
-    let most = total.saturating_sub(lines) as f32;
-    match local.and_then(|l| l.top) {
-        Some(top) => top.clamp(0.0, most),
-        None => follow as f32,
+/// What a `fit` row's measured height is kept by: its key (`key`, default `id`), else where it is.
+pub fn height_key(n: &Node, r: &Value, k: usize) -> String {
+    key_of(n, r).unwrap_or_else(|| format!("#{k}"))
+}
+
+impl<'a> Lines<'a> {
+    pub fn of(st: &'a State, n: &'a Node) -> Lines<'a> {
+        let cols = per_line(st, n);
+        let rows = items(st, n);
+        let count = rows.len().div_ceil(cols);
+        let local = n.id.as_deref().and_then(|id| st.local.get(id));
+        let view = local.map_or(0., |l| l.rows as f32);
+        let per = n.rows().map_or(1, crate::model::Rows::height) as f32;
+        let tall = match n.rows().filter(|r| r.fits()) {
+            // A row not built yet is as tall as those measured, on average.
+            Some(_) => {
+                let heights = local.map(|l| &l.heights).filter(|h| !h.is_empty());
+                let guess = heights.map_or(per, |h| h.values().sum::<f32>() / h.len() as f32);
+                Tall::Measured { node: n, rows, heights, guess }
+            }
+            None => Tall::Each(per),
+        };
+        Lines { count, cols, view, tall }
+    }
+
+    /// How tall line `line` is, in cells.
+    pub fn height(&self, line: usize) -> f32 {
+        match &self.tall {
+            Tall::Each(h) => *h,
+            Tall::Measured { node, rows, heights, guess } => {
+                let row = |k: usize| heights.and_then(|h| h.get(&height_key(node, &rows[k], k))).copied().unwrap_or(*guess);
+                (line * self.cols..((line + 1) * self.cols).min(rows.len())).map(row).fold(0., f32::max)
+            }
+        }
+        .max(0.05)
+    }
+
+    /// How tall all the lines are, in cells: what a `fit` list would take with room.
+    pub fn total(&self) -> f32 {
+        match &self.tall {
+            Tall::Each(h) => h * self.count as f32,
+            Tall::Measured { .. } => (0..self.count).map(|l| self.height(l)).sum(),
+        }
+    }
+
+    /// The view's height, or before any frame has said, enough for a screenful.
+    fn room(&self) -> f32 {
+        if self.view > 0. { self.view } else { 200. }
+    }
+
+    /// How many lines show whole from line `from` (one at least).
+    pub fn fitting_from(&self, from: usize) -> usize {
+        match &self.tall {
+            Tall::Each(h) => ((self.room() / h.max(0.05)).floor() as usize).max(1),
+            Tall::Measured { .. } => {
+                let (mut sum, mut n) = (0., 0);
+                for l in from..self.count {
+                    sum += self.height(l);
+                    if sum > self.room() + 0.01 {
+                        break;
+                    }
+                    n += 1;
+                }
+                n.max(1)
+            }
+        }
+    }
+
+    /// The furthest `top` goes: the last line ending at the view's bottom.
+    pub fn most(&self) -> f32 {
+        match &self.tall {
+            Tall::Each(_) => self.count.saturating_sub(self.fitting_from(0)) as f32,
+            Tall::Measured { .. } => {
+                let mut sum = 0.;
+                for l in (0..self.count).rev() {
+                    let h = self.height(l);
+                    if sum + h > self.room() {
+                        return l as f32 + (sum + h - self.room()) / h;
+                    }
+                    sum += h;
+                }
+                0.
+            }
+        }
+    }
+
+    /// The `top` that shows line `line` whole at the view's bottom (its start, if it's taller).
+    fn follow(&self, line: usize) -> f32 {
+        match &self.tall {
+            Tall::Each(_) => (line + 1).saturating_sub(self.fitting_from(0)) as f32,
+            Tall::Measured { .. } => {
+                let (mut sum, mut k) = (0., line + 1);
+                while k > 0 {
+                    let h = self.height(k - 1);
+                    if sum + h > self.room() + 0.01 && k <= line {
+                        break;
+                    }
+                    sum += h;
+                    k -= 1;
+                }
+                k as f32
+            }
+        }
+    }
+
+    /// Where the view starts, in lines: where the wheel left it, else where it keeps the
+    /// selection in view, never past the last whole view.
+    pub fn offset(&self, local: Option<&Local>) -> f32 {
+        let line = local.map_or(0, |l| l.selected) / self.cols.max(1);
+        match local.and_then(|l| l.top) {
+            Some(top) => top.clamp(0., self.most()),
+            None => self.follow(line).min(self.most()),
+        }
+    }
+
+    /// The lines to build from `top`: the one it's in, to the last the view reaches.
+    pub fn shown(&self, top: f32) -> std::ops::Range<usize> {
+        let from = (top.floor().max(0.) as usize).min(self.count);
+        let mut y = -top.fract() * self.height(from);
+        let mut to = from;
+        while to < self.count && y < self.room() {
+            y += self.height(to);
+            to += 1;
+        }
+        from..to
+    }
+
+    /// `top` moved by `cells`, inside the lines, and the cells it couldn't move.
+    pub fn moved(&self, top: f32, cells: f32) -> (f32, f32) {
+        let most = self.most();
+        let (mut line, mut frac, mut left) = (top.floor().max(0.), top.fract().max(0.), cells);
+        while left.abs() > 0.0001 {
+            let h = self.height(line as usize);
+            if left > 0. {
+                let rest = (1. - frac) * h;
+                if line + frac >= most || line as usize >= self.count {
+                    break;
+                }
+                if left < rest {
+                    frac += left / h;
+                    left = 0.;
+                } else {
+                    left -= rest;
+                    line += 1.;
+                    frac = 0.;
+                }
+            } else {
+                if line + frac <= 0. {
+                    break;
+                }
+                let back = frac * h;
+                if -left <= back {
+                    frac += left / h;
+                    left = 0.;
+                } else if line == 0. {
+                    left += back;
+                    frac = 0.;
+                    break;
+                } else {
+                    left += back;
+                    line -= 1.;
+                    frac = 1.;
+                }
+            }
+        }
+        let to = (line + frac).clamp(0., most);
+        // What clamping took back is what's left over too.
+        let over = (line + frac - to) * self.height(to.floor() as usize);
+        (to, left + over)
+    }
+
+    /// Where line `line` starts in a view starting at `top`, in cells from the view's top (less
+    /// than nothing above it).
+    pub fn y(&self, top: f32, line: usize) -> f32 {
+        let from = top.floor().max(0.) as usize;
+        let start = -top.fract() * self.height(from);
+        match &self.tall {
+            Tall::Each(h) => start + (line as f32 - from as f32) * h,
+            Tall::Measured { .. } if line >= from => start + (from..line).map(|l| self.height(l)).sum::<f32>(),
+            Tall::Measured { .. } => start - (line..from).map(|l| self.height(l)).sum::<f32>(),
+        }
+    }
+
+    /// Whether line `line` shows whole in a view starting at `top` (a view that follows the
+    /// selection always shows it).
+    pub fn in_view(&self, top: Option<f32>, line: usize) -> bool {
+        let Some(top) = top else { return true };
+        let y = self.y(top, line);
+        y >= -0.01 && y + self.height(line) <= self.room() + 0.01
     }
 }
 
-/// Move the view under the mouse by `lines`: a list's (its lines) or a scrolling container's (its
-/// cells), and what it can't take, at its end, the next scroller out, in cells.
+/// Move the view under the mouse by `lines` cells: a list's or a scrolling container's, and what it
+/// can't take, at its end, the next scroller out.
 fn pan_from(st: &mut State, id: &str, lines: f32) {
     let Some(n) = st.node(id) else { return };
     let left = if n.rows().is_some() && n.focusable() && st.local.get(id).is_some_and(|l| l.rows > 0) {
-        let height = n.rows().map_or(1, crate::model::Rows::height) as f32;
-        let before = st.local.get(id).and_then(|l| l.top);
-        let len = items(st, n).len();
-        let (cols, fit) = (per_line(st, n), st.local.get(id).map_or(0, |l| l.rows as usize));
-        let at = view_offset(st.local.get(id), len, fit, cols);
-        pan(st, id, lines);
-        let moved = view_offset(st.local.get(id), len, fit, cols) - at;
-        if before.is_none() && moved == 0. {
-            st.local.entry(id.to_string()).or_default().top = None;
-        }
-        (lines - moved) * height
+        pan(st, id, lines)
     } else if n.scrolls_down().is_some() {
         scroll_by(st, id, lines)
     } else {
@@ -476,9 +656,8 @@ pub fn pages_a_scroller(st: &State, key: &str) -> bool {
 fn page(st: &mut State, dir: isize) -> Vec<Effect> {
     let Some(focus) = st.focus.clone() else { return vec![] };
     if let Some(n) = st.node(&focus).filter(|n| n.rows().is_some() || matches!(n.kind, Kind::Table { .. })) {
-        let cols = per_line(st, n);
-        let fit = st.local.get(&focus).map_or(0, |l| l.rows as usize);
-        let by = (fit / cols).max(1) * cols;
+        let lines = Lines::of(st, n);
+        let by = lines.fitting_from(lines.offset(st.local.get(&focus)).floor() as usize) * lines.cols;
         return step(st, move |sel, len| if dir > 0 { (sel + by).min(len.saturating_sub(1)) } else { sel.saturating_sub(by) });
     }
     if let Some(s) = scrollers_around(st, &focus).into_iter().next() {
@@ -488,23 +667,18 @@ fn page(st: &mut State, dir: isize) -> Vec<Effect> {
     vec![]
 }
 
-/// Move a list's view by `lines`, from where it is now.
-fn pan(st: &mut State, id: &str, lines: f32) {
-    let Some(n) = st.node(id) else { return };
-    let len = items(st, n).len();
-    let cols = per_line(st, n);
-    let fit = st.local.get(id).map(|l| l.rows).unwrap_or(0) as usize;
-    let at = view_offset(st.local.get(id), len, fit, cols);
-    let most = len.div_ceil(cols).saturating_sub((fit / cols).max(1)) as f32;
-    st.local.entry(id.to_string()).or_default().top = Some((at + lines).clamp(0.0, most));
-}
-
-/// Whether row `to` is in the view `local` has of a list `cols` to a line.
-fn in_view(local: &Local, to: usize, cols: usize) -> bool {
-    let Some(top) = local.top else { return true };
-    let lines = (local.rows as usize / cols.max(1)).max(1);
-    let line = (to / cols.max(1)) as f32;
-    line >= top.floor() && line < top.floor() + lines as f32
+/// Move a list's view by `cells`, from where it is now: the cells it couldn't move. A view that
+/// didn't move goes on following the selection.
+fn pan(st: &mut State, id: &str, cells: f32) -> f32 {
+    let Some(n) = st.node(id) else { return cells };
+    let lines = Lines::of(st, n);
+    let local = st.local.get(id);
+    let at = lines.offset(local);
+    let (to, left) = lines.moved(at, cells);
+    if to != at || local.is_some_and(|l| l.top.is_some()) {
+        st.local.entry(id.to_string()).or_default().top = Some(to);
+    }
+    left
 }
 
 /// How many to a line node `n` lays out: a list's rows or a grid's children by its `cols`, a
@@ -563,6 +737,8 @@ pub enum Msg {
     Extent { id: String, view: f32, content: f32 },
     /// The focused node is in view in every scroller around it (see `State::reveal`).
     Revealed,
+    /// How tall a frame built a list's `fit` rows, in cells, by row key.
+    Heights { id: String, heights: Vec<(String, f32)> },
     /// A click inside an editor's or input's text, at a cell relative to it: focus it and put the
     /// caret there, or with `extend` (Shift held) stretch the selection to it. A second click on
     /// the same cell soon after selects a word, a third the line.
@@ -678,7 +854,7 @@ pub enum Pick {
 pub fn update(st: &mut State, msg: Msg) -> Vec<Effect> {
     let checks = matches!(msg, Msg::Push { .. } | Msg::Patch { .. } | Msg::Data { .. } | Msg::Write { .. } | Msg::Theme { .. } | Msg::Key { .. } | Msg::Font { .. });
     let writes = st.store_writes;
-    let quiet = matches!(msg, Msg::Tick { .. } | Msg::Hover { .. } | Msg::Stats { .. } | Msg::Activity { .. } | Msg::Caps { .. } | Msg::Size { .. } | Msg::Extent { .. } | Msg::Revealed);
+    let quiet = matches!(msg, Msg::Tick { .. } | Msg::Hover { .. } | Msg::Stats { .. } | Msg::Activity { .. } | Msg::Caps { .. } | Msg::Size { .. } | Msg::Extent { .. } | Msg::Revealed | Msg::Heights { .. });
     // A source's new value changes only the rows of the nodes that read it.
     let only = match &msg {
         Msg::Data { name, .. } => Some(name.clone()),
@@ -1021,7 +1197,11 @@ fn apply(st: &mut State, msg: Msg) -> Vec<Effect> {
                 return step(st, |sel, len| sel.saturating_add_signed(by).min(len.saturating_sub(1)));
             }
             // The wheel scrolls the view three lines a notch; the selection stays where it is.
-            pan(st, &id, by as f32 * 3.0);
+            let line = st.node(&id).map_or(1., |n| {
+                let lines = Lines::of(st, n);
+                lines.height(lines.offset(st.local.get(&id)).floor() as usize)
+            });
+            pan(st, &id, by as f32 * 3.0 * line);
             vec![]
         }
         Msg::Pan { id, lines } => {
@@ -1036,6 +1216,10 @@ fn apply(st: &mut State, msg: Msg) -> Vec<Effect> {
         }
         Msg::Revealed => {
             st.reveal = None;
+            vec![]
+        }
+        Msg::Heights { id, heights } => {
+            st.local.entry(id).or_default().heights.extend(heights);
             vec![]
         }
         Msg::Tick { now_ms } => {
@@ -1133,6 +1317,9 @@ fn apply(st: &mut State, msg: Msg) -> Vec<Effect> {
                 on_doc(st, &id, caretline::Msg::resize(width.max(1), height.max(1)), "person");
             } else {
                 let local = st.local.entry(id).or_default();
+                if local.width != width {
+                    local.heights.clear();
+                }
                 (local.rows, local.width) = (height, width);
             }
             vec![]
@@ -2628,13 +2815,14 @@ fn pick(st: &mut State, id: &str, row: usize, how: Pick) {
             ((from.min(row)..=from.max(row)).collect(), row)
         }
     };
-    let cols = per_line(st, n);
+    let lines = Lines::of(st, n);
+    let shows = lines.in_view(st.local.get(id).and_then(|l| l.top), to / lines.cols.max(1));
     let local = st.local.entry(id.to_string()).or_default();
     local.picked = if set.len() > 1 { set.iter().filter_map(|r| keys.get(*r).cloned().flatten()).collect() } else { vec![] };
     local.anchor = if how == Pick::Toggle { Some(key) } else { anchor };
     local.selected = to;
     local.key = keys.get(to).cloned().flatten();
-    if !in_view(local, to, cols) {
+    if !shows {
         local.top = None;
     }
 }
@@ -2890,7 +3078,8 @@ fn step(st: &mut State, f: impl Fn(usize, usize) -> usize) -> Vec<Effect> {
     // Its key now, not once the message is done: a store write later in the same `do` would
     // have the selection follow the row it left.
     let key = rows.get(to).and_then(|r| key_of(n, r));
-    let cols = per_line(st, n);
+    let lines = Lines::of(st, n);
+    let shows = lines.in_view(st.local.get(&id).and_then(|l| l.top), to / lines.cols.max(1));
     let local = st.local.entry(id).or_default();
     local.selected = to;
     local.key = key;
@@ -2898,7 +3087,7 @@ fn step(st: &mut State, f: impl Fn(usize, usize) -> usize) -> Vec<Effect> {
     local.anchor = None;
     // A view the wheel moved stays put while the selection is in it, and follows it again
     // once it leaves.
-    if !in_view(local, to, cols) {
+    if !shows {
         local.top = None;
     }
     vec![]

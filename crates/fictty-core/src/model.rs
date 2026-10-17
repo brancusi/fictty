@@ -1860,6 +1860,11 @@ pub fn row_instance(template: &Node, item: &Value, at: (usize, usize)) -> Node {
 }
 
 impl Rows {
+    /// Whether each row is as tall as what it shows (its template's `size` is `fit`).
+    pub fn fits(&self) -> bool {
+        self.row.as_ref().and_then(|r| r.size.as_ref()).is_some_and(|s| s.measure() == Measure::Fit)
+    }
+
     /// How many cells tall a row is: its template's `size` in cells, else `lines`, else one.
     pub fn height(&self) -> u16 {
         match self.row.as_ref().and_then(|r| r.size.as_ref()).map(Size::measure) {

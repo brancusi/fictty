@@ -150,7 +150,12 @@ fictty theme paper                                        # choose a loaded them
   `{$item}` and `{$item.path}` filled from the row as an `each` template's are (a picture over
   a name: `{"type": "col", "size": 8, "children": [{"type": "image", "src": "{$item.thumb}"},
   {"type": "text", "size": 1, "text": "{$item.name}"}]}`). It's as tall as its `size` in
-  cells. A press anywhere in it is a press on the row, so selection, `multi` picking, keys and
+  cells, or with `"size": "fit"` (the window's) as tall as what it shows: a short message a
+  line, a long one as many as it wraps to, a card as tall as its picture and its text at the
+  width it gets. Each row is measured as it's built and its height kept by its key
+  (`heights` in the list's `get --state` view state, dropped when the list's width changes);
+  rows not built yet count as the average, and the view follows the selection, scrolls and
+  pages by those heights. A line of `cols` rows is as tall as its tallest. A press anywhere in it is a press on the row, so selection, `multi` picking, keys and
   scrolling are the list's as ever; its nodes take no ids or clicks of their own. `cols: 3`
   lays rows three to a line: a grid, where ↑/↓ move a line and ←/→ a row, and the view scrolls
   by whole lines. `cols: {"min": "180px"}` fits as many to a line as there's room for, each at
