@@ -11,6 +11,9 @@ import ExObsidian from '../../components/model/ExObsidian.astro';
 import ExRoam from '../../components/model/ExRoam.astro';
 import ExLogseq from '../../components/model/ExLogseq.astro';
 import ExNotion from '../../components/model/ExNotion.astro';
+import Stored from '../../components/model/Stored.astro';
+import Atoms from '../../components/model/Atoms.astro';
+import Speed from '../../components/model/Speed.astro';
 import { DIMENSIONS, MOVES, SYSTEMS } from '../../lib/datamodel';
 import '../../styles/prose.css';
 import '../../styles/model.css';
@@ -68,7 +71,7 @@ const LANES: [string, string[], string][] = [
       <header class="page-head">
         <span class="eyebrow">Research · the data model · 17 October 2026</span>
         <h1>Five ways to hold the same thing.</h1>
-        <p class="lede">A bike workshop has a job: Priya's gravel bike, brake pads and a rotor clean, due Thursday, with a note that it squeals after rain. Here is that one job in fictty, Obsidian, Roam Research, Logseq and Notion, then a tool to compare any two of them, then what each choice gains and costs, and where fictty should go. The long reads are one page each: <a href="/data-model/fictty/">fictty</a>, <a href="/data-model/obsidian/">Obsidian</a>, <a href="/data-model/roam/">Roam Research</a>, <a href="/data-model/logseq/">Logseq</a>, <a href="/data-model/notion/">Notion</a>.</p>
+        <p class="lede">A bike workshop has a job: Priya's gravel bike, brake pads and a rotor clean, due Thursday, with a note that it squeals after rain. Here is that one job in fictty, Obsidian, Roam Research, Logseq and Notion: drawn, then <a href="#stored">as the bytes each one actually stores</a>, <a href="#atom">cut down to its smallest piece</a> and <a href="#speed">timed against everyday tasks</a>; then a tool to compare any two of them, then what each choice gains and costs, and where fictty should go. The long reads are one page each: <a href="/data-model/fictty/">fictty</a>, <a href="/data-model/obsidian/">Obsidian</a>, <a href="/data-model/roam/">Roam Research</a>, <a href="/data-model/logseq/">Logseq</a>, <a href="/data-model/notion/">Notion</a>.</p>
       </header>
 
       <!-- 1 · one example, five shapes -->
@@ -81,6 +84,27 @@ const LANES: [string, string[], string][] = [
         <div class="gallery">
           {DIAGRAMS.map(([k, _n, D]) => <div class="pane" data-pane={k}><D /></div>)}
         </div>
+      </section>
+
+      <!-- 1b · what is stored, literally -->
+      <section class="dmsec" id="stored">
+        <h2>What's actually stored</h2>
+        <p class="sub">The diagrams above are the shape. This is the thing itself: the file, the rows or the facts each system keeps for Priya's job, as you'd see them if you opened the disk or the database. With it, what each model is built for, its smallest piece, what one change rewrites, and how you'd ask it "which of Sam's jobs are due by Friday?".</p>
+        <Stored />
+      </section>
+
+      <!-- 1c · the atom -->
+      <section class="dmsec" id="atom">
+        <h2>The atom, and four things that hang on it</h2>
+        <p class="sub">Every system cuts data down to some smallest piece. Four questions show where the cut falls: how much one save rewrites, the smallest thing with its own id, what a query hands back, and how much one conflict covers. Read a row left to right, big to small. The further right the marks sit, the finer the model: more can be linked, queried and merged on its own, and more ids and bookkeeping come with it.</p>
+        <Atoms />
+      </section>
+
+      <!-- 1d · speed and queries -->
+      <section class="dmsec" id="speed">
+        <h2>Speed and queries</h2>
+        <p class="sub">Nine everyday things you'd do with the job, and what each model makes cheap, costly or impossible. Read across for one task, down for one system. The pattern: whole files are easy to own and slow to query; small records are fast to query and merge and need a database (and usually a server) to hold them.</p>
+        <Speed />
       </section>
 
       <!-- 2 · the maps -->

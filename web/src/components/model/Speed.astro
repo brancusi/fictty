@@ -1,0 +1,47 @@
+---
+// Speed and queries: nine everyday things you'd do with the bike job, and how each model fares,
+// as a grid you can read across (one task, six systems) or down (one system, every task).
+import { OPS } from '../../lib/stored';
+import { SYSTEMS } from '../../lib/datamodel';
+const tint = (k: string) => (k === 'logseq-og' ? 'logseq' : k);
+const GRADES = [['good', 'cheap or strong'], ['ok', 'works, with a catch'], ['poor', 'slow or weak'], ['none', 'not there']];
+---
+<div class="speed">
+  <div class="sp-legend">{GRADES.map(([g, w]) => <span class={`gr gr-${g}`}><i></i>{w}</span>)}</div>
+  <div class="sp-wrap">
+    <table class="sp">
+      <thead><tr><th></th>{SYSTEMS.map((s) => <th class={`dm-${tint(s.key)}`}><span class="who">{s.name}</span></th>)}</tr></thead>
+      <tbody>
+        {OPS.map((o) => (
+          <tr>
+            <th scope="row"><b>{o.name}</b><span>{o.question}</span></th>
+            {SYSTEMS.map((s) => {
+              const [g, word, note] = o.cells[s.key];
+              return <td class={`gr-${g}`}><span class="cw"><i></i>{word}</span><span class="cn">{note}</span></td>;
+            })}
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<style>
+  .speed { display: grid; gap: 12px; }
+  .sp-legend { display: flex; flex-wrap: wrap; gap: 8px 16px; font-size: 13.5px; color: var(--ink-2); }
+  .gr { display: inline-flex; gap: 6px; align-items: center; }
+  .gr-good { --g: var(--ok); } .gr-ok { --g: var(--warn); } .gr-poor { --g: var(--err); } .gr-none { --g: var(--ink-3); }
+  i { display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: var(--g); flex: none; }
+  .gr-none i { background: none; border: 1.5px solid var(--g); }
+  .sp-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 4px; background: color-mix(in srgb, var(--raised) calc(60% - 20% * var(--glow)), transparent); }
+  .sp { border-collapse: collapse; width: 100%; min-width: 900px; table-layout: fixed; }
+  .sp thead th { padding: 12px 10px; text-align: left; border-bottom: 1px solid var(--line-strong); border-top: 3px solid var(--sys, transparent); }
+  .sp thead th:first-child { width: 15%; border-top-color: transparent; }
+  .sp tbody th { text-align: left; padding: 12px; vertical-align: top; border-bottom: 1px solid var(--line); display: table-cell; }
+  .sp tbody th b { display: block; font-size: 14.5px; }
+  .sp tbody th span { display: block; font-size: 12.5px; color: var(--ink-3); font-weight: 400; margin-top: 3px; line-height: 1.35; }
+  .sp td { padding: 10px; vertical-align: top; border-bottom: 1px solid var(--line); border-left: 1px solid var(--line); background: color-mix(in srgb, var(--g) 7%, transparent); }
+  .sp tr:last-child th, .sp tr:last-child td { border-bottom: 0; }
+  .cw { display: flex; gap: 6px; align-items: center; font: 600 12px/1.2 var(--mono); color: var(--ink); margin-bottom: 5px; }
+  .cn { display: block; font-size: 12.5px; line-height: 1.45; color: var(--ink-2); }
+</style>

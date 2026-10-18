@@ -1,0 +1,71 @@
+---
+// The atom: six levels from the whole collection down to one character, and for each system where
+// one save, the smallest id, a query's answer and a conflict sit. A dashed mark holds sometimes.
+import { LADDER, LEVELS, MARKS } from '../../lib/stored';
+import { SYSTEMS } from '../../lib/datamodel';
+const tint = (k: string) => (k === 'logseq-og' ? 'logseq' : k);
+---
+<div class="atoms">
+  <div class="legend">
+    {MARKS.map((m) => <span class={`mk mk-${m.key}`}>{m.short}</span>)}
+    <span class="lg">{MARKS.map((m) => m.short + ': ' + m.name).join(' · ')}; dashed: only sometimes</span>
+  </div>
+  <div class="ladder-wrap">
+    <table class="ladder">
+      <thead><tr><th></th>{LEVELS.map((l, i) => <th><span class="lvl">{i === 0 ? 'big' : i === LEVELS.length - 1 ? 'small' : ''}</span>{l}</th>)}</tr></thead>
+      <tbody>
+        {SYSTEMS.map((s) => {
+          const row = LADDER[s.key];
+          return (
+            <tr class={`dm-${tint(s.key)}`}>
+              <th scope="row"><span class="who">{s.name}</span></th>
+              {LEVELS.map((_l, i) => {
+                const here = MARKS.filter((m) => row[m.key].at === i);
+                const maybe = MARKS.filter((m) => row[m.key].also === i);
+                return (
+                  <td class={here.length ? 'hit' : ''}>
+                    {here.map((m) => <span class={`mk mk-${m.key}`} title={`${m.name}: ${row[m.key].note}`}>{m.short}</span>)}
+                    {maybe.map((m) => <span class={`mk mk-${m.key} maybe`} title={`${m.name}, sometimes: ${row[m.key].note}`}>{m.short}</span>)}
+                  </td>
+                );
+              })}
+            </tr>
+          );
+        })}
+      </tbody>
+    </table>
+  </div>
+  <div class="atom-notes">
+    {SYSTEMS.map((s) => (
+      <div class={`an dm-${tint(s.key)}`}>
+        <span class="who">{s.name}</span>
+        <ul>{MARKS.map((m) => <li><span class={`mk mk-${m.key}`}>{m.short}</span>{LADDER[s.key][m.key].note}</li>)}</ul>
+      </div>
+    ))}
+  </div>
+</div>
+
+<style>
+  .atoms { display: grid; gap: 14px; }
+  .legend { display: flex; flex-wrap: wrap; gap: 6px 8px; align-items: center; }
+  .lg { font-size: 13.5px; color: var(--ink-3); }
+  .mk { display: inline-block; font: 600 10.5px/1 var(--mono); letter-spacing: .04em; padding: 4px 6px; border-radius: 3px; color: var(--ground); margin: 2px; white-space: nowrap; }
+  .mk-w { background: var(--glass-smoke, var(--ink-3)); }
+  .mk-n { background: var(--glass-violet); }
+  .mk-q { background: var(--glass-cyan); }
+  .mk-c { background: var(--err); }
+  .mk.maybe { background: none; color: var(--ink-2); outline: 1.5px dashed currentColor; outline-offset: -1.5px; }
+  .ladder-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 4px; background: color-mix(in srgb, var(--raised) calc(60% - 20% * var(--glow)), transparent); }
+  .ladder { border-collapse: collapse; width: 100%; min-width: 760px; }
+  .ladder thead th { font: 500 11.5px/1.3 var(--mono); color: var(--ink-3); text-align: center; padding: 10px 8px; border-bottom: 1px solid var(--line-strong); vertical-align: bottom; width: 14%; }
+  .ladder thead th:first-child { width: 16%; }
+  .lvl { display: block; font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-3); opacity: .7; min-height: 1.3em; }
+  .ladder tbody th { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--line); border-left: 3px solid var(--sys); }
+  .ladder td { text-align: center; padding: 8px 6px; border-bottom: 1px solid var(--line); border-left: 1px dashed var(--line); }
+  .ladder td.hit { background: color-mix(in srgb, var(--sys) 9%, transparent); }
+  .ladder tr:last-child th, .ladder tr:last-child td { border-bottom: 0; }
+  .atom-notes { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); }
+  .an { display: grid; gap: 8px; align-content: start; padding: 12px 14px; border-left: 3px solid var(--sys); background: color-mix(in srgb, var(--sys) 5%, transparent); border-radius: 0 3px 3px 0; }
+  .an ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; font-size: 13.5px; line-height: 1.45; color: var(--ink-2); }
+  .an .mk { margin: 0 6px 0 0; }
+</style>
