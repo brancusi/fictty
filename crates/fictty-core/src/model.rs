@@ -307,6 +307,14 @@ pub struct Look {
     pub edge: Option<String>,
 }
 
+/// What a list does with a row dropped on one of its rows. Its templates read the row dropped on
+/// as a click's do (`{id}`), the row carried as `{$drag.id}` (every carried row's key in
+/// `{$drag.keys}`), and which side of it the row goes as `{$drop.side}`: `before` or `after`.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct DropSpec {
+    pub on: Action,
+}
+
 /// A node: what it is (`type` and its fields) plus the parts every node shares.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Node {
@@ -341,6 +349,10 @@ pub struct Node {
     /// terminal) picks one in or out, ⇧-click and ⇧↑/↓ a range, ⌘A all of them.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub multi: bool,
+    /// A list, tree or table whose rows can be dragged to a new place among its own rows: a press
+    /// that moves lifts the row (or every picked row), and letting go over a row runs `on`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub drop: Option<DropSpec>,
     /// A pixel panel behind the node (rounded, shadowed), where the terminal draws images; a plain
     /// border where it doesn't.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -443,6 +455,7 @@ impl Default for Node {
             tip: None,
             click: None,
             multi: false,
+            drop: None,
             backdrop: None,
             scale: None,
             variant: None,

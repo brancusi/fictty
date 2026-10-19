@@ -95,9 +95,22 @@ pub enum Request {
         #[serde(default)]
         part: Option<String>,
     },
+    /// Drag row `row` of list `id` onto row `to`, to go `before` or `after` it (default), as the
+    /// mouse would: it lifts, moves there and lets go, and the list's `drop` runs.
+    Drag {
+        id: String,
+        row: usize,
+        to: usize,
+        #[serde(default = "after")]
+        side: crate::state::Side,
+    },
     Get,
     State,
     Stats,
+}
+
+fn after() -> crate::state::Side {
+    crate::state::Side::After
 }
 
 /// A rectangle on the screen, in cells: where a frame laid a node out.
@@ -773,6 +786,14 @@ impl Driver {
             Request::Toast { text, tone, ms } => Msg::Toast { text, tone, ms },
             Request::Click { id, row: Some(row), part: Some(part), .. } => Msg::Press { id, row, part },
             Request::Click { id, row, tab, .. } => Msg::Click { id, row, tab },
+            Request::Drag { id, row, to, side } => {
+                self.apply(st, Msg::Lift { id, row });
+                if st.drag.is_none() {
+                    return json!({"ok": false, "version": st.version, "status": "nothing to drag there (a list with a `drop`, a row with a key)"});
+                }
+                self.apply(st, Msg::Carry { row: Some(to), side });
+                Msg::Release
+            }
             // The loop answers these itself (they need the last frame).
             Request::Mouse { .. } | Request::Screen | Request::Readback | Request::Upgrade { .. } => return json!({"ok": false}),
         };
@@ -1832,6 +1853,7 @@ fn activity(st: &State, req: &Request) -> Option<(&'static str, String)> {
         Request::Layers { layers } => ("layers", format!("{} layers", layers.len())),
         Request::Toast { text, .. } => ("toast", short(text)),
         Request::Click { id, .. } => ("click", id.clone()),
+        Request::Drag { id, row, to, side } => ("drag", format!("{id} row {row} {} {to}", side.name())),
         _ => return None,
     })
 }

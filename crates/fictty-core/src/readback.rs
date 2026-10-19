@@ -48,6 +48,12 @@ pub struct Shown {
     /// A `multi` list's picked rows, by index, while more than one is.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub picked: Vec<usize>,
+    /// Rows of it being dragged (by index), and where they'd land: beside a row, `before` or
+    /// `after` it.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub dragging: Vec<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub drop: Option<(usize, String)>,
     /// Where the last frame laid it out (nodes with an id).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rect: Option<Rect>,
@@ -120,6 +126,8 @@ fn shown(st: &State, n: &Node, depth: usize, key: &str, (rects, cut): Frame) -> 
         rows: None,
         selected: None,
         picked: s_picked(st, n),
+        dragging: s_dragging(st, n),
+        drop: st.drag.as_ref().filter(|d| n.id.as_deref() == Some(d.id.as_str())).and_then(|d| d.over.as_ref()).map(|o| (o.row, o.side.name().to_string())),
         footer: s_footer(st, n),
         scroll: s_scroll(st, n),
         cols: Some(state::per_line(st, n)).filter(|c| *c > 1),
@@ -234,6 +242,12 @@ fn s_footer(st: &State, n: &Node) -> Option<String> {
     columns.iter().any(|c| c.total.is_some()).then(|| crate::model::table_footer(columns, state::items(st, n)).join(" · "))
 }
 
+/// The rows of `n` being dragged, by index.
+fn s_dragging(st: &State, n: &Node) -> Vec<usize> {
+    let Some(d) = st.drag.as_ref().filter(|d| n.id.as_deref() == Some(d.id.as_str())) else { return vec![] };
+    (0..state::items(st, n).len()).filter(|k| state::row_key(st, n, *k).is_some_and(|key| d.keys.contains(&key))).collect()
+}
+
 /// A `multi` node's picked rows while it has more than one.
 fn s_picked(st: &State, n: &Node) -> Vec<usize> {
     let Some(id) = n.id.as_deref().filter(|_| n.multi) else { return vec![] };
@@ -288,6 +302,10 @@ fn outline_with(shown: &[Shown], styled: bool) -> String {
         }
         if !s.picked.is_empty() {
             line.push_str(&format!(" (picked {})", s.picked.len()));
+        }
+        if !s.dragging.is_empty() {
+            let to = s.drop.as_ref().map_or_else(|| "nowhere".to_string(), |(r, side)| format!("{side} {}", r + 1));
+            line.push_str(&format!(" (dragging {} → {to})", s.dragging.iter().map(|k| (k + 1).to_string()).collect::<Vec<_>>().join(",")));
         }
         if let Some(r) = s.rect {
             line.push_str(&format!(" [{},{} {}×{}]", r.x, r.y, r.width, r.height));

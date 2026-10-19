@@ -34,6 +34,7 @@ a `[type]` placeholder until the step named).
 | `backdrop` | A card behind the node: `fill`, `fill2` (a gradient down), `border`, `radius`, `shadow`, `glow` |
 | `keys`, `click` | Actions on keys while it has focus (`{"enter": …}`), and on a press |
 | `multi` | A `list`, `tree` or `table` whose rows can be picked several at a time |
+| `drop` | A `list`, `tree` or `table` whose rows can be dragged into a new place among its own: `{"on": <action>}` runs when one is let go over a row, reading that row (`{id}`), the row carried (`{$drag.id}`, `{$drag.keys}` for every picked row carried) and `{$drop.side}` (`before` or `after`). **Window only** |
 | `float`, `modal` | In a `stack`: where it floats (`at`, `width`, `height`, `margin`, or `x` and `y` from data), and whether it is a dialog that keeps the focus over a scrim |
 | `tip` | A callout (`title`, `text`) that follows the mouse over its rows. **Window:** terminal only (step 7) |
 | `scale` | Text drawn larger with the terminal's text sizing (OSC 66). **Window:** terminal only; the window uses a type role (`"style": {"type": "display"}`) instead |
@@ -513,6 +514,13 @@ recipe, as above. Size: S (an estimate). If writing it shows behaviour compositi
 (typing to jump, the pop-up placed against its field), that is the case for a primitive.
 
 ### 8. Drag and drop, and drop zones
+
+**Started (19 October 2026):** rows dragged within one list, tree or table, the `drop` field
+above, for Caption Genius's gallery (a Folio app). A press that moves 4 pixels lifts the row
+(or every picked row); `$drag` is in the state and the readback (`dragging 2 → before 5`); the
+window dims what's carried (`drag.ghost`) and draws a bar where it would land (`drop.hover`),
+across a grid of rows by halves left and right; Esc, or letting go off the rows, drops nothing;
+an agent drags with `fictty drag <id> <row> <to> [--before]`. The rest below is still to come.
 
 `drag` (what a node carries), `drop` (`accept` and the action on a drop), `$drag` in the state,
 a `move` store action between arrays, theme parts `drag.ghost` and `drop.hover`; files dropped

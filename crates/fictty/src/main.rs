@@ -128,6 +128,15 @@ enum Cmd {
     /// Move, click or scroll the mouse on the running screen: `move|click|up|down X Y`;
     /// `s-click` and `d-click` click with ⇧ or ⌘ held (picking rows of a `multi` list).
     Mouse { kind: String, x: u16, y: u16 },
+    /// Drag row ROW of list ID onto row TO as the mouse would (rows count from 0): it goes after
+    /// it, or before with --before, and the list's `drop` runs.
+    Drag {
+        id: String,
+        row: usize,
+        to: usize,
+        #[arg(long)]
+        before: bool,
+    },
     /// Set a terminal up for fictty: `wezterm` installs a module that sends ⌘ keys (⌘Z, ⌘A, ⌘←)
     /// to fictty screens, which WezTerm doesn't do by itself. Ghostty and kitty need nothing.
     Setup {
@@ -291,6 +300,7 @@ fn main() -> Result<()> {
         }
         Cmd::Toast { text, tone, ms } => runtime::send(&socket, json!({"op": "toast", "text": text, "tone": tone, "ms": ms}))?,
         Cmd::Mouse { kind, x, y } => runtime::send(&socket, json!({"op": "mouse", "kind": kind, "x": x, "y": y}))?,
+        Cmd::Drag { id, row, to, before } => runtime::send(&socket, json!({"op": "drag", "id": id, "row": row, "to": to, "side": if before { "before" } else { "after" }}))?,
         Cmd::Layers { file } => {
             let raw = if file.as_os_str() == "-" { std::io::read_to_string(std::io::stdin())? } else { std::fs::read_to_string(&file)? };
             let layers: serde_json::Value = serde_json::from_str(&raw)?;

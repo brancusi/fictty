@@ -176,7 +176,15 @@ fictty theme paper                                        # choose a loaded them
   width it gets. Each row is measured as it's built and its height kept by its key
   (`heights` in the list's `get --state` view state, dropped when the list's width changes);
   rows not built yet count as the average, and the view follows the selection, scrolls and
-  pages by those heights. A line of `cols` rows is as tall as its tallest. A press anywhere in it is a press on the row, so selection, `multi` picking, keys and
+  pages by those heights. A line of `cols` rows is as tall as its tallest. A list (or tree or
+  table) with a `drop` lets its rows be dragged into a new order, in the window: a press that
+  moves lifts the row, or every picked row; letting go over a row runs `drop.on` there, with
+  `{id}` the row dropped on, `{$drag.id}` (and any field) the row carried, `{$drag.keys}` every
+  row carried, and `{$drop.side}` `before` or `after`. Its order is the app's: the action
+  rewrites it (`"drop": {"on": {"run": ["./order.sh", "{$drag.id}", "{id}", "{$drop.side}"]}}`),
+  and the selection follows the row carried. A plain press on such a row is a click when the
+  button comes up; Esc, or letting go off its rows, drops nothing. An agent drags with
+  `fictty drag <id> <row> <to> [--before]`. A press anywhere in it is a press on the row, so selection, `multi` picking, keys and
   scrolling are the list's as ever; its nodes take no ids or focus of their own. Its buttons
   keep their `click`, though (the window's): a press on one selects its row and runs the
   button's click on that row, not the list's own click, so a card's ♡ with `{"toggle":

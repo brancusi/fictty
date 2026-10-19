@@ -57,6 +57,9 @@ pub struct State {
     /// What the mouse is over.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub hover: Option<Hover>,
+    /// Rows being dragged to a new place in their list, while the button is down.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub drag: Option<Drag>,
     /// The logical clock (ms), moved only by `Msg::Tick`; animations read it.
     #[serde(default)]
     pub now_ms: u64,
@@ -285,6 +288,48 @@ pub struct Hover {
     pub id: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub row: Option<usize>,
+}
+
+/// Rows of a list (or tree or table) with a `drop` lifted to go somewhere else in it: the row
+/// pressed and every row carried with it (a picked row carries all the picked ones), and the row
+/// it would land beside if let go now.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Drag {
+    pub id: String,
+    /// The row pressed, by place and by key.
+    pub row: usize,
+    pub key: String,
+    /// Every row carried, by key, in the list's order.
+    pub keys: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub over: Option<Over>,
+}
+
+/// Where carried rows would land: beside row `row`, on its `side`.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Over {
+    pub row: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub key: Option<String>,
+    pub side: Side,
+}
+
+/// Which side of a row something dropped goes: before it (above, or left of it in a grid of
+/// rows) or after it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Side {
+    Before,
+    After,
+}
+
+impl Side {
+    pub fn name(self) -> &'static str {
+        match self {
+            Side::Before => "before",
+            Side::After => "after",
+        }
+    }
 }
 
 /// Frames and messages over the last measuring window (the runtime reports twice a second).
@@ -739,6 +784,20 @@ pub enum Msg {
     Revealed,
     /// How tall a frame built a list's `fit` rows, in cells, by row key.
     Heights { id: String, heights: Vec<(String, f32)> },
+    /// A press on row `row` of list `id` (one with a `drop`) moved far enough to be a drag: the row
+    /// lifts, with every picked row if it's one of them.
+    Lift { id: String, row: usize },
+    /// Lifted rows moved over row `row` of their list, to go on its `side`; or off its rows
+    /// (`row` none), where letting go puts them nowhere.
+    Carry {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        row: Option<usize>,
+        #[serde(default = "after")]
+        side: Side,
+    },
+    /// The button came up on a drag: over a row, the list's `drop` runs; anywhere else (or after
+    /// Esc) nothing moves.
+    Release,
     /// A press on a part of row `row` of list, tree or table `id`: a button by its path in the
     /// row template (`0.2`; in a table, the column first: `3.0`), or a tree row's fold glyph
     /// (`fold`). The row is selected as a click
@@ -849,6 +908,10 @@ pub enum Effect {
     Read(String),
 }
 
+fn after() -> Side {
+    Side::After
+}
+
 /// How a modified click picks rows.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -860,7 +923,7 @@ pub enum Pick {
 pub fn update(st: &mut State, msg: Msg) -> Vec<Effect> {
     let checks = matches!(msg, Msg::Push { .. } | Msg::Patch { .. } | Msg::Data { .. } | Msg::Write { .. } | Msg::Theme { .. } | Msg::Key { .. } | Msg::Font { .. });
     let writes = st.store_writes;
-    let quiet = matches!(msg, Msg::Tick { .. } | Msg::Hover { .. } | Msg::Stats { .. } | Msg::Activity { .. } | Msg::Caps { .. } | Msg::Size { .. } | Msg::Extent { .. } | Msg::Revealed | Msg::Heights { .. });
+    let quiet = matches!(msg, Msg::Tick { .. } | Msg::Hover { .. } | Msg::Lift { .. } | Msg::Carry { .. } | Msg::Stats { .. } | Msg::Activity { .. } | Msg::Caps { .. } | Msg::Size { .. } | Msg::Extent { .. } | Msg::Revealed | Msg::Heights { .. });
     // A source's new value changes only the rows of the nodes that read it.
     let only = match &msg {
         Msg::Data { name, .. } => Some(name.clone()),
@@ -1042,6 +1105,29 @@ fn apply(st: &mut State, msg: Msg) -> Vec<Effect> {
                 Some(click) => act(st, click),
                 None => fold(st, Fold::Toggle),
             }
+        }
+        Msg::Lift { id, row } => {
+            st.drag = None;
+            let Some(n) = st.node(&id).filter(|n| n.drop.is_some()) else { return vec![] };
+            let Some(key) = row_key(st, n, row) else { return vec![] };
+            let picked: Vec<String> = picked(st, &id).into_iter().filter_map(|k| row_key(st, n, k)).collect();
+            let keys = if picked.len() > 1 && picked.contains(&key) { picked } else { vec![key.clone()] };
+            st.drag = Some(Drag { id, row, key, keys, over: None });
+            vec![]
+        }
+        Msg::Carry { row, side } => {
+            let Some(d) = st.drag.as_ref() else { return vec![] };
+            let n = st.node(&d.id);
+            let over = row.filter(|r| n.is_some_and(|n| *r < items(st, n).len())).map(|r| Over { row: r, key: n.and_then(|n| row_key(st, n, r)), side });
+            if let Some(d) = st.drag.as_mut() {
+                d.over = over;
+            }
+            vec![]
+        }
+        Msg::Release => {
+            let Some(d) = st.drag.take() else { return vec![] };
+            let (Some(over), Some(on)) = (d.over.clone(), st.node(&d.id).and_then(|n| n.drop.clone())) else { return vec![] };
+            dropped(st, d, over, on.on)
         }
         Msg::Pick { id, row, how } => {
             if !st.node(&id).is_some_and(|n| n.multi) {
@@ -1390,6 +1476,10 @@ fn apply(st: &mut State, msg: Msg) -> Vec<Effect> {
             st.held.push(key);
             vec![]
         }
+        Msg::Key { key } if key == "esc" && st.drag.is_some() => {
+            st.drag = None;
+            vec![]
+        }
         Msg::Key { key } => {
             if key == "c-t"
                 && let Some(id) = editing(st, &key)
@@ -1492,6 +1582,54 @@ fn action_context(st: &State) -> Value {
     if let Some((_, m)) = st.focus.as_deref().and_then(|id| link_at(st, id)) {
         ctx["$link"] = m.clone().into();
         ctx["$match"] = m.into();
+    }
+    with_drag(st, ctx)
+}
+
+/// Rows let go over row `over` of their list: its `drop` runs on the row dropped on, as a click
+/// would run on it (`{id}`), with the carried rows as `$drag` and the side as `$drop`. The
+/// selection and picks stay with the rows carried, so they follow them to their new place.
+fn dropped(st: &mut State, d: Drag, over: Over, on: Action) -> Vec<Effect> {
+    let Some(n) = st.node(&d.id) else { return vec![] };
+    if over.row >= items(st, n).len() {
+        return vec![];
+    }
+    let focusable = n.focusable();
+    let target = over.key.clone();
+    let was = st.local.get(&d.id).cloned().unwrap_or_default();
+    if focusable {
+        st.focus = Some(d.id.clone());
+    }
+    let local = st.local.entry(d.id.clone()).or_default();
+    local.selected = over.row;
+    local.key = target;
+    local.picked.clear();
+    st.drag = Some(Drag { over: Some(over), ..d.clone() });
+    let fx = act(st, on);
+    st.drag = None;
+    let local = st.local.entry(d.id.clone()).or_default();
+    local.selected = d.row;
+    local.key = Some(d.key.clone());
+    local.picked = was.picked;
+    local.anchor = was.anchor;
+    fx
+}
+
+/// `$drag` (the row carried first, its fields and `keys`, every carried row's key) and `$drop`
+/// (`side`, `before` or `after`) in an action's context, while rows are dragged.
+fn with_drag(st: &State, mut ctx: Value) -> Value {
+    let Some(d) = &st.drag else { return ctx };
+    let Some(m) = ctx.as_object_mut() else { return ctx };
+    let row = st.node(&d.id).and_then(|n| items(st, n).iter().find(|r| key_of(n, r).as_deref() == Some(d.key.as_str())).cloned());
+    let mut carried = match row {
+        Some(Value::Object(r)) => Value::Object(r),
+        _ => serde_json::json!({}),
+    };
+    carried["key"] = d.key.clone().into();
+    carried["keys"] = serde_json::json!(d.keys);
+    m.insert("$drag".into(), carried);
+    if let Some(o) = &d.over {
+        m.insert("$drop".into(), serde_json::json!({"side": o.side.name(), "row": o.row, "key": o.key}));
     }
     ctx
 }
@@ -2446,12 +2584,12 @@ fn resolve(st: &State, key: &str) -> Option<Action> {
 fn act(st: &mut State, a: Action) -> Vec<Effect> {
     match a {
         Action::Run { run } => {
-            let sel = selected_item(st).unwrap_or(Value::Null);
+            let sel = with_drag(st, selected_item(st).unwrap_or(Value::Null));
             vec![Effect::Run(run.iter().map(|s| crate::model::fill(s, &sel)).collect())]
         }
         Action::Load { load } => {
             // `{file}` reads the selected row, so a menu of screens is a list.
-            let sel = selected_item(st).unwrap_or(Value::Null);
+            let sel = with_drag(st, selected_item(st).unwrap_or(Value::Null));
             vec![Effect::Load(crate::model::fill(&load, &sel))]
         }
         Action::Focus { focus } => {

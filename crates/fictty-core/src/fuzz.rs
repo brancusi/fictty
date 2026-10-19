@@ -853,6 +853,8 @@ mod tests {
             rows: None,
             selected: None,
             picked: vec![],
+            dragging: vec![],
+            drop: None,
             scroll: None,
             cols: None,
             entries: 0,

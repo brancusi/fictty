@@ -1785,3 +1785,99 @@ fn select_next_moves_a_list_without_the_focus() {
     assert_eq!(s.state().local["tracks"].selected, 1);
     assert_eq!(s.state().focus.as_deref(), Some("albums"), "the focus stays");
 }
+
+/// A list whose rows can be dragged into a new order: its `drop` puts what it was told in `moved`
+/// (the row carried, the row dropped on, the side, every row carried).
+fn droppable(cols: Option<u64>, multi: bool) -> Value {
+    let items: Vec<Value> = (0..9).map(|i| json!({"id": format!("r{i}"), "name": format!("row {i}")})).collect();
+    let mut list = json!({"type": "list", "id": "l", "multi": multi, "items": items,
+        "row": {"type": "text", "size": 2, "text": "{$item.name}"},
+        "drop": {"on": {"put": "moved", "value": {"drag": "{$drag.id}", "to": "{id}", "side": "{$drop.side}", "keys": "{$drag.keys}"}}}});
+    if let Some(c) = cols {
+        list["cols"] = json!(c);
+    }
+    json!({"root": {"type": "col", "children": [list, {"type": "text", "id": "below", "size": 2, "text": "below"}]}, "focus": "l"})
+}
+
+fn moved(s: &mut fictty::Headless) -> Option<Value> {
+    s.state().store.get("moved").map(|e| e.read()["value"].clone())
+}
+
+#[test]
+fn a_row_dragged_onto_another_runs_the_lists_drop_and_keeps_its_selection() {
+    let mut s = window(droppable(None, false), 40, 24);
+    let l = node(&mut s, "l").rect.unwrap();
+    // Each row is two cells tall: the upper is before it, the lower after.
+    let (x, row) = (l.x + 4, |k: u16| l.y + 2 * k);
+    s.mouse("press", x, row(1)).mouse("drag", x, row(4));
+    let st = s.state();
+    let d = st.drag.as_ref().expect("the row lifted");
+    assert_eq!((d.key.as_str(), d.keys.clone()), ("r1", vec!["r1".to_string()]));
+    assert_eq!(node(&mut s, "l").dragging, vec![1]);
+    assert_eq!(node(&mut s, "l").drop, Some((4, "before".to_string())));
+    s.mouse("drag", x, row(4) + 1);
+    assert_eq!(node(&mut s, "l").drop, Some((4, "after".to_string())), "the lower half is after it");
+    s.mouse("release", x, row(4) + 1);
+    assert_eq!(moved(&mut s), Some(json!({"drag": "r1", "to": "r4", "side": "after", "keys": ["r1"]})));
+    assert!(s.state().drag.is_none());
+    assert_eq!(s.state().local["l"].selected, 1, "the selection stays on the row carried");
+    assert_eq!(s.state().local["l"].key.as_deref(), Some("r1"));
+}
+
+#[test]
+fn a_press_that_doesnt_move_is_a_click_and_esc_or_letting_go_off_the_rows_drops_nothing() {
+    let mut s = window(droppable(None, false), 40, 24);
+    let l = node(&mut s, "l").rect.unwrap();
+    let (x, row) = (l.x + 4, |k: u16| l.y + 2 * k);
+    s.mouse("press", x, row(3)).mouse("release", x, row(3));
+    assert_eq!(s.state().local["l"].selected, 3);
+    assert!(s.state().drag.is_none() && moved(&mut s).is_none());
+    // Esc while dragging puts it back.
+    s.mouse("press", x, row(0)).mouse("drag", x, row(2));
+    assert!(s.state().drag.is_some());
+    s.keys(&["esc"]);
+    assert!(s.state().drag.is_none());
+    s.mouse("release", x, row(2));
+    assert!(moved(&mut s).is_none());
+    // Let go over something that isn't one of its rows.
+    let below = node(&mut s, "below").rect.unwrap();
+    s.mouse("press", x, row(0)).mouse("drag", x, row(2)).mouse("drag", below.x + 2, below.y);
+    assert_eq!(node(&mut s, "l").drop, None, "over nothing it would land nowhere");
+    s.mouse("release", below.x + 2, below.y);
+    assert!(moved(&mut s).is_none() && s.state().drag.is_none());
+}
+
+#[test]
+fn in_a_grid_of_rows_the_side_is_by_halves_across() {
+    let mut s = window(droppable(Some(3), false), 60, 24);
+    let l = node(&mut s, "l").rect.unwrap();
+    let col = |c: u16, part: u16| l.x + l.width * c / 3 + l.width * part / 12;
+    s.mouse("press", col(0, 2), l.y).mouse("drag", col(2, 1), l.y + 2);
+    assert_eq!(node(&mut s, "l").drop, Some((5, "before".to_string())), "the left half of the third on the second line");
+    s.mouse("drag", col(2, 3), l.y + 2).mouse("release", col(2, 3), l.y + 2);
+    assert_eq!(moved(&mut s).unwrap()["side"], "after");
+    assert_eq!(moved(&mut s).unwrap()["to"], "r5");
+}
+
+#[test]
+fn dragging_a_picked_row_carries_every_picked_row() {
+    let mut s = window(droppable(None, true), 40, 24);
+    let l = node(&mut s, "l").rect.unwrap();
+    let (x, row) = (l.x + 4, |k: u16| l.y + 2 * k);
+    s.mouse("press", x, row(0)).mouse("release", x, row(0));
+    s.mouse("d-press", x, row(2)).mouse("release", x, row(2));
+    s.mouse("press", x, row(2)).mouse("drag", x, row(6)).mouse("release", x, row(6));
+    assert_eq!(moved(&mut s).unwrap()["keys"], json!(["r0", "r2"]));
+    assert_eq!(moved(&mut s).unwrap()["drag"], "r2", "the row pressed leads");
+    assert_eq!(node(&mut s, "l").picked, vec![0, 2], "the picks stay");
+}
+
+#[test]
+fn an_agent_drags_a_row_over_the_socket() {
+    let mut s = window(droppable(None, false), 40, 24);
+    let reply = s.request(json!({"op": "drag", "id": "l", "row": 7, "to": 0, "side": "before"}));
+    assert_eq!(reply["ok"], true, "{reply}");
+    assert_eq!(moved(&mut s), Some(json!({"drag": "r7", "to": "r0", "side": "before", "keys": ["r7"]})));
+    let reply = s.request(json!({"op": "drag", "id": "below", "row": 0, "to": 1}));
+    assert_eq!(reply["ok"], false, "a node without a drop has nothing to drag");
+}

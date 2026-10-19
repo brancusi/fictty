@@ -191,7 +191,27 @@ struct Portal {
     loose: Option<bool>,
     /// The list and row whose template is being built, so its buttons press on that row.
     row: Option<(String, usize)>,
+    /// A press on a row of a list with a `drop`, until the button comes up: a click then, or a
+    /// drag once it has moved far enough.
+    press: Option<Pressed>,
+    /// How many rows each list laid out to a line, last frame: a drag over a grid of rows goes
+    /// before or after a row by its halves across, over a column of them by its halves down.
+    per_line: HashMap<String, usize>,
 }
+
+/// A press on row `row` of list `id`, where the mouse went down, the click it is if it doesn't
+/// move, and once it has (`lifted`), where the rows would land.
+struct Pressed {
+    id: String,
+    row: usize,
+    at: Point<Pixels>,
+    click: Msg,
+    lifted: bool,
+    over: Option<(usize, state::Side)>,
+}
+
+/// How far a press moves before it's a drag, in pixels.
+const LIFT: f32 = 4.0;
 
 impl Portal {
     /// Open on `engine`, measuring the cell: a column is the monospace font's character width.
@@ -203,7 +223,7 @@ impl Portal {
         engine.send(Msg::Caps { caps: state::Caps { graphics: false, cell_w: cell.w, cell_h: cell.h }, text_sizing: false });
         let focus = cx.focus_handle();
         focus.focus(window);
-        Portal { engine, focus, cell, screen: (0, 0), laid: Shared::default(), shown: Rc::default(), drag: None, wheel: (String::new(), 0.0), wake: None, faces: HashMap::new(), fitting: 0, loose: None, row: None }
+        Portal { engine, focus, cell, screen: (0, 0), laid: Shared::default(), shown: Rc::default(), drag: None, wheel: (String::new(), 0.0), wake: None, faces: HashMap::new(), fitting: 0, loose: None, row: None, press: None, per_line: HashMap::new() }
     }
 
     fn send(&mut self, msg: Msg, cx: &mut Context<Self>) {
@@ -254,6 +274,9 @@ impl Portal {
     /// changes, so its `.hover` parts hold. Under it means the innermost thing there: not a row a
     /// dialog covers.
     fn moved(&mut self, e: &MouseMoveEvent, cx: &mut Context<Self>) {
+        if e.dragging() && self.press.is_some() {
+            return self.carry(e.position, cx);
+        }
         if let Some(id) = self.drag.clone().filter(|_| e.dragging()) {
             if let Some((col, row)) = self.in_text(&id, e.position) {
                 self.send(Msg::Drag { id, col, row }, cx);
@@ -265,6 +288,74 @@ impl Portal {
         if hover != self.engine.hover() {
             self.send(Msg::Hover { hover }, cx);
         }
+    }
+
+    /// A press on a row of a list with a `drop`: a plain one waits to see whether it's a click or
+    /// a drag; a modified one picks rows as it always does.
+    fn row_down(&mut self, id: &str, k: usize, droppable: bool, e: &MouseDownEvent, cx: &mut Context<Self>) {
+        let msg = row_press(id, k, e);
+        if droppable && matches!(msg, Msg::Click { .. }) {
+            self.press = Some(Pressed { id: id.to_string(), row: k, at: e.position, click: msg, lifted: false, over: None });
+            return;
+        }
+        self.send(msg, cx);
+    }
+
+    /// The mouse moved with a row pressed: past `LIFT` pixels the row lifts, and then where it
+    /// would land is the row under the mouse, on the side of it the mouse is on.
+    fn carry(&mut self, at: Point<Pixels>, cx: &mut Context<Self>) {
+        let Some(p) = self.press.as_mut() else { return };
+        if !p.lifted {
+            let (dx, dy) = (f32::from(at.x - p.at.x), f32::from(at.y - p.at.y));
+            if dx.hypot(dy) < LIFT {
+                return;
+            }
+            p.lifted = true;
+            let lift = Msg::Lift { id: p.id.clone(), row: p.row };
+            self.send(lift, cx);
+        }
+        let Some(p) = self.press.as_ref() else { return };
+        let across = self.per_line.get(&p.id).is_some_and(|c| *c > 1);
+        let over = self.shown.borrow().iter().rev().find(|(b, h)| b.contains(&at) && h.id == p.id && h.part.is_none() && h.row.is_some()).map(|(b, h)| {
+            let before = if across { at.x < b.center().x } else { at.y < b.center().y };
+            (h.row.unwrap_or_default(), if before { state::Side::Before } else { state::Side::After })
+        });
+        if over != p.over {
+            if let Some(p) = self.press.as_mut() {
+                p.over = over;
+            }
+            let (row, side) = over.map_or((None, state::Side::After), |(r, s)| (Some(r), s));
+            self.send(Msg::Carry { row, side }, cx);
+        }
+    }
+
+    /// The button came up: a press that never moved is the click it was; a drag lets go.
+    fn up(&mut self, cx: &mut Context<Self>) {
+        self.drag = None;
+        if let Some(p) = self.press.take() {
+            self.send(if p.lifted { Msg::Release } else { p.click }, cx);
+        }
+    }
+
+    /// Row `k` of `n` as a drag shows it: dimmed (the `drag.ghost` part's opacity) while it's
+    /// carried, and with a bar (the `drop.hover` part) on the side carried rows would go.
+    fn carried(&self, st: &State, lk: &Look, n: &Node, k: usize, across: bool, row: gpui::Stateful<gpui::Div>) -> gpui::Stateful<gpui::Div> {
+        let Some(d) = st.drag.as_ref().filter(|d| n.id.as_deref() == Some(d.id.as_str())) else { return row };
+        let carried = state::row_key(st, n, k).is_some_and(|key| d.keys.contains(&key));
+        let row = match style::inner(st, "drag.ghost", &[]).opacity.filter(|_| carried) {
+            Some(o) => row.opacity(o),
+            None => row,
+        };
+        let Some(side) = d.over.as_ref().filter(|o| o.row == k).map(|o| o.side) else { return row };
+        let bar = lk.boxed(div().absolute(), &style::inner(st, "drop.hover", &[]), (self.cell.w, self.cell.h), [0.; 4]);
+        let w = px(3.);
+        let bar = match (across, side) {
+            (false, state::Side::Before) => bar.top_0().left_0().right_0().h(w),
+            (false, state::Side::After) => bar.bottom_0().left_0().right_0().h(w),
+            (true, state::Side::Before) => bar.top_0().bottom_0().left_0().w(w),
+            (true, state::Side::After) => bar.top_0().bottom_0().right_0().w(w),
+        };
+        row.child(bar)
     }
 
     /// The cell `at` falls on in editor `id`'s text, in the last painted frame.
@@ -764,16 +855,16 @@ impl Portal {
                 let tint = col.heat.as_ref().and_then(|h| h.at(r)).and_then(|t| look::heat(st, t));
                 cells.push(column_slot(col, cell).when_some(tint, |d, t| d.bg(t)).child(shows).into_any_element());
             }
-            body.push(
-                lk.boxed(line(div()).id(k).relative(), &style::inner_in(st, n, "row", &style::row_states(st, n, k)), c, [0.; 4])
-                    .child(measure(&self.laid, move |l, b| l.hits.push((b, hit(under, Some(k), None, false)))))
-                    .on_mouse_down(MouseButton::Left, cx.listener(move |this, e: &MouseDownEvent, _, cx| {
-                        cx.stop_propagation();
-                        this.send(row_press(&target, k, e), cx)
-                    }))
-                    .children(cells)
-                    .into_any_element(),
-            );
+            let droppable = n.drop.is_some();
+            let row = lk
+                .boxed(line(div()).id(k).relative(), &style::inner_in(st, n, "row", &style::row_states(st, n, k)), c, [0.; 4])
+                .child(measure(&self.laid, move |l, b| l.hits.push((b, hit(under, Some(k), None, false)))))
+                .on_mouse_down(MouseButton::Left, cx.listener(move |this, e: &MouseDownEvent, _, cx| {
+                    cx.stop_propagation();
+                    this.row_down(&target, k, droppable, e, cx)
+                }))
+                .children(cells);
+            body.push(self.carried(st, lk, n, k, false, row).into_any_element());
         }
         // Each total under its column, a negative one in `neg`.
         let foot = columns.iter().any(|col| col.total.is_some()).then(|| {
@@ -962,6 +1053,8 @@ impl Portal {
         let row_h = (!fits).then(|| px(cell.h * per as f32));
         let tracks = look.cols.as_ref().map_or_else(|| vec![Measure::Share(1)], |c| c.tracks(cols));
         let laid = self.laid.clone();
+        self.per_line.insert(id.to_string(), cols);
+        let droppable = n.drop.is_some();
         if rows.is_empty() {
             return lk.boxed(div(), &style::inner(st, "empty", &[]), (cell.w, cell.h), [0., 8., 0., 8.]).child(look.empty.clone().unwrap_or_else(|| "(nothing)".into())).into_any_element();
         }
@@ -1009,10 +1102,11 @@ impl Portal {
                     MouseButton::Left,
                     cx.listener(move |this, e: &MouseDownEvent, _, cx| {
                         cx.stop_propagation();
-                        this.send(row_press(&target, k, e), cx)
+                        this.row_down(&target, k, droppable, e, cx)
                     }),
                 )
                 .child(body);
+            let row = self.carried(st, lk, n, k, cols > 1, row);
             // In its column's slot on the line, a plain box: a slot's own padding would count
             // before the shares, so a short last line's rows would come out wider. The slot is
             // the row's height, known, so the line isn't measured from what each row holds
@@ -1305,7 +1399,7 @@ impl Portal {
                 });
                 window.on_mouse_event(move |e: &MouseUpEvent, phase, _, cx| {
                     if phase == DispatchPhase::Bubble && e.button == MouseButton::Left {
-                        let _ = ups.update(cx, |this: &mut Portal, _| this.drag = None);
+                        let _ = ups.update(cx, |this: &mut Portal, cx| this.up(cx));
                     }
                 });
             })

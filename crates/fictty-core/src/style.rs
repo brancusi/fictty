@@ -17,8 +17,8 @@ use std::collections::BTreeMap;
 pub const STATES: [&str; 7] = ["hover", "focused", "active", "selected", "on", "disabled", "blur"];
 
 /// The parts the runtime draws inside a node, besides each component's own (its `type`).
-const INNER: [&str; 30] = [
-    "screen", "panel", "border", "title", "row", "empty", "status", "status.error", "toast", "table.header", "table.total", "tabs.selected", "tabs.idle",
+const INNER: [&str; 32] = [
+    "drag.ghost", "drop.hover", "screen", "panel", "border", "title", "row", "empty", "status", "status.error", "toast", "table.header", "table.total", "tabs.selected", "tabs.idle",
     "tabs.underline", "editor.caret", "editor.selection", "input.placeholder", "md.heading", "md.bullet", "md.quote", "md.code",
     "md.task", "md.done", "md.link", "scrollbar", "scrollbar.thumb", "tree.guide", "bars.label", "gauge.fill", "spinner",
 ];
@@ -54,6 +54,8 @@ const DEFAULT_PARTS: &str = r#"{
     "row.selected.blur": {"fg": "fg", "bg": "hover"},
     "scrollbar": {"shape": "thin"},
     "scrollbar.thumb": {"bg": "dim", "radius": 3, "opacity": 0.5},
+    "drag.ghost": {"opacity": 0.4},
+    "drop.hover": {"bg": "accent", "radius": 2},
     "table.header": "accent+b",
     "empty": "dim+i",
     "input.placeholder": "dim+i",
