@@ -1881,3 +1881,37 @@ fn an_agent_drags_a_row_over_the_socket() {
     let reply = s.request(json!({"op": "drag", "id": "below", "row": 0, "to": 1}));
     assert_eq!(reply["ok"], false, "a node without a drop has nothing to drag");
 }
+
+#[test]
+fn after_a_drag_and_the_apps_new_order_the_selection_is_on_the_row_carried() {
+    let rows = |order: &[usize]| -> Value { json!(order.iter().map(|i| json!({"id": format!("r{i}"), "name": format!("row {i}")})).collect::<Vec<_>>()) };
+    let ui = |order: &[usize]| json!({"root": {"type": "list", "id": "l", "multi": true, "cols": 3, "items": rows(order),
+        "row": {"type": "text", "size": 2, "text": "{$item.name}"},
+        "drop": {"on": {"put": "moved", "value": "{$drag.keys}"}}}, "focus": "l"});
+    let mut s = window(ui(&[0, 1, 2, 3, 4, 5, 6, 7, 8]), 60, 24);
+    s.request(json!({"op": "set", "id": "l", "selected": 1}));
+    let reply = s.request(json!({"op": "drag", "id": "l", "row": 7, "to": 2, "side": "before"}));
+    assert_eq!(reply["ok"], true, "{reply}");
+    let l = s.state().local["l"].clone();
+    assert_eq!(l.key.as_deref(), Some("r7"), "{l:?}");
+    // The app writes its new order and pushes the UI again.
+    s.request(json!({"op": "push", "ui": ui(&[0, 1, 7, 2, 3, 4, 5, 6, 8])}));
+    let l = s.state().local["l"].clone();
+    assert_eq!(l.selected, 2, "{l:?}");
+}
+
+#[test]
+fn a_selection_waits_for_its_row_while_a_bound_list_is_empty_for_a_moment() {
+    let rows = |order: &[usize]| -> Value { json!(order.iter().map(|i| json!({"id": format!("r{i}"), "name": format!("row {i}")})).collect::<Vec<_>>()) };
+    let ui = json!({"root": {"type": "list", "id": "l", "bind": "rows", "item": "{name}",
+        "drop": {"on": {"put": "moved", "value": "{$drag.keys}"}}}, "focus": "l", "store": {"rows": rows(&[0, 1, 2, 3, 4, 5])}});
+    let mut s = window(ui, 40, 12);
+    s.request(json!({"op": "set", "id": "l", "selected": 1}));
+    s.request(json!({"op": "drag", "id": "l", "row": 4, "to": 0, "side": "before"}));
+    // The app empties the list while it rewrites it, then writes the new order.
+    s.request(json!({"op": "write", "write": "put", "key": "rows", "value": []}));
+    s.request(json!({"op": "write", "write": "put", "key": "rows", "value": rows(&[4, 0, 1, 2, 3, 5])}));
+    let l = s.state().local["l"].clone();
+    assert_eq!((l.selected, l.key.as_deref()), (0, Some("r4")), "{l:?}");
+}
+
