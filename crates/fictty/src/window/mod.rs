@@ -207,6 +207,8 @@ struct Portal {
     /// How many rows each list laid out to a line, last frame: a drag over a grid of rows goes
     /// before or after a row by its halves across, over a column of them by its halves down.
     per_line: HashMap<String, usize>,
+    /// The window's title as last set (the UI's `title`, filled).
+    title: Option<String>,
     /// Files dragged in from outside, while they are: the list and row (and side) last told to
     /// the engine, so a move only tells it when that changes.
     brought: Option<Aim>,
@@ -240,7 +242,7 @@ impl Portal {
         engine.send(Msg::Caps { caps: state::Caps { graphics: false, cell_w: cell.w, cell_h: cell.h }, text_sizing: false });
         let focus = cx.focus_handle();
         focus.focus(window);
-        Portal { engine, focus, cell, screen: (0, 0), laid: Shared::default(), shown: Rc::default(), drag: None, wheel: (String::new(), 0.0), wake: None, faces: HashMap::new(), fitting: 0, loose: None, row: None, press: None, per_line: HashMap::new(), brought: None }
+        Portal { engine, focus, cell, screen: (0, 0), laid: Shared::default(), shown: Rc::default(), drag: None, wheel: (String::new(), 0.0), wake: None, faces: HashMap::new(), fitting: 0, loose: None, row: None, press: None, per_line: HashMap::new(), brought: None, title: None }
     }
 
     fn send(&mut self, msg: Msg, cx: &mut Context<Self>) {
@@ -1425,15 +1427,27 @@ impl Render for Portal {
                         let _ = r.send(json!({"ok": true, "screen": text}));
                     }
                 }
+                self.titled(live.state(), window);
                 self.frame(live.state(), t, cx)
             }
             #[cfg(feature = "window-test")]
-            Engine::Test(side) => self.frame(&side.borrow().st, t, cx),
+            Engine::Test(side) => {
+                self.titled(&side.borrow().st, window);
+                self.frame(&side.borrow().st, t, cx)
+            }
         }
     }
 }
 
 impl Portal {
+    /// The window's title, when the UI's has changed.
+    fn titled(&mut self, st: &State, window: &mut Window) {
+        if st.title != self.title {
+            self.title.clone_from(&st.title);
+            window.set_window_title(st.title.as_deref().unwrap_or("fictty"));
+        }
+    }
+
     /// The whole window for `st`, started at `t`.
     fn frame(&mut self, st: &State, t: Instant, cx: &mut Context<Self>) -> gpui::Stateful<gpui::Div> {
         self.load_fonts(st, cx);

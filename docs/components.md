@@ -41,7 +41,9 @@ a `[type]` placeholder until the step named).
 
 The UI value around the root node has its own fields: `root`, `data` (sources: `cmd`, `shell`,
 `stream`, `value`, `host`, with `path` and `every`), `store` (seeds), `keys` (keys that work
-everywhere), `theme`, `layers`, `focus` and `status_bar`.
+everywhere), `theme`, `layers`, `focus`, `status_bar` and `title` (the window's title, a
+template whose paths name store entries, sources or `@list` as binds do:
+`"{project.name} · Caption Genius"`; `get --state` shows it filled in as `title`).
 
 ## Layout
 

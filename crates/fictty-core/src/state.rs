@@ -126,6 +126,9 @@ pub struct State {
     /// Writes that last a while (`for_ms`): what goes, and when on the logical clock.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub expiring: Vec<Expiry>,
+    /// The UI's `title` as it reads now (see `title`), worked out after each message.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
     /// The last `load`: who brought entries in, how many, and whether they replaced the store.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub last_load: Option<LastLoad>,
@@ -999,6 +1002,9 @@ pub fn update(st: &mut State, msg: Msg) -> Vec<Effect> {
     // The `each` nodes' instances follow their data.
     if !quiet && expand(st) {
         settle(st);
+    }
+    if !quiet {
+        st.title = title(st);
     }
     if moves {
         remember(st);
@@ -4081,6 +4087,34 @@ pub fn tab_of(st: &State, n: &Node) -> usize {
 /// The value a node is bound to, if it has one and it has arrived.
 pub fn bound<'a>(st: &'a State, n: &Node) -> Option<&'a Value> {
     value_of(st, n.bind.as_deref()?)
+}
+
+/// The UI's `title` filled in: each placeholder's path read as a bind is (a store entry, a
+/// source, `@id` a list's selected row), then the template filled as a text's is.
+pub fn title(st: &State) -> Option<String> {
+    let t = st.ui.title.as_deref()?;
+    let mut scope = Value::Object(Default::default());
+    let mut rest = t;
+    while let Some(i) = rest.find('{') {
+        if rest[i..].starts_with("{{") {
+            rest = &rest[i + 2..];
+            continue;
+        }
+        let Some(j) = rest[i..].find('}') else { break };
+        let path = rest[i + 1..i + j].split(['|', ':']).next().unwrap_or_default().trim().trim_start_matches('±');
+        rest = &rest[i + j + 1..];
+        if let Some(v) = (!path.is_empty()).then(|| value_of(st, path)).flatten() {
+            // Under the same path, so the template finds it where it looks.
+            let mut at = Some(&mut scope);
+            for step in path.split('.') {
+                at = at.and_then(Value::as_object_mut).map(|o| o.entry(step).or_insert_with(|| Value::Object(Default::default())));
+            }
+            if let Some(at) = at {
+                *at = v.clone();
+            }
+        }
+    }
+    Some(crate::model::fill(t, &scope))
 }
 
 /// The file an `image` shows: its `src` filled from its bound value. Empty when the template

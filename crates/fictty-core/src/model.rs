@@ -41,6 +41,10 @@ pub struct Ui {
     /// messages a second), which is bindable as `$stats` either way.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub status_bar: Option<StatusBar>,
+    /// The window's title, a template: its paths name store entries, sources or a list's
+    /// selected row (`@id`) as binds do (`"{project.name} · Caption Genius"`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
 }
 
 /// `status_bar`: shown or not, or shown with the speed meter.

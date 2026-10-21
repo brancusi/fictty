@@ -474,7 +474,9 @@ the window. A row or column clips what it holds, so give each card a `margin` to
 shadow room. The status line at the bottom shows the status, else the first problem, else
 hints; `"status_bar": false` gives the UI every row, and `"status_bar": "speed"` adds the
 speed meter (`$stats` has the numbers either way). Its look is the `status` and `status.error`
-parts.
+parts. The UI's `title` is the window's: a template whose paths name store entries, sources
+or a list's selected row (`@id`) as a bind does (`"{project.name} · {@shots.name}"`), so it
+follows a `load` or a selection with no push; `get --state` shows it filled in.
 
 Every component's look comes from parts, including the window's own: when a theme doesn't say,
 default parts do (`button` has a 12px pad and a 6px radius, a bordered node is a `panel` with

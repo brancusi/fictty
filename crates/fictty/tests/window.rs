@@ -2100,3 +2100,22 @@ fn a_load_without_replace_merges_and_a_bad_entry_changes_nothing() {
     assert_eq!(reply["ok"], false, "{reply}");
     assert_eq!(s.state().store.len(), before + 2);
 }
+
+#[test]
+fn the_windows_title_follows_the_store_and_the_selected_row() {
+    let mut ui = project();
+    ui["title"] = json!("{project.name} · {@shots.name} {{draft}");
+    ui["store"]["project"] = json!({"name": "Pavilion"});
+    let mut s = window(ui, 60, 12);
+    assert_eq!(s.state().title.as_deref(), Some("Pavilion · shot a0 {draft}"));
+    s.keys(&["down"]);
+    assert_eq!(s.state().title.as_deref(), Some("Pavilion · shot a1 {draft}"));
+    s.request(json!({"op": "load", "entries": {"project": {"name": "Lido"}}}));
+    assert_eq!(s.state().title.as_deref(), Some("Lido · shot a1 {draft}"));
+    // A path through something that isn't an object is nothing, not a crash.
+    let mut ui = project();
+    ui["title"] = json!("{project} {project.name.first}");
+    ui["store"]["project"] = json!("Lido");
+    let mut s = window(ui, 60, 12);
+    assert_eq!(s.state().title.as_deref(), Some("Lido "));
+}
