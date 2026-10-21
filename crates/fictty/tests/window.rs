@@ -2036,3 +2036,67 @@ fn a_selection_waits_for_its_row_while_a_bound_list_is_empty_for_a_moment() {
     assert_eq!((l.selected, l.key.as_deref()), (0, Some("r4")), "{l:?}");
 }
 
+
+/// A project's shots and captions: a list and the selected shot's caption.
+fn project() -> Value {
+    let shots: Vec<Value> = (0..3).map(|i| json!({"id": format!("a{i}"), "name": format!("shot a{i}")})).collect();
+    json!({"root": {"type": "row", "children": [
+        {"type": "list", "id": "shots", "size": 20, "bind": "shots", "item": "{name}"},
+        {"type": "editor", "id": "cap", "bind": "@shots", "doc": "caption/{id}"}
+    ]}, "store": {"shots": shots, "caption/a1": "first"}, "focus": "shots"})
+}
+
+#[test]
+fn a_load_swaps_the_project_in_one_step_and_brings_its_undo_back() {
+    let mut s = window(project(), 60, 12);
+    s.keys(&["down", "tab", "!"]);
+    assert_eq!(text_of(&mut s, "caption/a1"), "!first");
+    // The app keeps project A as the store file has it, history and all.
+    let a = serde_json::to_value(&s.state().store).unwrap();
+    let shots_rev = s.state().store["shots"].rev;
+
+    let b = json!({"shots": [{"id": "b0", "name": "shot b0"}, {"id": "b1", "name": "shot b1"}], "caption/b0": "other"});
+    let reply = s.request(json!({"op": "load", "entries": b, "replace": true, "by": "cg"}));
+    assert_eq!((reply["ok"].as_bool(), reply["entries"].as_u64()), (Some(true), Some(2)), "{reply}");
+    let st = s.state();
+    assert!(!st.store.contains_key("caption/a1"), "replace drops what B doesn't have");
+    let last = st.last_load.clone().unwrap();
+    assert_eq!((last.by.as_str(), last.entries, last.replace), ("cg", 2, true));
+    assert_eq!(st.store["caption/b0"].by, "load", "a bare value is seeded by load");
+    // A0's row is gone, so the list starts again at its first row.
+    assert_eq!(st.local["shots"].selected, 0);
+    assert_eq!(node(&mut s, "cap").text, "other");
+    // A write based on project A's shots is stale now.
+    let stale = s.request(json!({"op": "write", "write": "put", "key": "shots", "value": [], "if_rev": shots_rev}));
+    assert_eq!(stale["ok"], false, "{stale}");
+    let logged = match s.state().data.get("$log") {
+        Some(fictty::state::Slot::Ready { value }) => value.as_array().cloned().unwrap_or_default(),
+        _ => vec![],
+    };
+    assert!(logged.iter().any(|e| e["op"] == "load" && e["what"] == "2 entries, replacing the store by cg"), "{logged:?}");
+
+    // Back to A, on the shot it was on: the caption's undo is still there.
+    let reply = s.request(json!({"op": "load", "entries": a, "replace": true, "select": {"shots": "a1"}}));
+    assert_eq!(reply["ok"], true, "{reply}");
+    assert_eq!(s.state().local["shots"].selected, 1);
+    assert_eq!(text_of(&mut s, "caption/a1"), "!first");
+    assert!(!s.state().store.contains_key("caption/b0"));
+    assert_eq!(s.state().focus.as_deref(), Some("cap"));
+    s.keys(&["d-z"]);
+    assert_eq!(text_of(&mut s, "caption/a1"), "first");
+}
+
+#[test]
+fn a_load_without_replace_merges_and_a_bad_entry_changes_nothing() {
+    let mut s = window(project(), 60, 12);
+    s.keys(&["down"]);
+    let before = s.state().store.len();
+    let reply = s.request(json!({"op": "load", "entries": {"caption/a2": "third", "ui.size": "M"}}));
+    assert_eq!(reply["ok"], true, "{reply}");
+    let st = s.state();
+    assert_eq!((st.store.len(), st.local["shots"].selected), (before + 2, 1), "merged, and the selected row is still there");
+    // An entry in the store's form must be one; then nothing of the load lands.
+    let reply = s.request(json!({"op": "load", "entries": {"x": 1, "y": {"rev": "two", "by": "me", "value": 1}}, "replace": true}));
+    assert_eq!(reply["ok"], false, "{reply}");
+    assert_eq!(s.state().store.len(), before + 2);
+}

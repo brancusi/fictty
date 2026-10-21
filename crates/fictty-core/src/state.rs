@@ -126,6 +126,9 @@ pub struct State {
     /// Writes that last a while (`for_ms`): what goes, and when on the logical clock.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub expiring: Vec<Expiry>,
+    /// The last `load`: who brought entries in, how many, and whether they replaced the store.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_load: Option<LastLoad>,
     /// The UI's tree with every `each` expanded into its instances, when it has one: what the
     /// view draws and focus, keys and binds look in (`tree()`). Worked out after each message;
     /// a push or a patch changes `ui`, never this. Shown in `get --state`, never read back.
@@ -261,6 +264,16 @@ pub struct Expiry {
     pub key: String,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub path: String,
+    pub at: u64,
+}
+
+/// What the last `load` did (see `Msg::Load`), at `at` on the logical clock.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct LastLoad {
+    pub by: String,
+    pub entries: usize,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub replace: bool,
     pub at: u64,
 }
 
@@ -879,6 +892,20 @@ pub enum Msg {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         for_ms: Option<u64>,
     },
+    /// Entries brought into the store at once, as the app switches what the screen shows (a
+    /// project): each in the store file's own form (`{"rev", "by", "value"}` or `"doc"`, its
+    /// undo history kept) or a bare value. With `replace`, every entry not given goes (but the
+    /// host's own). Each entry's revision ends past any it had, so a write based on what was
+    /// there before is refused. Lists named in `select` select the row with that key; a list
+    /// whose selected row is gone starts again at its first.
+    Load {
+        entries: BTreeMap<String, Value>,
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        replace: bool,
+        by: String,
+        #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+        select: BTreeMap<String, String>,
+    },
     /// Add or replace themes (by name), and choose one: a name, or `next` / `prev` to cycle.
     Theme {
         #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
@@ -1473,6 +1500,70 @@ fn apply(st: &mut State, msg: Msg) -> Vec<Effect> {
             };
             settle(st);
             vec![Effect::Reply(reply)]
+        }
+        Msg::Load { entries, replace, by, select } => {
+            let mut read = BTreeMap::new();
+            for (key, v) in entries {
+                let entry = match v {
+                    Value::Object(ref o) if o.contains_key("rev") && o.contains_key("by") && (o.contains_key("value") || o.contains_key("doc")) => {
+                        match serde_json::from_value::<Entry>(v) {
+                            Ok(e) => e,
+                            Err(e) => return vec![Effect::Reply(serde_json::json!({"ok": false, "status": format!("load: {key} is not a store entry: {e}")}))],
+                        }
+                    }
+                    v => Entry::value(v, "load"),
+                };
+                read.insert(key, entry);
+            }
+            let count = read.len();
+            if replace {
+                let gone: Vec<String> = st.store.keys().filter(|k| !read.contains_key(*k) && !hosted(st, k) && !k.starts_with(MIXED)).cloned().collect();
+                for k in gone {
+                    st.store.remove(&k);
+                    st.expiring.retain(|e| e.key != k);
+                    for l in st.local.values_mut() {
+                        l.editors.remove(&k);
+                    }
+                }
+            }
+            let mut revs = serde_json::Map::new();
+            for (key, mut e) in read {
+                // Past any revision the entry had, so a write based on it is stale now.
+                if let Some(old) = st.store.get(&key) {
+                    e.rev = e.rev.max(old.rev) + 1;
+                }
+                revs.insert(key.clone(), e.rev.into());
+                st.expiring.retain(|x| x.key != key);
+                for l in st.local.values_mut() {
+                    l.editors.remove(&key);
+                }
+                st.store.insert(key, e);
+            }
+            st.store_writes += 1;
+            // A list whose selected row is gone starts again at its first row; one named in
+            // `select` goes to that row when it's there.
+            let mut all = Vec::new();
+            tree!(st).walk(&mut all);
+            let lost: Vec<String> = all
+                .iter()
+                .filter(|n| n.rows().is_some())
+                .filter_map(|n| {
+                    let id = n.id.clone()?;
+                    let key = st.local.get(&id)?.key.as_ref()?;
+                    (!items(st, n).iter().any(|r| key_of(n, r).as_ref() == Some(key))).then_some(id)
+                })
+                .collect();
+            for id in lost {
+                let l = st.local.entry(id).or_default();
+                (l.selected, l.top, l.key, l.anchor) = (0, None, None, None);
+                l.picked.clear();
+            }
+            for (id, key) in select {
+                st.local.entry(id).or_default().want = Some(key);
+            }
+            st.last_load = Some(LastLoad { by, entries: count, replace, at: st.now_ms });
+            settle(st);
+            vec![Effect::Reply(serde_json::json!({"ok": true, "entries": count, "revs": revs}))]
         }
         Msg::Theme { add, choose } => {
             let first = add.keys().next().cloned();

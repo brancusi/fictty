@@ -319,6 +319,18 @@ document with its undo history), each with a revision (`rev`) and who wrote it l
   request, `{"op": "batch", "requests": [{"op": "write", …}, …]}`: done in order in one step,
   answered with each one's reply in `replies` (`ok` is false if any was refused; the others are
   still done).
+- **Loading a project**: an app that keeps its own data and works on one project at a time
+  brings its entries in with `fictty load <file.json> [--replace] [--select list=key]` (or
+  `{"op": "load", "entries": {…}, "replace": true, "select": {…}}`), in one step and without
+  touching the UI. Entries are in the store file's own form (`{"rev", "by", "value"}`, or `"doc"`
+  for text, so a caption's undo comes back with it) or bare values (by `load`); a store file
+  fictty saved loads as it is. `--replace` drops every other entry (the host's own stay). Each
+  entry ends past any revision it had, so a write based on what was there before (`--if-rev`)
+  is refused; the reply carries the new revisions. A list whose selected row is gone starts
+  again at its first; `--select` puts one on a row by key. If an entry isn't one, nothing
+  lands. The screen's own `--store` file and its lock stay as they are: saving the project
+  going out (from `get --state`) is the app's. `get --state` shows `last_load`, and `$log` a
+  `load` line.
 - **Writes that last a while**: `for_ms` on a write (`fictty put … --for-ms 3000`, `merge`, the
   `put` action, `Notifier::write_for`) takes it away again on the screen's own clock: a put's
   entry, or the keys a merge set. A row marked live for three seconds, or a `when` that holds

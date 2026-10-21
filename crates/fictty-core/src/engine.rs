@@ -44,6 +44,17 @@ pub enum Request {
     },
     /// One store entry: its revision, who wrote it last, and its text or value.
     Read { key: String },
+    /// Entries brought into the store at once (see `Msg::Load`): the store file's own form or
+    /// bare values; `replace` drops every other entry; `select` puts lists on rows by key.
+    Load {
+        entries: BTreeMap<String, Value>,
+        #[serde(default)]
+        replace: bool,
+        #[serde(default = "agent")]
+        by: String,
+        #[serde(default)]
+        select: BTreeMap<String, String>,
+    },
     /// Add themes (by name) and choose one: a name, `next` or `prev`.
     Theme {
         #[serde(default)]
@@ -804,6 +815,10 @@ impl Driver {
                     reply["problems"] = json!(st.problems);
                 }
                 return reply;
+            }
+            Request::Load { entries, replace, by, select } => {
+                self.apply(st, Msg::Load { entries, replace, by, select });
+                return self.reply.take().unwrap_or_else(|| json!({"ok": false}));
             }
             Request::Set { id, selected, tab, key } => Msg::Set { id, selected, tab, key },
             Request::Theme { add, choose } => Msg::Theme { add, choose },
@@ -1895,6 +1910,7 @@ fn activity(st: &State, req: &Request) -> Option<(&'static str, String)> {
         Request::Layers { layers } => ("layers", format!("{} layers", layers.len())),
         Request::Toast { text, .. } => ("toast", short(text)),
         Request::Click { id, .. } => ("click", id.clone()),
+        Request::Load { entries, replace, by, .. } => ("load", format!("{} entr{}{} by {by}", entries.len(), if entries.len() == 1 { "y" } else { "ies" }, if *replace { ", replacing the store" } else { "" })),
         Request::Drag { id, row, to, side } => ("drag", format!("{id} row {row} {} {to}", side.name())),
         Request::DropFiles { id, to, side, files } => ("drop-files", format!("{id} {} files {} {to}", files.len(), side.name())),
         _ => return None,

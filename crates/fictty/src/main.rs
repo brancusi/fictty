@@ -60,6 +60,20 @@ enum Cmd {
         #[arg(long)]
         for_ms: Option<u64>,
     },
+    /// Bring store entries in at once from a JSON file of them by key (`-` reads stdin): a
+    /// store file as fictty saves it, or bare values. With --replace every other entry goes.
+    /// Each ends past the revision it had, so writes based on what was there are refused.
+    Load {
+        file: PathBuf,
+        #[arg(long)]
+        replace: bool,
+        /// Who's loading (default `agent`).
+        #[arg(long)]
+        by: Option<String>,
+        /// Put a list on the row with this key: LIST=KEY (repeatable).
+        #[arg(long, value_parser = select_arg)]
+        select: Vec<(String, String)>,
+    },
     /// Merge a JSON object into a store entry's value (RFC 7396: `null` removes a key).
     Merge {
         key: String,
@@ -257,6 +271,12 @@ fn main() -> Result<()> {
         Cmd::Put { key, file, if_rev, by, for_ms } => write(&socket, "put", key, "value", &file, if_rev, by, for_ms)?,
         Cmd::Merge { key, file, if_rev, by, for_ms } => write(&socket, "merge", key, "value", &file, if_rev, by, for_ms)?,
         Cmd::Edit { key, file, if_rev, by } => write(&socket, "edit", key, "changes", &file, if_rev, by, None)?,
+        Cmd::Load { file, replace, by, select } => {
+            let raw = if file.as_os_str() == "-" { std::io::read_to_string(std::io::stdin())? } else { std::fs::read_to_string(&file)? };
+            let entries: serde_json::Value = serde_json::from_str(&raw)?;
+            let select: serde_json::Map<String, serde_json::Value> = select.into_iter().map(|(id, key)| (id, key.into())).collect();
+            runtime::send(&socket, json!({"op": "load", "entries": entries, "replace": replace, "by": by.unwrap_or_else(|| "agent".into()), "select": select}))?
+        }
         Cmd::Read { key } => runtime::send(&socket, json!({"op": "read", "key": key}))?,
         Cmd::Delete { key, if_rev } => runtime::send(&socket, json!({"op": "write", "write": "delete", "key": key, "if_rev": if_rev}))?,
         Cmd::Theme { name, load } => {
@@ -353,4 +373,9 @@ fn write(socket: &std::path::Path, kind: &str, key: String, field: &str, file: &
         req["by"] = by.into();
     }
     runtime::send(socket, req)
+}
+
+/// `LIST=KEY`, for `load --select`.
+fn select_arg(s: &str) -> Result<(String, String), String> {
+    s.split_once('=').map(|(a, b)| (a.to_string(), b.to_string())).ok_or_else(|| format!("{s:?} is not LIST=KEY"))
 }
