@@ -47,11 +47,24 @@ HEADER = {"type": "text", "size": 1, "bind": "shop",
 LOGPANE = {"type": "list", "id": "log", "size": 46, "title": "AGENT", "bind": "agent_log", "lines": 2,
            "empty": "waiting for the agent…", "item": "<accent>{t}</>  {msg}\n<dim>  $ {cmd}</>"}
 
+def T(text, **k):
+    return {"type": "text", "text": text, **k}
+
+
+# A message in the inbox: a row template filled from each message, a dot when it's unread. The
+# subject is cut with … when it's longer than the row.
+MESSAGE = {"type": "row", "size": 2, "gap": 1, "children": [
+    T("{$item.unread|true=<accent>●</>}", size=1, wrap=False),
+    {"type": "col", "children": [
+        {"type": "row", "size": 1, "justify": "between", "children": [
+            T("<b>{$item.from}</>", size="fit", wrap=False),
+            T("<dim>{$item.when}</>", size="fit", wrap=False)]},
+        T("<dim>{$item.subject}</>", size=1, wrap=False)]}]}
+
 INBOX = {"type": "row", "gap": 2, "children": [
     {"type": "col", "size": "40%", "gap": 1, "children": [
         {"type": "input", "id": "find", "size": 1, "placeholder": "Search messages"},
-        {"type": "list", "id": "inbox", "bind": "inbox", "filter": "find", "lines": 2, "empty": "no messages yet",
-         "item": "{unread|true=<accent>●</> ;*=  }<b>{from}</>\t<dim>{when}</>\n  {subject}",
+        {"type": "list", "id": "inbox", "bind": "inbox", "filter": "find", "empty": "no messages yet", "row": MESSAGE,
          "keys": {"e": {"do": [{"remove": "inbox"}, {"toast": "Archived", "tone": "pos"}]}}},
     ]},
     {"type": "col", "gap": 1, "children": [
@@ -67,9 +80,15 @@ INBOX = {"type": "row", "gap": 2, "children": [
     ]},
 ]}
 
-JOB = "<b>{bike}</>\t<dim>{due}</>\n  {work} <dim>· {who}</>"
+# A job on the board: a card as tall as what it says, its due day a chip (today's warns).
+JOB = {"type": "col", "size": "fit", "variant": "card", "border": True, "pad": [1, 0], "margin": [0, 0, 1, 0], "children": [
+    {"type": "row", "size": "fit", "gap": 1, "justify": "between", "children": [
+        T("<b>{$item.bike}</>", size="fit"),
+        T("{$item.due|today=<warn>today</>;done=<pos>done</>;*=<dim>$</>}", size="fit", wrap=False)]},
+    T("{$item.work}", size="fit"),
+    T("<dim>{$item.who}</>", size=1, wrap=False)]}
 JOBS = {"type": "row", "gap": 2, "children": [
-    {"type": "list", "id": f"jobs_{k}", "title": t, "bind": f"jobs_{k}", "lines": 2, "empty": "nothing here", "item": JOB}
+    {"type": "list", "id": f"jobs_{k}", "title": f"{t} · {{$rows}}", "bind": f"jobs_{k}", "empty": "nothing here", "row": JOB}
     for k, t in [("booked", "BOOKED"), ("stand", "ON THE STAND"), ("ready", "READY TO COLLECT")]
 ]}
 
