@@ -890,6 +890,26 @@ pub fn load_themes(path: &Path) -> Result<BTreeMap<String, crate::model::ThemeSp
     Ok(themes)
 }
 
+/// The first key of a JSON object as written (a map read into a `BTreeMap` sorts by name).
+fn first_key(raw: &str) -> Option<String> {
+    struct First;
+    impl<'de> serde::de::Visitor<'de> for First {
+        type Value = Option<String>;
+        fn expecting(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+            f.write_str("an object")
+        }
+        fn visit_map<A: serde::de::MapAccess<'de>>(self, mut map: A) -> Result<Option<String>, A::Error> {
+            let first = map.next_key::<String>()?;
+            if first.is_some() {
+                map.next_value::<serde::de::IgnoredAny>()?;
+                while map.next_entry::<serde::de::IgnoredAny, serde::de::IgnoredAny>()?.is_some() {}
+            }
+            Ok(first)
+        }
+    }
+    serde::Deserializer::deserialize_map(&mut serde_json::Deserializer::from_str(raw), First).ok().flatten()
+}
+
 /// A screen to run: its UI (a value, or a file), and what it starts from. Whatever draws it starts
 /// its engine (`live`); tests drive it without one (`headless`).
 ///
@@ -983,9 +1003,14 @@ impl App {
 
     /// Add the themes in a JSON file (theme specs by name). A watched screen reloads them when
     /// the file changes.
+    /// The first in the file is chosen, unless a theme is already.
     pub fn themes_file(mut self, path: &Path) -> Result<App> {
         self.themes_path = Some(path.to_path_buf());
-        Ok(self.themes(load_themes(path)?))
+        let themes = load_themes(path)?;
+        if self.theme.is_none() {
+            self.theme = std::fs::read_to_string(path).ok().and_then(|raw| first_key(&raw));
+        }
+        Ok(self.themes(themes))
     }
 
     /// The theme to start with.

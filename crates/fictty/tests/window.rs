@@ -2119,3 +2119,16 @@ fn the_windows_title_follows_the_store_and_the_selected_row() {
     let mut s = window(ui, 60, 12);
     assert_eq!(s.state().title.as_deref(), Some("Lido "));
 }
+
+#[test]
+fn the_first_theme_in_the_file_is_chosen_not_the_first_by_name() {
+    let path = std::env::temp_dir().join(format!("fictty-themes-{}.json", std::process::id()));
+    std::fs::write(&path, r##"{"stone-garden": {"bg": "#202020"}, "daylight": {"bg": "#fafafa"}}"##).unwrap();
+    let ui = json!({"root": {"type": "text", "text": "hi"}});
+    let mut s = fictty::App::new(serde_json::from_value(ui.clone()).unwrap()).themes_file(&path).unwrap().in_window(20, 4).unwrap();
+    assert_eq!(s.state().theme.as_deref(), Some("stone-garden"));
+    // A theme asked for by name still wins, whichever way round.
+    let mut s = fictty::App::new(serde_json::from_value(ui).unwrap()).theme("daylight").themes_file(&path).unwrap().in_window(20, 4).unwrap();
+    assert_eq!(s.state().theme.as_deref(), Some("daylight"));
+    let _ = std::fs::remove_file(&path);
+}
