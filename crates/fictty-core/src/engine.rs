@@ -104,6 +104,17 @@ pub enum Request {
         #[serde(default = "after")]
         side: crate::state::Side,
     },
+    /// Bring files (by path) from outside onto row `to` of list `id`, `before` or `after` it
+    /// (default), as a drag from Finder would: they come over it and are let go, and the list's
+    /// `drop.files` runs.
+    #[serde(rename = "drop-files")]
+    DropFiles {
+        id: String,
+        to: usize,
+        #[serde(default = "after")]
+        side: crate::state::Side,
+        files: Vec<String>,
+    },
     Get,
     State,
     Stats,
@@ -228,13 +239,16 @@ impl Pointer {
     }
 }
 
-/// Input from whatever draws the screen: keys by name, the mouse at a cell, pastes, a new size.
+/// Input from whatever draws the screen: keys by name, the mouse at a cell, pastes, a new size,
+/// files dragged in from outside (over a cell, let go there with `release`, or gone from the
+/// window with no cell).
 #[derive(Clone, Debug, PartialEq)]
 pub enum Input {
     Key(String),
     Pointer { kind: Pointer, x: u16, y: u16 },
     Paste(String),
     Resize { width: u16, height: u16 },
+    Files { files: Vec<String>, at: Option<(u16, u16)>, release: bool },
 }
 
 /// Everything the engine reacts to arrives on one queue: input, data, socket requests.
@@ -347,6 +361,8 @@ fn input_msg(input: Input, hits: &[Hit], st: &State, drag: &mut Option<(String, 
         Input::Pointer { kind, x, y } => pointer(kind, x, y, hits, st, drag),
         Input::Paste(text) => Some(Msg::Paste { text }),
         Input::Resize { width, height } => Some(Msg::Screen { width, height }),
+        // Only the window takes files dragged in.
+        Input::Files { .. } => None,
     }
 }
 
@@ -792,6 +808,14 @@ impl Driver {
                     return json!({"ok": false, "version": st.version, "status": "nothing to drag there (a list with a `drop`, a row with a key)"});
                 }
                 self.apply(st, Msg::Carry { row: Some(to), side });
+                Msg::Release
+            }
+            Request::DropFiles { id, to, side, files } => {
+                self.apply(st, Msg::Bring { id: Some(id), files, row: Some(to), side });
+                if st.drag.as_ref().is_none_or(|d| d.over.is_none()) {
+                    st.drag = None;
+                    return json!({"ok": false, "version": st.version, "status": "nothing takes files there (a list whose `drop` has `files`, and files to bring)"});
+                }
                 Msg::Release
             }
             // The loop answers these itself (they need the last frame).
@@ -1661,6 +1685,15 @@ impl Headless {
         self
     }
 
+    /// Files dragged in from outside over cell `at` (`release`: let go there), or out of the
+    /// window again (`at` none), as Finder drags them into a window.
+    pub fn files(&mut self, files: &[&str], at: Option<(u16, u16)>, release: bool) -> &mut Headless {
+        self.drain();
+        self.routed(Input::Files { files: files.iter().map(|f| (*f).to_string()).collect(), at, release });
+        self.frame();
+        self
+    }
+
     /// The screen resized to `width` × `height` cells.
     pub fn resize(&mut self, width: u16, height: u16) -> &mut Headless {
         self.drawn = false;
@@ -1854,6 +1887,7 @@ fn activity(st: &State, req: &Request) -> Option<(&'static str, String)> {
         Request::Toast { text, .. } => ("toast", short(text)),
         Request::Click { id, .. } => ("click", id.clone()),
         Request::Drag { id, row, to, side } => ("drag", format!("{id} row {row} {} {to}", side.name())),
+        Request::DropFiles { id, to, side, files } => ("drop-files", format!("{id} {} files {} {to}", files.len(), side.name())),
         _ => return None,
     })
 }

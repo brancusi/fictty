@@ -180,11 +180,25 @@ fictty theme paper                                        # choose a loaded them
   table) with a `drop` lets its rows be dragged into a new order, in the window: a press that
   moves lifts the row, or every picked row; letting go over a row runs `drop.on` there, with
   `{id}` the row dropped on, `{$drag.id}` (and any field) the row carried, `{$drag.keys}` every
-  row carried, and `{$drop.side}` `before` or `after`. Its order is the app's: the action
+  row carried (a `run` argument that is one placeholder holding a list gets it as a JSON array,
+  so a key or a path with a comma stays whole), and `{$drop.side}` `before` or `after`. Its order is the app's: the action
   rewrites it (`"drop": {"on": {"run": ["./order.sh", "{$drag.id}", "{id}", "{$drop.side}"]}}`),
   and the selection follows the row carried. A plain press on such a row is a click when the
   button comes up; Esc, or letting go off its rows, drops nothing. An agent drags with
-  `fictty drag <id> <row> <to> [--before]`. A press anywhere in it is a press on the row, so selection, `multi` picking, keys and
+  `fictty drag <id> <row> <to> [--before]`. With `drop.files` too, files dragged in from
+  Finder land the same way: over a row the bar shows where (before or after it), over the list
+  past its last row they go after the last, and letting go runs `drop.files` with `{id}` the row
+  dropped on, `{$drop.side}`, `{$drop.row}` and `{$drop.files}` their absolute paths, a JSON
+  array (`"files": {"run": ["./add.sh", "{$drop.files}", "{id}", "{$drop.side}"]}`). Nothing
+  is carried, so the selection stays; off the list, or out of the window, nothing lands. The
+  readback shows `bringing 2 files → before 5`, and an agent brings files with
+  `fictty drop-files <id> <to> [--before] <path>...`. The bar carries the place they'd have,
+  counted from 1 (`drop.index`). With `"optimistic": true` a drop shows at once, before a slow
+  action is done: when it starts a `run`, the rows carried move to where they were let go, and
+  each file brought in shows there as a row from `drop.placeholder` (its templates read
+  `{$file.path}` and `{$file.name}`; its key is `pending:` and the path, and `$pending` is true,
+  drawn in the `row.pending` look), until the list's own rows change (the app's answer: a
+  push or new data) or that run ends. A press anywhere in it is a press on the row, so selection, `multi` picking, keys and
   scrolling are the list's as ever; its nodes take no ids or focus of their own. Its buttons
   keep their `click`, though (the window's): a press on one selects its row and runs the
   button's click on that row, not the list's own click, so a card's ♡ with `{"toggle":

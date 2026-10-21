@@ -77,6 +77,9 @@ pub struct State {
     /// saved); `items` reads them.
     #[serde(skip)]
     pub rows: BTreeMap<String, Vec<Value>>,
+    /// Lists showing a drop before its action is done (`drop.optimistic`), by id.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub pending: BTreeMap<String, Pending>,
     /// Messages showing in the corner until their time is up, oldest first.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub toasts: Vec<Toast>,
@@ -303,6 +306,18 @@ pub struct Drag {
     pub keys: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub over: Option<Over>,
+    /// Files brought in from outside the window, by path, instead of rows: no row is carried.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub files: Vec<String>,
+}
+
+/// A list's rows as a drop left them, shown until its own rows change (`of` no longer matches)
+/// or the run the drop started (`argv`) ends.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Pending {
+    pub rows: Vec<Value>,
+    pub of: u64,
+    pub argv: Vec<String>,
 }
 
 /// Where carried rows would land: beside row `row`, on its `side`.
@@ -795,8 +810,21 @@ pub enum Msg {
         #[serde(default = "after")]
         side: Side,
     },
-    /// The button came up on a drag: over a row, the list's `drop` runs; anywhere else (or after
-    /// Esc) nothing moves.
+    /// Files dragged in from outside the window (Finder), by path, over row `row` of list `id`
+    /// (one whose `drop` takes `files`), to go on its `side`; `row` none is after its last row.
+    /// `id` none: over nothing that takes them, or gone from the window, and the files drag ends.
+    Bring {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        id: Option<String>,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        files: Vec<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        row: Option<usize>,
+        #[serde(default = "after")]
+        side: Side,
+    },
+    /// The button came up on a drag: over a row, the list's `drop` runs (its `files` for files
+    /// brought in); anywhere else (or after Esc) nothing moves.
     Release,
     /// A press on a part of row `row` of list, tree or table `id`: a button by its path in the
     /// row template (`0.2`; in a table, the column first: `3.0`), or a tree row's fold glyph
@@ -923,7 +951,7 @@ pub enum Pick {
 pub fn update(st: &mut State, msg: Msg) -> Vec<Effect> {
     let checks = matches!(msg, Msg::Push { .. } | Msg::Patch { .. } | Msg::Data { .. } | Msg::Write { .. } | Msg::Theme { .. } | Msg::Key { .. } | Msg::Font { .. });
     let writes = st.store_writes;
-    let quiet = matches!(msg, Msg::Tick { .. } | Msg::Hover { .. } | Msg::Lift { .. } | Msg::Carry { .. } | Msg::Stats { .. } | Msg::Activity { .. } | Msg::Caps { .. } | Msg::Size { .. } | Msg::Extent { .. } | Msg::Revealed | Msg::Heights { .. });
+    let quiet = matches!(msg, Msg::Tick { .. } | Msg::Hover { .. } | Msg::Lift { .. } | Msg::Carry { .. } | Msg::Bring { .. } | Msg::Stats { .. } | Msg::Activity { .. } | Msg::Caps { .. } | Msg::Size { .. } | Msg::Extent { .. } | Msg::Revealed | Msg::Heights { .. });
     // A source's new value changes only the rows of the nodes that read it.
     let only = match &msg {
         Msg::Data { name, .. } => Some(name.clone()),
@@ -935,6 +963,9 @@ pub fn update(st: &mut State, msg: Msg) -> Vec<Effect> {
     let was = st.focus.clone();
     let was_row = st.focus.as_deref().and_then(|f| st.local.get(f)).map(|l| l.selected);
     let keyed = matches!(&msg, Msg::Key { key } if !pages_a_scroller(st, key)) || matches!(msg, Msg::Paste { .. });
+    // Rows coming in or going above the selected one (a drop let go, the app's new rows) move its
+    // index, not the person: the view stays where it is.
+    let shifted = matches!(msg, Msg::Release | Msg::Push { .. } | Msg::Data { .. } | Msg::Ran { .. });
     let fx = apply(st, msg);
     // A tick that took a lasting write away changed the store like any write.
     let quiet = quiet && st.store_writes == writes;
@@ -960,7 +991,7 @@ pub fn update(st: &mut State, msg: Msg) -> Vec<Effect> {
     // scrolled away brings it back); not where a UI starts it (a screen opens at its top), nor for the
     // wheel, which leaves the focus where it is.
     let row = st.focus.as_deref().and_then(|f| st.local.get(f)).map(|l| l.selected);
-    if keyed || (was.is_some() && st.focus != was) || (st.focus == was && row != was_row) {
+    if keyed || (was.is_some() && st.focus != was) || (st.focus == was && row != was_row && !shifted) {
         st.reveal = st.focus.clone();
     }
     // A selection, a write or a new row can point an editor at an entry it hasn't shown yet.
@@ -1048,6 +1079,7 @@ fn apply(st: &mut State, msg: Msg) -> Vec<Effect> {
             vec![]
         }
         Msg::Ran { argv, result } => {
+            st.pending.retain(|_, p| p.argv != argv);
             st.status = result.err().map(|e| format!("{}: {e}", argv.join(" ")));
             // A failure shows even where the UI hides the status line.
             if let Some(why) = st.status.clone() {
@@ -1112,7 +1144,7 @@ fn apply(st: &mut State, msg: Msg) -> Vec<Effect> {
             let Some(key) = row_key(st, n, row) else { return vec![] };
             let picked: Vec<String> = picked(st, &id).into_iter().filter_map(|k| row_key(st, n, k)).collect();
             let keys = if picked.len() > 1 && picked.contains(&key) { picked } else { vec![key.clone()] };
-            st.drag = Some(Drag { id, row, key, keys, over: None });
+            st.drag = Some(Drag { id, row, key, keys, over: None, files: vec![] });
             vec![]
         }
         Msg::Carry { row, side } => {
@@ -1124,10 +1156,30 @@ fn apply(st: &mut State, msg: Msg) -> Vec<Effect> {
             }
             vec![]
         }
+        Msg::Bring { id, files, row, side } => {
+            let taken = id.as_deref().and_then(|id| st.node(id)).filter(|n| n.drop.as_ref().is_some_and(|d| d.files.is_some()));
+            let (Some(n), Some(id)) = (taken.filter(|_| !files.is_empty()), id.clone()) else {
+                if st.drag.as_ref().is_some_and(|d| !d.files.is_empty()) {
+                    st.drag = None;
+                }
+                return vec![];
+            };
+            let len = items(st, n).len();
+            // Over the list but none of its rows: after the last one.
+            let (row, side) = match row.filter(|r| *r < len) {
+                Some(r) => (r, side),
+                None => (len.saturating_sub(1), Side::After),
+            };
+            let over = (len > 0).then(|| Over { row, key: row_key(st, n, row), side });
+            st.drag = Some(Drag { id, row: 0, key: String::new(), keys: vec![], over, files });
+            vec![]
+        }
         Msg::Release => {
             let Some(d) = st.drag.take() else { return vec![] };
-            let (Some(over), Some(on)) = (d.over.clone(), st.node(&d.id).and_then(|n| n.drop.clone())) else { return vec![] };
-            dropped(st, d, over, on.on)
+            let (Some(over), Some(spec)) = (d.over.clone(), st.node(&d.id).and_then(|n| n.drop.clone())) else { return vec![] };
+            let on = if d.files.is_empty() { Some(spec.on) } else { spec.files };
+            let Some(on) = on else { return vec![] };
+            dropped(st, d, over, on)
         }
         Msg::Pick { id, row, how } => {
             if !st.node(&id).is_some_and(|n| n.multi) {
@@ -1586,8 +1638,56 @@ fn action_context(st: &State) -> Value {
     with_drag(st, ctx)
 }
 
-/// Rows let go over row `over` of their list: its `drop` runs on the row dropped on, as a click
-/// would run on it (`{id}`), with the carried rows as `$drag` and the side as `$drop`. The
+/// A hash of a list's own rows, to tell when the app has answered a drop with new ones.
+fn fingerprint(rows: &[Value]) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    serde_json::to_string(rows).unwrap_or_default().hash(&mut h);
+    h.finish()
+}
+
+fn spec_optimistic(st: &State, id: &str) -> bool {
+    st.node(id).and_then(|n| n.drop.as_ref()).is_some_and(|d| d.optimistic)
+}
+
+/// Show drop `d` at once (`drop.optimistic`), while `argv` runs: the carried rows where they
+/// were let go, or a placeholder row for each file brought in.
+fn optimistic(st: &mut State, d: &Drag, over: &Over, argv: Vec<String>) {
+    let Some(n) = st.node(&d.id) else { return };
+    let mut rows = items(st, n).to_vec();
+    let key = |r: &Value| key_of(n, r);
+    let at = over.row + usize::from(over.side == Side::After);
+    if d.files.is_empty() {
+        if over.key.as_ref().is_some_and(|k| d.keys.contains(k)) {
+            return;
+        }
+        let carried: Vec<Value> = rows.iter().filter(|r| key(r).is_some_and(|k| d.keys.contains(&k))).cloned().collect();
+        let before = rows[..at.min(rows.len())].iter().filter(|r| key(r).is_some_and(|k| d.keys.contains(&k))).count();
+        rows.retain(|r| !key(r).is_some_and(|k| d.keys.contains(&k)));
+        let at = (at - before).min(rows.len());
+        rows.splice(at..at, carried);
+    } else {
+        let field = n.row_key().to_string();
+        let made: Vec<Value> = d.files.iter().map(|path| {
+            let name = std::path::Path::new(path).file_name().map(|f| f.to_string_lossy().into_owned()).unwrap_or_else(|| path.clone());
+            let ctx = serde_json::json!({"$file": {"path": path, "name": name}});
+            let mut row = n.drop.as_ref().and_then(|s| s.placeholder.as_ref()).map(|t| fill_value(t, &ctx)).unwrap_or_else(|| serde_json::json!({"path": path, "name": name}));
+            if let Value::Object(m) = &mut row {
+                m.insert(field.clone(), format!("pending:{path}").into());
+                m.insert("$pending".into(), true.into());
+            }
+            row
+        }).collect();
+        let at = at.min(rows.len());
+        rows.splice(at..at, made);
+    }
+    let of = fingerprint(raw_items(st, n));
+    st.pending.insert(d.id.clone(), Pending { rows, of, argv });
+}
+
+/// Rows (or files brought in) let go over row `over` of their list: its `drop` runs on the row
+/// dropped on, as a click would run on it (`{id}`), with the carried rows as `$drag` and the side
+/// (and the files) as `$drop`. The
 /// selection and picks stay with the rows carried, so they follow them to their new place.
 fn dropped(st: &mut State, d: Drag, over: Over, on: Action) -> Vec<Effect> {
     let Some(n) = st.node(&d.id) else { return vec![] };
@@ -1604,12 +1704,23 @@ fn dropped(st: &mut State, d: Drag, over: Over, on: Action) -> Vec<Effect> {
     local.selected = over.row;
     local.key = target;
     local.picked.clear();
-    st.drag = Some(Drag { over: Some(over), ..d.clone() });
+    st.drag = Some(Drag { over: Some(over.clone()), ..d.clone() });
     let fx = act(st, on);
+    if spec_optimistic(st, &d.id)
+        && let Some(argv) = fx.iter().find_map(|e| if let Effect::Run(a) = e { Some(a.clone()) } else { None })
+    {
+        optimistic(st, &d, &over, argv);
+    }
     st.drag = None;
     let local = st.local.entry(d.id.clone()).or_default();
-    local.selected = d.row;
-    local.key = Some(d.key.clone());
+    // Files brought in carry no row: the selection stays where it was.
+    if d.files.is_empty() {
+        local.selected = d.row;
+        local.key = Some(d.key.clone());
+    } else {
+        local.selected = was.selected;
+        local.key = was.key;
+    }
     local.picked = was.picked;
     local.anchor = was.anchor;
     fx
@@ -1629,7 +1740,7 @@ fn with_drag(st: &State, mut ctx: Value) -> Value {
     carried["keys"] = serde_json::json!(d.keys);
     m.insert("$drag".into(), carried);
     if let Some(o) = &d.over {
-        m.insert("$drop".into(), serde_json::json!({"side": o.side.name(), "row": o.row, "key": o.key}));
+        m.insert("$drop".into(), serde_json::json!({"side": o.side.name(), "row": o.row, "key": o.key, "files": d.files}));
     }
     ctx
 }
@@ -1659,6 +1770,17 @@ fn link_under(st: &State, id: &str, click: bool) -> Option<(String, String)> {
             (*a + inset..*b - inset).contains(&col)
         })
         .map(|(_, _, k, m)| (k, m))
+}
+
+/// A `run` argument filled from `ctx`: an argument that is one placeholder holding a list (the
+/// files brought in, `{$drop.files}`; the rows carried, `{$drag.keys}`) is that list as JSON, so
+/// a path with a comma stays one path; anything else is the template filled as text.
+fn run_arg(t: &str, ctx: &Value) -> String {
+    let one = t.strip_prefix('{').and_then(|r| r.strip_suffix('}')).filter(|p| !p.contains(['{', '}', '|']));
+    match one.and_then(|p| lookup(ctx, p)) {
+        Some(list @ Value::Array(_)) => list.to_string(),
+        _ => crate::model::fill(t, ctx),
+    }
 }
 
 /// A store action's `value` filled from `ctx`: strings are templates. A string that is one
@@ -2585,7 +2707,7 @@ fn act(st: &mut State, a: Action) -> Vec<Effect> {
     match a {
         Action::Run { run } => {
             let sel = with_drag(st, selected_item(st).unwrap_or(Value::Null));
-            vec![Effect::Run(run.iter().map(|s| crate::model::fill(s, &sel)).collect())]
+            vec![Effect::Run(run.iter().map(|s| run_arg(s, &sel)).collect())]
         }
         Action::Load { load } => {
             // `{file}` reads the selected row, so a menu of screens is a list.
@@ -3160,6 +3282,15 @@ fn derive_rows(st: &mut State, only: Option<&str>) -> bool {
                 out.insert(id.clone(), rows);
             }
             continue;
+        }
+        if let Some(p) = st.pending.get(id) {
+            if p.of == fingerprint(raw_items(st, n)) {
+                let rows = Some(p.rows.clone());
+                changed |= old.remove(id) != rows;
+                out.extend(rows.map(|r| (id.clone(), r)));
+                continue;
+            }
+            st.pending.remove(id);
         }
         let query = n.filter().map(|f| query_text(st, f)).unwrap_or_default();
         let terms: Vec<String> = query.split_whitespace().map(str::to_lowercase).collect();
@@ -4641,6 +4772,83 @@ mod tests {
         assert_eq!(items(&st, st.node("a").unwrap()), &[json!("only")]);
         update(&mut st, Msg::Patch { id: "zz".into(), node: Node::default() });
         assert!(st.status.unwrap().contains("zz"));
+    }
+
+    /// A gallery whose drop runs a script and shows at once.
+    fn gallery(order: &[usize], placeholder: Option<Value>) -> Ui {
+        let rows: Vec<Value> = order.iter().map(|i| json!({"id": format!("r{i}"), "name": format!("row {i}")})).collect();
+        let mut drop = json!({"on": {"run": ["move", "{$drag.keys}", "{id}", "{$drop.side}"]},
+                              "files": {"run": ["add", "{$drop.files}", "{id}", "{$drop.side}"]}, "optimistic": true});
+        if let Some(p) = placeholder {
+            drop["placeholder"] = p;
+        }
+        ui(json!({"root": {"type": "list", "id": "g", "items": rows, "item": "{name}", "drop": drop}}))
+    }
+
+    fn ids(st: &State) -> Vec<String> {
+        let n = st.node("g").unwrap();
+        items(st, n).iter().map(|r| r["id"].as_str().unwrap_or_default().to_string()).collect()
+    }
+
+    fn ran(fx: &[Effect]) -> Vec<String> {
+        fx.iter().find_map(|e| if let Effect::Run(a) = e { Some(a.clone()) } else { None }).expect("the drop runs")
+    }
+
+    #[test]
+    fn an_optimistic_drop_moves_the_rows_at_once_until_the_app_answers() {
+        let mut st = State::default();
+        update(&mut st, Msg::Push { ui: gallery(&[0, 1, 2, 3], None) });
+        update(&mut st, Msg::Lift { id: "g".into(), row: 0 });
+        update(&mut st, Msg::Carry { row: Some(2), side: Side::After });
+        update(&mut st, Msg::Release);
+        assert_eq!(ids(&st), ["r1", "r2", "r0", "r3"], "shown where it was let go, before the run is done");
+        // The app's answer: its new rows replace the ones shown.
+        update(&mut st, Msg::Push { ui: gallery(&[1, 2, 0, 3], None) });
+        assert!(st.pending.is_empty());
+        assert_eq!(ids(&st), ["r1", "r2", "r0", "r3"]);
+        // A run that ends without new rows puts the list back as its rows are.
+        update(&mut st, Msg::Lift { id: "g".into(), row: 3 });
+        update(&mut st, Msg::Carry { row: Some(0), side: Side::Before });
+        let argv = ran(&update(&mut st, Msg::Release));
+        assert_eq!(argv[1], r#"["r3"]"#);
+        assert_eq!(ids(&st), ["r3", "r1", "r2", "r0"]);
+        update(&mut st, Msg::Ran { argv: vec!["other".into()], result: Ok(()) });
+        assert_eq!(ids(&st), ["r3", "r1", "r2", "r0"], "another run ending changes nothing");
+        update(&mut st, Msg::Ran { argv, result: Err("failed".into()) });
+        assert_eq!(ids(&st), ["r1", "r2", "r0", "r3"]);
+    }
+
+    #[test]
+    fn files_brought_in_show_as_pending_rows_where_they_were_let_go() {
+        let mut st = State::default();
+        let placeholder = json!({"name": "adding {$file.name}", "thumb": ""});
+        update(&mut st, Msg::Push { ui: gallery(&[0, 1, 2], Some(placeholder)) });
+        update(&mut st, Msg::Set { id: "g".into(), selected: Some(2), tab: None, key: None });
+        st.reveal = None;
+        update(&mut st, Msg::Bring { id: Some("g".into()), files: vec!["/x/a, 1.tif".into(), "/x/b.jpg".into()], row: Some(1), side: Side::Before });
+        let argv = ran(&update(&mut st, Msg::Release));
+        assert_eq!(argv[1], r#"["/x/a, 1.tif","/x/b.jpg"]"#, "the files as JSON: a comma stays in its path");
+        assert_eq!(selected(&st, "g"), 4, "the selection stays on its row, two further down");
+        assert!(st.reveal.is_none(), "and the view stays where it is");
+        assert_eq!(ids(&st), ["r0", "pending:/x/a, 1.tif", "pending:/x/b.jpg", "r1", "r2"]);
+        let n = st.node("g").unwrap();
+        let row = &items(&st, n)[1];
+        assert_eq!((row["name"].as_str(), row["$pending"].as_bool()), (Some("adding a, 1.tif"), Some(true)));
+        // A push of the same rows (the app's answer isn't in yet) keeps them; the run ending doesn't.
+        update(&mut st, Msg::Push { ui: gallery(&[0, 1, 2], Some(json!({}))) });
+        assert_eq!(ids(&st).len(), 5);
+        update(&mut st, Msg::Ran { argv, result: Ok(()) });
+        assert_eq!(ids(&st), ["r0", "r1", "r2"]);
+        // A list whose drop isn't optimistic waits for the app.
+        let mut ui = gallery(&[0, 1, 2], None);
+        if let Some(d) = ui.root.drop.as_mut() {
+            d.optimistic = false;
+        }
+        update(&mut st, Msg::Push { ui });
+        assert!(st.pending.is_empty());
+        update(&mut st, Msg::Bring { id: Some("g".into()), files: vec!["/x/a.tif".into()], row: Some(0), side: Side::After });
+        update(&mut st, Msg::Release);
+        assert_eq!(ids(&st), ["r0", "r1", "r2"]);
     }
 }
 

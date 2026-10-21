@@ -854,6 +854,7 @@ mod tests {
             selected: None,
             picked: vec![],
             dragging: vec![],
+            bringing: 0,
             drop: None,
             scroll: None,
             cols: None,

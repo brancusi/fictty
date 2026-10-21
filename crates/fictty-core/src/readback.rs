@@ -52,6 +52,9 @@ pub struct Shown {
     /// `after` it.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub dragging: Vec<usize>,
+    /// How many files dragged in from outside the window are over it.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub bringing: usize,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub drop: Option<(usize, String)>,
     /// Where the last frame laid it out (nodes with an id).
@@ -127,6 +130,7 @@ fn shown(st: &State, n: &Node, depth: usize, key: &str, (rects, cut): Frame) -> 
         selected: None,
         picked: s_picked(st, n),
         dragging: s_dragging(st, n),
+        bringing: st.drag.as_ref().filter(|d| n.id.as_deref() == Some(d.id.as_str())).map_or(0, |d| d.files.len()),
         drop: st.drag.as_ref().filter(|d| n.id.as_deref() == Some(d.id.as_str())).and_then(|d| d.over.as_ref()).map(|o| (o.row, o.side.name().to_string())),
         footer: s_footer(st, n),
         scroll: s_scroll(st, n),
@@ -306,6 +310,10 @@ fn outline_with(shown: &[Shown], styled: bool) -> String {
         if !s.dragging.is_empty() {
             let to = s.drop.as_ref().map_or_else(|| "nowhere".to_string(), |(r, side)| format!("{side} {}", r + 1));
             line.push_str(&format!(" (dragging {} → {to})", s.dragging.iter().map(|k| (k + 1).to_string()).collect::<Vec<_>>().join(",")));
+        }
+        if s.bringing > 0 {
+            let to = s.drop.as_ref().map_or_else(|| "nowhere".to_string(), |(r, side)| format!("{side} {}", r + 1));
+            line.push_str(&format!(" (bringing {} file{} → {to})", s.bringing, if s.bringing == 1 { "" } else { "s" }));
         }
         if let Some(r) = s.rect {
             line.push_str(&format!(" [{},{} {}×{}]", r.x, r.y, r.width, r.height));

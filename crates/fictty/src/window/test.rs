@@ -7,7 +7,8 @@
 //! - a press at a cell is a GPUI mouse-down in the middle of that cell's pixels; a move is a
 //!   move (hover), a drag a move with the button held, a wheel notch a line of scroll;
 //! - a paste goes on the clipboard and comes in as ⌘V, as on screen; what the screen copies goes
-//!   on the clipboard too.
+//!   on the clipboard too;
+//! - files dragged in go to the window's own `bring` and `let_go`, as its GPUI listeners would.
 //!
 //! The test platform's text has fixed metrics (every character 0.6 em), so a cell is 8.4 × 24
 //! px and layout is the same on every machine; nothing is rasterised.
@@ -96,6 +97,21 @@ impl Frame for Windowed {
             }
             Input::Pointer { kind, x, y } => self.pointer(*kind, *x, *y),
             Input::Resize { width, height } => self.resize(*width, *height),
+            // GPUI makes Finder's drag a drag of its paths, which only GPUI can build: the window
+            // is told where they are and that they're let go as its own listeners tell it.
+            Input::Files { files, at, release } => {
+                let at = at.map(|(x, y)| self.at(x, y));
+                let _ = self.window.update(&mut self.cx, |p, _, cx| match at {
+                    Some(at) => {
+                        p.bring(files.clone(), at, cx);
+                        if *release {
+                            p.let_go(true, cx);
+                        }
+                    }
+                    None => p.let_go(false, cx),
+                });
+                self.cx.run_until_parked();
+            }
         }
         true
     }

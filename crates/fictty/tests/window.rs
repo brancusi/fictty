@@ -1882,6 +1882,111 @@ fn an_agent_drags_a_row_over_the_socket() {
     assert_eq!(reply["ok"], false, "a node without a drop has nothing to drag");
 }
 
+/// `droppable`, taking files dragged in too: its `drop.files` puts them in `brought` with the
+/// row dropped on and the side.
+fn takes_files(cols: Option<u64>) -> Value {
+    let mut ui = droppable(cols, false);
+    ui["root"]["children"][0]["drop"]["files"] = json!({"put": "brought", "value": {"files": "{$drop.files}", "to": "{id}", "side": "{$drop.side}", "row": "{$drop.row}"}});
+    ui
+}
+
+fn brought(s: &mut fictty::Headless) -> Option<Value> {
+    s.state().store.get("brought").map(|e| e.read()["value"].clone())
+}
+
+#[test]
+fn files_brought_in_over_a_row_run_the_lists_drop_files_beside_it() {
+    let mut s = window(takes_files(None), 40, 24);
+    s.request(json!({"op": "set", "id": "l", "selected": 6}));
+    let l = node(&mut s, "l").rect.unwrap();
+    let (x, row) = (l.x + 4, |k: u16| l.y + 2 * k);
+    let files = ["/tmp/a.tif", "/tmp/b c.png"];
+    s.files(&files, Some((x, row(3))), false);
+    assert_eq!(node(&mut s, "l").drop, Some((3, "before".to_string())));
+    assert_eq!(node(&mut s, "l").bringing, 2);
+    assert!(s.screen().contains("(bringing 2 files → before 4)"), "{}", s.screen());
+    assert!(node(&mut s, "l").dragging.is_empty(), "no row of it is carried");
+    s.files(&files, Some((x, row(3) + 1)), true);
+    assert_eq!(brought(&mut s), Some(json!({"files": ["/tmp/a.tif", "/tmp/b c.png"], "to": "r3", "side": "after", "row": 3})));
+    assert!(s.state().drag.is_none() && moved(&mut s).is_none(), "the rows' own drop doesn't run");
+    assert_eq!(s.state().local["l"].selected, 6, "the selection stays where it was");
+}
+
+#[test]
+fn files_over_the_list_but_none_of_its_rows_go_after_the_last_and_off_it_nowhere() {
+    // Nine rows of two cells in a list taller than them: blank room under the last.
+    let mut ui = takes_files(None);
+    ui["root"]["children"][0]["size"] = json!(20);
+    let mut s = window(ui, 40, 24);
+    let l = node(&mut s, "l").rect.unwrap();
+    s.files(&["/tmp/a.tif"], Some((l.x + 4, l.y + l.height - 1)), false);
+    assert_eq!(node(&mut s, "l").drop, Some((8, "after".to_string())), "after the last row");
+    // Over something else that takes no files: nowhere, and letting go there does nothing.
+    let below = node(&mut s, "below").rect.unwrap();
+    s.files(&["/tmp/a.tif"], Some((below.x + 2, below.y)), false);
+    assert!(s.state().drag.is_none());
+    s.files(&["/tmp/a.tif"], Some((below.x + 2, below.y)), true);
+    assert!(brought(&mut s).is_none());
+    // Out of the window without letting go: the drag ends.
+    s.files(&["/tmp/a.tif"], Some((l.x + 4, l.y)), false);
+    assert!(s.state().drag.is_some());
+    s.files(&[], None, false);
+    assert!(s.state().drag.is_none() && brought(&mut s).is_none());
+}
+
+#[test]
+fn a_list_whose_drop_takes_no_files_ignores_them() {
+    let mut s = window(droppable(None, false), 40, 24);
+    let l = node(&mut s, "l").rect.unwrap();
+    s.files(&["/tmp/a.tif"], Some((l.x + 4, l.y + 2)), false);
+    assert!(s.state().drag.is_none());
+    s.files(&["/tmp/a.tif"], Some((l.x + 4, l.y + 2)), true);
+    assert!(moved(&mut s).is_none());
+    let reply = s.request(json!({"op": "drop-files", "id": "l", "to": 1, "files": ["/tmp/a.tif"]}));
+    assert_eq!(reply["ok"], false, "{reply}");
+}
+
+#[test]
+fn in_a_grid_of_rows_files_go_by_halves_across() {
+    let mut s = window(takes_files(Some(3)), 60, 24);
+    let l = node(&mut s, "l").rect.unwrap();
+    let col = |c: u16, part: u16| l.x + l.width * c / 3 + l.width * part / 12;
+    s.files(&["/tmp/a.tif"], Some((col(1, 1), l.y + 2)), true);
+    assert_eq!(brought(&mut s).unwrap()["to"], "r4");
+    assert_eq!(brought(&mut s).unwrap()["side"], "before");
+}
+
+#[test]
+fn an_optimistic_drop_whose_run_ends_with_no_new_rows_leaves_them_as_they_are() {
+    // What shows before the run ends is the core's (`state` tests); here the window's drag and
+    // drop get there, and a run that answers nothing leaves no pending rows behind.
+    let mut ui = droppable(None, false);
+    ui["root"]["children"][0]["drop"] = json!({"on": {"run": ["true"]}, "files": {"run": ["true"]},
+        "optimistic": true, "placeholder": {"name": "adding {$file.name}"}});
+    let mut s = window(ui, 40, 24);
+    let l = node(&mut s, "l").rect.unwrap();
+    let (x, row) = (l.x + 4, |k: u16| l.y + 2 * k);
+    s.mouse("press", x, row(0)).mouse("drag", x, row(2) + 1).mouse("release", x, row(2) + 1);
+    s.files(&["/tmp/new shot.tif"], Some((x, row(0))), true);
+    let st = s.state();
+    assert!(st.pending.is_empty() && st.drag.is_none());
+    let n = st.node("l").unwrap();
+    let names: Vec<&str> = fictty::state::items(st, n).iter().filter_map(|r| r["name"].as_str()).collect();
+    assert_eq!(names.len(), 9);
+    assert_eq!(names[0], "row 0");
+}
+
+#[test]
+fn an_agent_drops_files_over_the_socket() {
+    let mut s = window(takes_files(None), 40, 24);
+    let reply = s.request(json!({"op": "drop-files", "id": "l", "to": 2, "side": "before", "files": ["/tmp/x.jpg"]}));
+    assert_eq!(reply["ok"], true, "{reply}");
+    assert_eq!(brought(&mut s), Some(json!({"files": ["/tmp/x.jpg"], "to": "r2", "side": "before", "row": 2})));
+    assert!(s.state().drag.is_none());
+    let reply = s.request(json!({"op": "drop-files", "id": "l", "to": 2, "files": []}));
+    assert_eq!(reply["ok"], false, "no files, nothing brought");
+}
+
 #[test]
 fn after_a_drag_and_the_apps_new_order_the_selection_is_on_the_row_carried() {
     let rows = |order: &[usize]| -> Value { json!(order.iter().map(|i| json!({"id": format!("r{i}"), "name": format!("row {i}")})).collect::<Vec<_>>()) };

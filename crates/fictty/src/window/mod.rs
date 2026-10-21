@@ -22,7 +22,7 @@ use crate::state::{self, Msg, State};
 use anyhow::Result;
 use gpui::{
     AnyElement, App, Application, Bounds, ObjectFit, StyledImage, img, ClipboardItem, Context, DefiniteLength, DispatchPhase, FocusHandle, HighlightStyle, KeyDownEvent, MouseButton, MouseDownEvent, MouseMoveEvent, Pixels,
-    MouseUpEvent, Point, ScrollWheelEvent, SharedString, StyledText, Window, WindowBounds, WindowOptions, canvas, div, font, prelude::*, px, relative, size,
+    MouseUpEvent, ExternalPaths, Point, ScrollWheelEvent, SharedString, StyledText, Window, WindowBounds, WindowOptions, canvas, div, font, prelude::*, px, relative, size,
 };
 use serde_json::{Value, json};
 use std::cell::RefCell;
@@ -140,6 +140,16 @@ impl Engine {
         }
     }
 
+    /// Whether node `id` is a list that takes files dragged in (its `drop` has `files`).
+    fn takes_files(&self, id: &str) -> bool {
+        let takes = |st: &State| st.node(id).is_some_and(|n| n.drop.as_ref().is_some_and(|d| d.files.is_some()));
+        match self {
+            Engine::Live(live) => takes(live.lock().expect("the engine").state()),
+            #[cfg(feature = "window-test")]
+            Engine::Test(side) => takes(&side.borrow().st),
+        }
+    }
+
     /// The row the state has the mouse over.
     fn hover(&self) -> Option<state::Hover> {
         match self {
@@ -197,7 +207,14 @@ struct Portal {
     /// How many rows each list laid out to a line, last frame: a drag over a grid of rows goes
     /// before or after a row by its halves across, over a column of them by its halves down.
     per_line: HashMap<String, usize>,
+    /// Files dragged in from outside, while they are: the list and row (and side) last told to
+    /// the engine, so a move only tells it when that changes.
+    brought: Option<Aim>,
 }
+
+/// Where files brought in would land: list `id`, beside row `row` on its side, or (`row` none)
+/// after its last row.
+type Aim = (Option<String>, Option<(usize, state::Side)>);
 
 /// A press on row `row` of list `id`, where the mouse went down, the click it is if it doesn't
 /// move, and once it has (`lifted`), where the rows would land.
@@ -223,7 +240,7 @@ impl Portal {
         engine.send(Msg::Caps { caps: state::Caps { graphics: false, cell_w: cell.w, cell_h: cell.h }, text_sizing: false });
         let focus = cx.focus_handle();
         focus.focus(window);
-        Portal { engine, focus, cell, screen: (0, 0), laid: Shared::default(), shown: Rc::default(), drag: None, wheel: (String::new(), 0.0), wake: None, faces: HashMap::new(), fitting: 0, loose: None, row: None, press: None, per_line: HashMap::new() }
+        Portal { engine, focus, cell, screen: (0, 0), laid: Shared::default(), shown: Rc::default(), drag: None, wheel: (String::new(), 0.0), wake: None, faces: HashMap::new(), fitting: 0, loose: None, row: None, press: None, per_line: HashMap::new(), brought: None }
     }
 
     fn send(&mut self, msg: Msg, cx: &mut Context<Self>) {
@@ -274,6 +291,10 @@ impl Portal {
     /// changes, so its `.hover` parts hold. Under it means the innermost thing there: not a row a
     /// dialog covers.
     fn moved(&mut self, e: &MouseMoveEvent, cx: &mut Context<Self>) {
+        // Files that left the window without being let go send no event of their own.
+        if !e.dragging() && self.brought.is_some() {
+            self.let_go(false, cx);
+        }
         if e.dragging() && self.press.is_some() {
             return self.carry(e.position, cx);
         }
@@ -329,6 +350,40 @@ impl Portal {
         }
     }
 
+    /// Files dragged in from outside (Finder) moved to `at`: they'd land in the innermost list
+    /// under the mouse that takes files, beside the row under it on the side the mouse is on,
+    /// or after its last row over the rest of it.
+    pub(super) fn bring(&mut self, files: Vec<String>, at: Point<Pixels>, cx: &mut Context<Self>) {
+        let aim: Aim = {
+            let shown = self.shown.borrow();
+            let list = shown.iter().rev().filter(|(b, h)| b.contains(&at) && !h.id.is_empty() && h.part.is_none()).find(|(_, h)| self.engine.takes_files(&h.id));
+            match list {
+                Some((b, h)) => {
+                    let across = self.per_line.get(&h.id).is_some_and(|c| *c > 1);
+                    let side = |b: &Bounds<Pixels>| if (across && at.x < b.center().x) || (!across && at.y < b.center().y) { state::Side::Before } else { state::Side::After };
+                    (Some(h.id.clone()), h.row.map(|r| (r, side(b))))
+                }
+                None => (None, None),
+            }
+        };
+        if self.brought.as_ref() == Some(&aim) {
+            return;
+        }
+        self.brought = Some(aim.clone());
+        let (id, over) = aim;
+        let (row, side) = over.map_or((None, state::Side::After), |(r, s)| (Some(r), s));
+        self.send(Msg::Bring { id, files, row, side }, cx);
+    }
+
+    /// Files brought in are let go (`drop`), or have left the window: either way the drag ends,
+    /// and let go over a list that takes them, its `drop.files` runs.
+    pub(super) fn let_go(&mut self, drop: bool, cx: &mut Context<Self>) {
+        if self.brought.take().is_none() {
+            return;
+        }
+        self.send(if drop { Msg::Release } else { Msg::Bring { id: None, files: vec![], row: None, side: state::Side::After } }, cx);
+    }
+
     /// The button came up: a press that never moved is the click it was; a drag lets go.
     fn up(&mut self, cx: &mut Context<Self>) {
         self.drag = None;
@@ -338,8 +393,20 @@ impl Portal {
     }
 
     /// Row `k` of `n` as a drag shows it: dimmed (the `drag.ghost` part's opacity) while it's
-    /// carried, and with a bar (the `drop.hover` part) on the side carried rows would go.
+    /// carried, and with a bar (the `drop.hover` part) on the side carried rows would go, marked
+    /// with the place they'd have in the list, counted from 1 (the `drop.index` part).
     fn carried(&self, st: &State, lk: &Look, n: &Node, k: usize, across: bool, row: gpui::Stateful<gpui::Div>) -> gpui::Stateful<gpui::Div> {
+        // A row a drop put there before the app answered (`drop.optimistic`): the `row.pending` look.
+        let row = if state::items(st, n).get(k).and_then(|r| r.get("$pending")) == Some(&Value::Bool(true)) {
+            let look = style::inner(st, "row.pending", &[]);
+            let row = lk.boxed(row, &look, (self.cell.w, self.cell.h), [0.; 4]);
+            match look.opacity {
+                Some(o) => row.opacity(o),
+                None => row,
+            }
+        } else {
+            row
+        };
         let Some(d) = st.drag.as_ref().filter(|d| n.id.as_deref() == Some(d.id.as_str())) else { return row };
         let carried = state::row_key(st, n, k).is_some_and(|key| d.keys.contains(&key));
         let row = match style::inner(st, "drag.ghost", &[]).opacity.filter(|_| carried) {
@@ -355,7 +422,18 @@ impl Portal {
             (true, state::Side::Before) => bar.top_0().bottom_0().left_0().w(w),
             (true, state::Side::After) => bar.top_0().bottom_0().right_0().w(w),
         };
-        row.child(bar)
+        // The place the first one carried (or brought) would have: rows carried from before
+        // the bar leave their places.
+        let at = if side == state::Side::Before { k } else { k + 1 };
+        let gone = (0..at).filter(|i| state::row_key(st, n, *i).is_some_and(|key| d.keys.contains(&key))).count();
+        let mark = lk.boxed(div().absolute().text_xs().line_height(px(16.)), &style::inner(st, "drop.index", &[]), (self.cell.w, self.cell.h), [0.; 4]).child(SharedString::from(format!("{}", at - gone + 1)));
+        let mark = match (across, side) {
+            (false, state::Side::Before) => mark.top_0().right_0(),
+            (false, state::Side::After) => mark.bottom_0().right_0(),
+            (true, state::Side::Before) => mark.top_0().left(px(4.)),
+            (true, state::Side::After) => mark.top_0().right(px(4.)),
+        };
+        row.child(bar).child(mark)
     }
 
     /// The cell `at` falls on in editor `id`'s text, in the last painted frame.
@@ -1412,6 +1490,12 @@ impl Portal {
         let frame = div()
             .id("portal")
             .track_focus(&self.focus)
+            // Files dragged in from Finder: GPUI makes them a drag of their paths.
+            .on_drag_move::<ExternalPaths>(cx.listener(|this, e: &gpui::DragMoveEvent<ExternalPaths>, _, cx| {
+                let files = e.drag(cx).paths().iter().map(|p| p.to_string_lossy().into_owned()).collect();
+                this.bring(files, e.event.position, cx);
+            }))
+            .on_drop::<ExternalPaths>(cx.listener(|this, _: &ExternalPaths, _, cx| this.let_go(true, cx)))
             .on_key_down(cx.listener(|this, e: &KeyDownEvent, _, cx| {
                 let Some(key) = key_name(e) else { return };
                 // ⌘V pastes what's on the system clipboard; caretline knows its own copies when

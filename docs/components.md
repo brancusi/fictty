@@ -520,7 +520,10 @@ above, for Caption Genius's gallery (a Folio app). A press that moves 4 pixels l
 (or every picked row); `$drag` is in the state and the readback (`dragging 2 → before 5`); the
 window dims what's carried (`drag.ghost`) and draws a bar where it would land (`drop.hover`),
 across a grid of rows by halves left and right; Esc, or letting go off the rows, drops nothing;
-an agent drags with `fictty drag <id> <row> <to> [--before]`. The rest below is still to come.
+an agent drags with `fictty drag <id> <row> <to> [--before]`. Files from Finder (`drop.files`,
+20 October); the bar's place number (`drop.index`) and `drop.optimistic` (21 October: a drop
+shows at once while its `run` goes, placeholder rows for files in `row.pending`, until the app's
+rows change or the run ends). The rest below is still to come.
 
 `drag` (what a node carries), `drop` (`accept` and the action on a drop), `$drag` in the state,
 a `move` store action between arrays, theme parts `drag.ghost` and `drop.hover`; files dropped

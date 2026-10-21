@@ -137,6 +137,17 @@ enum Cmd {
         #[arg(long)]
         before: bool,
     },
+    /// Bring files onto row TO of list ID as a drag from Finder would (rows count from 0): they
+    /// go after it, or before with --before, and the list's `drop.files` runs with their paths
+    /// (made absolute).
+    DropFiles {
+        id: String,
+        to: usize,
+        #[arg(long)]
+        before: bool,
+        #[arg(required = true)]
+        files: Vec<PathBuf>,
+    },
     /// Set a terminal up for fictty: `wezterm` installs a module that sends ⌘ keys (⌘Z, ⌘A, ⌘←)
     /// to fictty screens, which WezTerm doesn't do by itself. Ghostty and kitty need nothing.
     Setup {
@@ -301,6 +312,10 @@ fn main() -> Result<()> {
         Cmd::Toast { text, tone, ms } => runtime::send(&socket, json!({"op": "toast", "text": text, "tone": tone, "ms": ms}))?,
         Cmd::Mouse { kind, x, y } => runtime::send(&socket, json!({"op": "mouse", "kind": kind, "x": x, "y": y}))?,
         Cmd::Drag { id, row, to, before } => runtime::send(&socket, json!({"op": "drag", "id": id, "row": row, "to": to, "side": if before { "before" } else { "after" }}))?,
+        Cmd::DropFiles { id, to, before, files } => {
+            let files = files.iter().map(|f| std::path::absolute(f).map(|p| p.to_string_lossy().into_owned())).collect::<std::io::Result<Vec<_>>>()?;
+            runtime::send(&socket, json!({"op": "drop-files", "id": id, "to": to, "side": if before { "before" } else { "after" }, "files": files}))?
+        }
         Cmd::Layers { file } => {
             let raw = if file.as_os_str() == "-" { std::io::read_to_string(std::io::stdin())? } else { std::fs::read_to_string(&file)? };
             let layers: serde_json::Value = serde_json::from_str(&raw)?;

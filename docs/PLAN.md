@@ -258,8 +258,9 @@ The phases of [design/native.md](design/native.md), where each is broken down.
         editors, charts and icons, toasts and layers, embedding and the examples, then the terminal
         goes. Each step moves its share of the 32 grid tests left into the window
 - [ ] Phase 2 · The agent's portal (M): `watch` and `emit`, drop zones (rows dragged within one
-      list are in: `drop`, `$drag`, `fictty drag`; between lists, `accept` and files still to
-      come), tabs (`fictty open
+      list are in: `drop`, `$drag`, `fictty drag`; so are files dragged in from Finder onto a
+      list's rows: `drop.files`, `$drop.files`, `fictty drop-files`; between lists and `accept`
+      still to come), tabs (`fictty open
       --tab`), screenshots, the command policy
 - [ ] Phase 3 · Media (M): images, video, pasted and dropped media, animation
 - [ ] Phase 4 · Typography (M–L): proportional text; caretline measuring through the renderer

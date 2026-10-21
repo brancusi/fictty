@@ -310,9 +310,23 @@ pub struct Look {
 /// What a list does with a row dropped on one of its rows. Its templates read the row dropped on
 /// as a click's do (`{id}`), the row carried as `{$drag.id}` (every carried row's key in
 /// `{$drag.keys}`), and which side of it the row goes as `{$drop.side}`: `before` or `after`.
+/// `files` takes files dragged in from outside the window (Finder) the same way: let go over a
+/// row, or over the list after its last row, it runs with their paths as `{$drop.files}`.
+/// `optimistic` shows a drop at once, before its action's `run` is done: the rows carried move
+/// to where they were let go, and files brought in show as rows there (marked `$pending`, from
+/// `placeholder`), until the list's own rows change (the app's answer) or the run ends.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct DropSpec {
     pub on: Action,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub files: Option<Action>,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub optimistic: bool,
+    /// The row each file brought in shows as while it's pending: its templates read
+    /// `{$file.path}` and `{$file.name}`. Without one, a row of `path` and `name`. Its key is
+    /// `pending:` and the path.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub placeholder: Option<Value>,
 }
 
 /// A node: what it is (`type` and its fields) plus the parts every node shares.
