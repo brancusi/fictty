@@ -896,15 +896,22 @@ pub fn problems(st: &State, nodes: &[&Node]) -> Vec<String> {
 /// ask for (`<link>…</>`).
 fn known_part(th: &Theme, part: &str) -> bool {
     let mut words = part.split('.').collect::<Vec<_>>();
-    while words.last().is_some_and(|w| STATES.contains(w)) {
+    let family = |w: &str| COMPONENTS.contains(&w) || INNER.iter().any(|p| p.split('.').next() == Some(w));
+    if !family(words.first().copied().unwrap_or_default()) {
+        return true;
+    }
+    // States come off the end one at a time, and a part's own name can end in one's word
+    // (`drop.hover`), so each step is a candidate.
+    loop {
+        let base = words.join(".");
+        if COMPONENTS.contains(&base.as_str()) || INNER.contains(&base.as_str()) || base.strip_prefix("toast.").is_some_and(|t| th.knows(t)) {
+            return true;
+        }
+        if !words.last().is_some_and(|w| STATES.contains(w)) {
+            return false;
+        }
         words.pop();
     }
-    let base = words.join(".");
-    let family = |w: &str| COMPONENTS.contains(&w) || INNER.iter().any(|p| p.split('.').next() == Some(w));
-    COMPONENTS.contains(&base.as_str())
-        || INNER.contains(&base.as_str())
-        || base.strip_prefix("toast.").is_some_and(|t| th.knows(t))
-        || !family(words.first().copied().unwrap_or_default())
 }
 
 fn backdrop_colours(b: &Backdrop) -> impl Iterator<Item = &str> {
@@ -1062,6 +1069,15 @@ mod tests {
         assert_eq!(a.shadow.iter().map(|s| (s.color.as_str(), s.y, s.alpha)).collect::<Vec<_>>(), vec![("#39d6e6", 0., Some(0.6))], "a glow sits under it");
         let b = of(&st, "b");
         assert_eq!((b.ink.bg.as_deref(), b.shadow.first().map(|s| (s.y, s.blur))), (Some("#222222"), Some((6., 12.))), "a plain card casts a shadow down");
+    }
+
+    #[test]
+    fn a_part_whose_name_ends_in_a_states_word_is_known() {
+        let st = screen(
+            json!({"parts": {"drop.hover": {"bg": "accent"}, "drop.hover.focused": "b", "row.hover": "d", "drop.hovr": "b"}}),
+            json!({"type": "text", "text": "hi"}),
+        );
+        assert_eq!(st.problems, vec!["theme t: no part is called \"drop.hovr\"".to_string()]);
     }
 
     #[test]
