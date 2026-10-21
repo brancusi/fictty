@@ -4060,7 +4060,9 @@ pub fn holds_in(st: &State, cond: &str, size: Option<(u16, u16)>) -> bool {
     };
     let Some((bind, op, want)) = found else {
         return match read(cond) {
-            None | Some(Value::Null) | Some(Value::Bool(false)) => false,
+            // Not a bind: a value written in, as a row template's `{$item.done}` fills one.
+            None => cond == "true" || cond.parse::<f64>().is_ok_and(|n| n != 0.),
+            Some(Value::Null) | Some(Value::Bool(false)) => false,
             Some(Value::String(s)) => !s.is_empty(),
             Some(Value::Number(n)) => n.as_f64() != Some(0.0),
             Some(Value::Array(a)) => !a.is_empty(),
@@ -4068,7 +4070,12 @@ pub fn holds_in(st: &State, cond: &str, size: Option<(u16, u16)>) -> bool {
             Some(Value::Bool(true)) => true,
         };
     };
-    let have = crate::model::scalar(read(bind).as_ref());
+    // A side in single quotes is a value, not a bind: `'{$item.state}'=excluded` in a row
+    // template compares the row's state.
+    let have = match bind.strip_prefix('\'').and_then(|b| b.strip_suffix('\'')) {
+        Some(literal) => literal.to_string(),
+        None => crate::model::scalar(read(bind).as_ref()),
+    };
     let want = want.trim_matches('"');
     match (crate::model::number(&have), crate::model::number(want)) {
         (Some(a), Some(b)) => match op {
@@ -4763,6 +4770,10 @@ mod tests {
         assert!(holds(&st, "b | a") && !holds(&st, "b | c"));
         assert!(holds(&st, "a & b | !c"), "& binds tighter: (a & b) | !c");
         assert!(!holds(&st, "a & b | c") && holds(&st, "n > 2 | b"));
+        // Values written in, as a row template fills `{$item.…}`: no bind is called that.
+        assert!(holds(&st, "true") && !holds(&st, "false") && holds(&st, "2") && !holds(&st, "0") && !holds(&st, ""));
+        assert!(holds(&st, "'excluded'=excluded") && !holds(&st, "'waiting'=excluded") && holds(&st, "'waiting'=excluded | 'waiting'=waiting"));
+        assert!(!holds(&st, "nothing") && !holds(&st, "mode=edit") && holds(&st, "mode!=edit"), "an unset bind is as it was");
     }
 
     #[test]

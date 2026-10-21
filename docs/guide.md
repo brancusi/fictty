@@ -238,6 +238,9 @@ fictty theme paper                                        # choose a loaded them
   **`when`** shows a node only while a condition holds: a bind that's set (`"dialog"`), not set
   (`"!dialog"`), compared (`"mode=edit"`, `"$screen.width>=120"`), several that must all hold,
   joined by ` & `, or any of several, joined by ` | ` (`"a & b | c"` is `a & b`, or `c`).
+  In a row template, `{$item.…}` is filled in before the condition is read, so a value stands
+  where a bind would: `"{$item.done}"` holds when it's `true` or a number other than 0, and a
+  side in single quotes is a value to compare, `"'{$item.state}'=excluded | '{$item.state}'=waiting"`.
   Its `{field}`s are filled from the node's bound value first (`"bind": "@files", "when":
   "remove/{id}"` reads the selected row's flag). `$width` and `$height`
   are the size of the area the node's parent lays it out in (a container query): a pane beside a
