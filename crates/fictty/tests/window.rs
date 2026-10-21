@@ -1977,6 +1977,22 @@ fn an_optimistic_drop_whose_run_ends_with_no_new_rows_leaves_them_as_they_are() 
 }
 
 #[test]
+fn a_batch_does_its_requests_in_order_in_one_go() {
+    let mut s = window(droppable(None, false), 40, 24);
+    let writes: Vec<Value> = (0..3).map(|i| json!({"op": "write", "write": "put", "key": format!("order/r{i}"), "value": format!("0{i}0")})).collect();
+    let reply = s.request(json!({"op": "batch", "requests": writes}));
+    assert_eq!((reply["ok"].as_bool(), reply["replies"].as_array().map(Vec::len)), (Some(true), Some(3)), "{reply}");
+    let st = s.state();
+    assert_eq!(st.store.get("order/r2").map(|e| e.read()["value"].clone()), Some(json!("020")));
+    // One refused (a stale revision) makes the batch's `ok` false; the others are still done.
+    let reply = s.request(json!({"op": "batch", "requests": [
+        {"op": "write", "write": "put", "key": "order/r0", "value": "999", "if_rev": 0},
+        {"op": "write", "write": "put", "key": "order/r1", "value": "111"}]}));
+    assert_eq!(reply["ok"], false, "{reply}");
+    assert_eq!(s.state().store.get("order/r1").map(|e| e.read()["value"].clone()), Some(json!("111")));
+}
+
+#[test]
 fn an_agent_drops_files_over_the_socket() {
     let mut s = window(takes_files(None), 40, 24);
     let reply = s.request(json!({"op": "drop-files", "id": "l", "to": 2, "side": "before", "files": ["/tmp/x.jpg"]}));

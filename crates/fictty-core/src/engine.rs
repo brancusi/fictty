@@ -118,6 +118,10 @@ pub enum Request {
     Get,
     State,
     Stats,
+    /// Several requests in one, done in order in one step (the store file is written once after
+    /// them all): `{"op": "batch", "requests": [{"op": "write", …}, …]}`, answered with each
+    /// one's reply in `replies`. For an app writing many entries at once (a hundred new indexes).
+    Batch { requests: Vec<Request> },
 }
 
 fn after() -> crate::state::Side {
@@ -768,6 +772,11 @@ impl Driver {
             log(st, op, what.clone());
         }
         let msg = match req {
+            Request::Batch { requests } => {
+                let replies: Vec<Value> = requests.into_iter().map(|r| self.request(st, r)).collect();
+                let ok = replies.iter().all(|r| r.get("ok") != Some(&Value::Bool(false)));
+                return json!({"ok": ok, "replies": replies});
+            }
             Request::Get => return serde_json::to_value(&st.ui).unwrap_or_default(),
             Request::State => return serde_json::to_value(&*st).unwrap_or_default(),
             Request::Stats => return serde_json::to_value(&st.stats).unwrap_or_default(),

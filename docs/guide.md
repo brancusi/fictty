@@ -315,7 +315,10 @@ document with its undo history), each with a revision (`rev`) and who wrote it l
 - **Writes**: typing in an editor or input; store actions on keys; and from agents,
   `fictty put` (a value, or a string as a text's new contents), `merge` (RFC 7396) and `edit`
   (`[[from, to, "text"]]` ranges of a text). With `--if-rev N` a write is refused if anyone wrote
-  since revision N, and the reply carries the entry as it is now.
+  since revision N, and the reply carries the entry as it is now. Many at once go in one socket
+  request, `{"op": "batch", "requests": [{"op": "write", …}, …]}`: done in order in one step,
+  answered with each one's reply in `replies` (`ok` is false if any was refused; the others are
+  still done).
 - **Writes that last a while**: `for_ms` on a write (`fictty put … --for-ms 3000`, `merge`, the
   `put` action, `Notifier::write_for`) takes it away again on the screen's own clock: a put's
   entry, or the keys a merge set. A row marked live for three seconds, or a `when` that holds
