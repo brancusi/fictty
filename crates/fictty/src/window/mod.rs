@@ -894,9 +894,11 @@ impl Portal {
         let Kind::Stack { children } = &n.kind else { unreachable!("a stack") };
         let shown: Vec<(usize, Node)> = children.iter().enumerate().filter(|(_, c)| state::shown(st, c)).map(|(k, c)| (k, c.clone())).collect();
         let mut kids: Vec<AnyElement> = Vec::new();
-        // The first child that neither floats nor is a dialog is the stack's base: in the flow,
-        // so a stack sized to `fit` is as big as it is; the rest go over it.
-        let base = shown.iter().find(|(_, c)| c.float.is_none() && !c.modal).map(|(k, _)| *k);
+        // Sized to `fit`, the first child that neither floats nor is a dialog is the stack's
+        // base: in the flow, so the stack is as big as it is; the rest go over it. Any other
+        // stack has every child over its own box.
+        let fits = n.size.as_ref().is_some_and(|s| s.measure() == Measure::Fit);
+        let base = shown.iter().find(|(_, c)| fits && c.float.is_none() && !c.modal).map(|(k, _)| *k);
         for (k, c) in shown {
             let path = format!("{key}.{k}");
             if c.modal {

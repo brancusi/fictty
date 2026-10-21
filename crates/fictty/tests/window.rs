@@ -2183,3 +2183,24 @@ fn a_rule_between_columns_stands_up() {
     assert!(h.width > h.height, "{h:?}");
     assert_eq!(node(&mut s, "rest").rect.unwrap().y, h.y + 1);
 }
+
+/// Caption Genius's screen: a stack (for its sheets) over a rail and a scrolling grid of
+/// fields, each a label over an editor. The label is whole: a stack that isn't sized to `fit`
+/// lays its children over its own box, as it always did.
+#[test]
+fn a_label_in_a_grid_cell_under_a_stack_isnt_cut() {
+    let theme = json!({"t": {"type": {"label": {"size": 11, "weight": 600, "tracking": 0.66}}}});
+    let grid = json!({"type": "grid", "cols": 4, "children": [
+        {"type": "col", "size": "fit", "children": [
+            {"type": "text", "id": "lab", "size": "14px", "wrap": false, "text": "<label>TITLE</>"},
+            {"type": "editor", "id": "ed", "doc": "ed", "size": 2}
+        ]}
+    ]});
+    let ui = json!({"root": {"type": "stack", "children": [
+        {"type": "row", "children": [{"type": "col", "size": 20, "children": [{"type": "text", "text": "rail"}]}, {"type": "col", "scroll": true, "children": [grid]}]},
+        {"type": "col", "when": "sheet", "modal": true, "float": {"at": "center", "width": 20, "height": 5}, "children": [{"type": "text", "text": "sheet"}]}
+    ]}});
+    let mut s = fictty::App::new(serde_json::from_value(ui).unwrap()).themes(serde_json::from_value(theme).unwrap()).in_window(140, 20).unwrap();
+    let n = node(&mut s, "lab");
+    assert!(!n.cut && n.text == "TITLE", "{n:?}");
+}
