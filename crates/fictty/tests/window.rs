@@ -2132,3 +2132,18 @@ fn the_first_theme_in_the_file_is_chosen_not_the_first_by_name() {
     assert_eq!(s.state().theme.as_deref(), Some("daylight"));
     let _ = std::fs::remove_file(&path);
 }
+
+#[test]
+fn a_tab_in_a_buttons_label_spreads_it_across_the_button() {
+    let ui = json!({"root": {"type": "col", "children": [
+        {"type": "button", "id": "all", "size": 2, "label": "All images\t101", "click": "quit"},
+        {"type": "button", "id": "one", "size": 2, "label": "Some", "click": "quit"}
+    ]}});
+    let mut s = window(ui, 40, 6);
+    let r = node(&mut s, "all").rect.unwrap();
+    // Its face (what a press lands on) is centred on the button, not hugging the label's left.
+    let (x, _) = s.at("all", None, None).unwrap();
+    assert!(x.abs_diff(r.x + r.width / 2) <= 1, "{x} in {r:?}");
+    let (x, _) = s.at("one", None, None).unwrap();
+    assert!(x < r.x + r.width / 4, "a plain label stays as wide as itself: {x}");
+}

@@ -174,7 +174,8 @@ read back but not drawn, as GPUI 0.2.2 has no letter spacing).
 
 A labelled control: Enter or Space while focused, or a press, runs its `click`. Field: `label`
 (a template). With `on`, one button is both looks of a toggle. In a row template, a button's
-press acts on that row.
+press acts on that row. A tab in the label right-aligns what follows across the button, as in
+a text (`"All images\t101"`: a sidebar entry with its count).
 
 ```json
 {"type": "button", "id": "play", "size": "fit", "on": "playing",

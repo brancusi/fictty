@@ -725,7 +725,14 @@ impl Portal {
                 div().flex().flex_row().gap_2().child(inked(div(), ink).child(glyph)).child(text::line(&tx, text, v, Ink::default(), false)).into_any_element()
             }
             Kind::Button { label } => {
-                let label = text::plain(label, v);
+                // A tab right-aligns what follows it across the button, as in a text ("All
+                // images\t101"), so the face is as wide as the button then.
+                let tabbed = label.contains('\t');
+                let label: AnyElement = if tabbed {
+                    div().w_full().child(text::line(&tx, label, v, Ink::default(), false)).into_any_element()
+                } else {
+                    text::plain(label, v).into_any_element()
+                };
                 let target = id.clone();
                 // The face, as wide as its label, where `align` puts it, down the middle.
                 el = match n.align.as_deref() {
@@ -754,7 +761,8 @@ impl Portal {
                     None => Msg::Click { id: target.clone(), row: None, tab: None },
                 };
                 // As tall as its row, the label in the middle, so a border stays inside the row.
-                lk.boxed(div().id(SharedString::from(format!("btn-{key}"))).relative().flex_none().h_full().flex().items_center(), &rs, c, [0.; 4])
+                let face_box = div().id(SharedString::from(format!("btn-{key}"))).relative().flex_none().h_full().flex().items_center();
+                lk.boxed(if tabbed { face_box.w_full() } else { face_box }, &rs, c, [0.; 4])
                     .children(face)
                     .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, _, cx| {
                         cx.stop_propagation();
