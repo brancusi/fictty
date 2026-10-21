@@ -153,8 +153,9 @@ A line filling the node: `glyph` (default `│` when taller than wide, else `─
 {"type": "rule", "size": 1}
 ```
 
-**Window:** partial: a one-pixel horizontal line in the border colour; a vertical rule and
-`glyph` are drawn only by the terminal.
+**Window:** a one-pixel line in the border colour (or its style's `fg`), across the middle,
+or down it when the rule is taller than wide (in a `row`, between a rail and what's beside
+it); `glyph` is the terminal's only.
 
 ## Text and content
 

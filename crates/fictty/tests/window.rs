@@ -2163,3 +2163,23 @@ fn a_stack_sized_to_fit_is_as_tall_as_its_base() {
     assert!(node(&mut s, "badge").rect.is_some_and(|b| b.y == card.y), "the float shows over it");
     assert_eq!(node(&mut s, "after").rect.unwrap().y, card.y + 3);
 }
+
+#[test]
+fn a_rule_between_columns_stands_up() {
+    let ui = json!({"root": {"type": "row", "children": [
+        {"type": "text", "id": "rail", "size": 10, "text": "rail"},
+        {"type": "rule", "id": "v", "size": 1},
+        {"type": "col", "children": [
+            {"type": "text", "id": "top", "size": 2, "text": "top"},
+            {"type": "rule", "id": "h", "size": 1},
+            {"type": "text", "id": "rest", "text": "rest"}
+        ]}
+    ]}});
+    let mut s = window(ui, 40, 10);
+    let v = node(&mut s, "v").rect.unwrap();
+    let h = node(&mut s, "h").rect.unwrap();
+    let rail = node(&mut s, "rail").rect.unwrap();
+    assert!(v.height > v.width && v.height == rail.height, "{v:?} beside {rail:?}");
+    assert!(h.width > h.height, "{h:?}");
+    assert_eq!(node(&mut s, "rest").rect.unwrap().y, h.y + 1);
+}

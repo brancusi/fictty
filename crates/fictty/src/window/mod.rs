@@ -771,7 +771,21 @@ impl Portal {
                     .child(label)
                     .into_any_element()
             }
-            Kind::Rule { .. } => div().h(px(1.)).w_full().bg(lk.ink(&rs.ink).fg.unwrap_or(lk.border)).into_any_element(),
+            Kind::Rule { .. } => {
+                let colour = lk.ink(&rs.ink).fg.unwrap_or(lk.border);
+                // Down the middle when it's taller than wide (in a row), else across, as the
+                // terminal picks its glyph; a pixel thick either way.
+                canvas(|_, _, _| {}, move |b, _, window, _| {
+                    let line = if b.size.height > b.size.width {
+                        Bounds::new(gpui::point(b.origin.x + (b.size.width - px(1.)) / 2., b.origin.y), size(px(1.), b.size.height))
+                    } else {
+                        Bounds::new(gpui::point(b.origin.x, b.origin.y + (b.size.height - px(1.)) / 2.), size(b.size.width, px(1.)))
+                    };
+                    window.paint_quad(gpui::fill(line, colour));
+                })
+                .size_full()
+                .into_any_element()
+            }
             Kind::List { .. } | Kind::Tree { .. } => self.list(st, lk, n, &id, fits || loose, cx),
             Kind::Table { .. } => self.table(st, lk, n, &id, &key, tx, cx),
             Kind::Editor { .. } | Kind::Input { .. } => self.editor(st, lk, n, &id, focused, cx),
