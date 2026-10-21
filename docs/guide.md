@@ -116,7 +116,9 @@ fictty theme paper                                        # choose a loaded them
 - **Grid** (the window's): `{"type": "grid", "cols": 3, "children": […]}` lays its children out
   a line at a time in columns that line up from line to line. `cols` is a count of equal
   columns, `{"min": "200px"}` for as many equal ones as fit at least that wide (the count
-  follows the window; it needs an `id`), with `"max": 3` to stop at three (three features in a
+  follows the window; it needs an `id`; the minimum can be a template over the store, as a
+  title's is, `{"min": "{ui.size|S=140px;M=200px;L=280px}"}`, so a card size changes with a
+  write and no push), with `"max": 3` to stop at three (three features in a
   row, not three and two empty columns), or a size per column, `["200px", "*", "2*"]`: cells
   and pixels as written, shares of what's left (a percentage or `fit` is a problem). A child
   takes `span` columns (one by default); one that doesn't fit on the line starts the next. A

@@ -2204,3 +2204,36 @@ fn a_label_in_a_grid_cell_under_a_stack_isnt_cut() {
     let n = node(&mut s, "lab");
     assert!(!n.cut && n.text == "TITLE", "{n:?}");
 }
+
+/// Caption Genius's gallery: square cards as many to a line as the card size (a store key)
+/// fits, each a picture with a place number, a tick, a struck-out scrim and a dot over it.
+#[test]
+fn square_cards_size_their_columns_from_a_store_key() {
+    let items: Vec<Value> = (0..12).map(|i| json!({"id": format!("i{i}"), "path": "nothing.png", "place": i + 1, "ok": i % 3 == 0, "out": i % 5 == 0})).collect();
+    let card = json!({"type": "stack", "size": "fit", "children": [
+        {"type": "image", "src": "{$item.path}", "fit": "contain", "aspect": 1},
+        {"type": "text", "size": "fit", "text": "{$item.place}", "float": {"at": "top-left", "width": 3, "height": 1}},
+        {"type": "text", "size": "fit", "when": "{$item.ok}", "text": "✓", "float": {"at": "top-right", "width": 2, "height": 1}},
+        {"type": "col", "when": "{$item.out}", "variant": "scrim", "float": {"at": "center", "width": "100%", "height": "100%"}, "children": [{"type": "text", "text": "⊘"}]},
+        {"type": "text", "size": "fit", "text": "●", "float": {"at": "bottom-right", "width": 2, "height": 1}}
+    ]});
+    let ui = json!({"root": {"type": "list", "id": "g", "items": items, "row": card,
+        "cols": {"min": "{ui.size|S=100px;M=200px;L=300px;*=200px}"}}, "store": {"ui.size": "M"}, "focus": "g"});
+    let mut s = window(ui, 100, 30);
+    let at = |s: &mut fictty::Headless| node(s, "g").cols.unwrap_or(1);
+    let m = at(&mut s);
+    s.request(json!({"op": "write", "write": "put", "key": "ui.size", "value": "S"}));
+    let small = at(&mut s);
+    s.request(json!({"op": "write", "write": "put", "key": "ui.size", "value": "L"}));
+    let large = at(&mut s);
+    assert!(small > m && m > large && large >= 1, "S {small}, M {m}, L {large}");
+    assert!(s.state().problems.is_empty(), "{:?}", s.state().problems);
+    // Each card is as tall as its square picture: a line of cards is as tall as one is wide.
+    let g = node(&mut s, "g").rect.unwrap();
+    let r0 = s.at("g", Some(0), None).unwrap();
+    let r_next_line = s.at("g", Some(large), None).unwrap();
+    let wide = g.width / large as u16;
+    let tall = r_next_line.1 - r0.1;
+    assert!(tall > 1 && tall <= wide, "a card {wide} cells wide is {tall} tall (a cell is taller than wide)");
+}
+

@@ -764,7 +764,13 @@ pub fn per_line(st: &State, n: &Node) -> usize {
     let Some(cols) = n.cols() else { return 1 };
     let width = n.id.as_deref().and_then(|id| st.local.get(id)).map_or(0., |l| l.width as f32 * st.caps.cell_w);
     let th = crate::style::Theme::of(st);
-    cols.count(width, |l| th.px(l, st.caps.cell_w))
+    // A minimum can be a template over the store (`"{ui.size|S=140px;M=200px;L=280px}"`), so a
+    // write changes the columns with no push.
+    let px = |l: &crate::model::Len| match l {
+        crate::model::Len::Spec(t) if t.contains('{') => th.px(&crate::model::Len::Spec(fill_over(st, t)), st.caps.cell_w),
+        l => th.px(l, st.caps.cell_w),
+    };
+    cols.count(width, px)
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -4089,10 +4095,15 @@ pub fn bound<'a>(st: &'a State, n: &Node) -> Option<&'a Value> {
     value_of(st, n.bind.as_deref()?)
 }
 
-/// The UI's `title` filled in: each placeholder's path read as a bind is (a store entry, a
-/// source, `@id` a list's selected row), then the template filled as a text's is.
+/// The UI's `title` filled in (see `fill_over`).
 pub fn title(st: &State) -> Option<String> {
-    let t = st.ui.title.as_deref()?;
+    st.ui.title.as_deref().map(|t| fill_over(st, t))
+}
+
+/// A template outside any node filled in (the title, a list's `cols`): each placeholder's path
+/// read as a bind is (a store entry, a source, `@id` a list's selected row), then the template
+/// filled as a text's is.
+pub fn fill_over(st: &State, t: &str) -> String {
     let mut scope = Value::Object(Default::default());
     let mut rest = t;
     while let Some(i) = rest.find('{') {
@@ -4114,7 +4125,7 @@ pub fn title(st: &State) -> Option<String> {
             }
         }
     }
-    Some(crate::model::fill(t, &scope))
+    crate::model::fill(t, &scope)
 }
 
 /// The file an `image` shows: its `src` filled from its bound value. Empty when the template

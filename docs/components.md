@@ -98,8 +98,8 @@ Children in columns that line up from line to line. Fields: `children`, `cols` (
 ### stack
 
 Children over each other, the last on top, each over the stack's own box. Sized `"fit"`, the
-first that neither floats nor is a `modal` is the base instead: the stack is as big as it is (a
-card's picture, with badges floating over it). A child with `float` sits where it says; a `modal`
+first that neither floats nor is a `modal` is the base instead, laid out down as a `col` holds it: the stack is as
+big as it is (a card's square picture, `aspect: 1`, with badges floating over it). A child with `float` sits where it says; a `modal`
 one dims what's behind it and keeps the focus. With `when`, a layer comes and goes: this is how
 dialogs and pop-ups are written.
 
@@ -247,7 +247,7 @@ as its `size` or `"fit"`). Their titles take `{$rows}`, how many rows they show.
 ### list
 
 A selectable list. Row fields: `item`, `row`, `cols` (rows to a line: a count or
-`{"min": "180px"}`), `lines`, `mark` and `lead` (what starts the selected and other rows),
+`{"min": "180px"}`, the minimum a template over the store if it likes: `"{ui.size|S=140px;*=200px}"`), `lines`, `mark` and `lead` (what starts the selected and other rows),
 `selected` (its style), `row_variant` with `variants` (a template per kind of row) and `skip`
 (rows that can't be selected), `keep`, `key`, `filter`, `empty`.
 

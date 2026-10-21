@@ -917,8 +917,9 @@ impl Portal {
             kids.push(match c.float.clone() {
                 Some(fl) => self.float(st, lk, c, &fl, &path, cx),
                 None if base == Some(k) => {
+                    // Down, as a `col` holds it, so a picture's `aspect` gives the height.
                     let shown = self.node(st, lk, &c, false, &path, cx);
-                    div().relative().size_full().flex().child(shown).into_any_element()
+                    div().relative().w_full().flex().flex_col().child(shown).into_any_element()
                 }
                 None => {
                     let covers = c.modal;
