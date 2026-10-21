@@ -97,7 +97,9 @@ Children in columns that line up from line to line. Fields: `children`, `cols` (
 
 ### stack
 
-Children over each other, the last on top. A child with `float` sits where it says; a `modal`
+Children over each other, the last on top. The first that neither floats nor is a `modal` is
+the base: a stack sized `"fit"` is as big as it is (a card's picture, with badges floating over
+it). A child with `float` sits where it says; a `modal`
 one dims what's behind it and keeps the focus. With `when`, a layer comes and goes: this is how
 dialogs and pop-ups are written.
 

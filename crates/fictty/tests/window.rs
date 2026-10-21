@@ -2147,3 +2147,19 @@ fn a_tab_in_a_buttons_label_spreads_it_across_the_button() {
     let (x, _) = s.at("one", None, None).unwrap();
     assert!(x < r.x + r.width / 4, "a plain label stays as wide as itself: {x}");
 }
+
+#[test]
+fn a_stack_sized_to_fit_is_as_tall_as_its_base() {
+    let ui = json!({"root": {"type": "col", "children": [
+        {"type": "stack", "id": "card", "size": "fit", "children": [
+            {"type": "text", "id": "body", "text": "one\ntwo\nthree"},
+            {"type": "text", "id": "badge", "size": "fit", "text": "●", "float": {"at": "top-right", "width": 2, "height": 1}}
+        ]},
+        {"type": "text", "id": "after", "text": "after"}
+    ]}});
+    let mut s = window(ui, 30, 10);
+    let card = node(&mut s, "card").rect.unwrap();
+    assert_eq!(card.height, 3, "{card:?}");
+    assert!(node(&mut s, "badge").rect.is_some_and(|b| b.y == card.y), "the float shows over it");
+    assert_eq!(node(&mut s, "after").rect.unwrap().y, card.y + 3);
+}
