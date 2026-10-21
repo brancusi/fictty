@@ -9,3 +9,8 @@ edition = "2024"
 license = "MIT"
 repository = "https://github.com/brancusi/fictty"
 homepage = "https://fictty.com"
+
+# GPUI 0.2.2 with Finder drops fixed for recent macOS (file URLs, the view registered): vendor/gpui,
+# src/platform/mac/window.rs, the lines marked "fictty:". Drop this once a GPUI release has it.
+[patch.crates-io]
+gpui = { path = "vendor/gpui" }

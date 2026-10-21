@@ -8,3 +8,7 @@ web/node_modules
 web/dist
 web/.astro
 web/.wrangler
+
+# The vendored GPUI (see Cargo.toml): its examples and lockfile stay out; the build uses neither.
+vendor/gpui/examples/
+vendor/gpui/Cargo.lock
