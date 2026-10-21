@@ -232,9 +232,12 @@ fictty theme paper                                        # choose a loaded them
   from the edges, as a node's; `x` and `y`, lengths, put its left or top edge that far in from
   the stack's instead) sits
   where it says, and a `modal` one dims what's behind it and keeps the focus: while it shows, a
-  click or the wheel anywhere outside it goes nowhere. Both cover what's under them. **`when`**
-  shows a node only while a condition holds: a bind that's set (`"dialog"`), not set
-  (`"!dialog"`), compared (`"mode=edit"`, `"$screen.width>=120"`), or several joined by ` & `.
+  click or the wheel anywhere outside it goes nowhere. Both cover what's under them with the
+  screen's background, unless they have a background of their own: then only that, so a colour
+  with alpha (`"style": {"bg": "#24252299"}`) is a scrim that lets a picture show through.
+  **`when`** shows a node only while a condition holds: a bind that's set (`"dialog"`), not set
+  (`"!dialog"`), compared (`"mode=edit"`, `"$screen.width>=120"`), several that must all hold,
+  joined by ` & `, or any of several, joined by ` | ` (`"a & b | c"` is `a & b`, or `c`).
   Its `{field}`s are filled from the node's bound value first (`"bind": "@files", "when":
   "remove/{id}"` reads the selected row's flag). `$width` and `$height`
   are the size of the area the node's parent lays it out in (a container query): a pane beside a

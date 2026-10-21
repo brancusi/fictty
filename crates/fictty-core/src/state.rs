@@ -4033,6 +4033,11 @@ pub fn holds(st: &State, cond: &str) -> bool {
 
 /// A `when` condition, with `$width` and `$height` the size of the area it's laid out in.
 pub fn holds_in(st: &State, cond: &str, size: Option<(u16, u16)>) -> bool {
+    // Either of several: `"excluded | waiting"`. It splits first, so `a & b | c` is `a & b`, or
+    // `c`.
+    if cond.contains(" | ") {
+        return cond.split(" | ").any(|c| holds_in(st, c, size));
+    }
     // Several conditions, all of which must hold: `"!trash & !confirm"`.
     if cond.contains(" & ") {
         return cond.split(" & ").all(|c| holds_in(st, c, size));
@@ -4749,6 +4754,15 @@ mod tests {
         assert_eq!(st.focus.as_deref(), Some("head"));
         update(&mut st, Msg::Screen { width: 100, height: 30 });
         assert_eq!(st.focus.as_deref(), Some("main"));
+    }
+
+    #[test]
+    fn a_condition_takes_or_as_well_as_and() {
+        let mut st = State::default();
+        update(&mut st, Msg::Push { ui: ui(json!({"root": {"type": "text", "text": "hi"}, "store": {"a": true, "b": false, "c": false, "n": 3}})) });
+        assert!(holds(&st, "b | a") && !holds(&st, "b | c"));
+        assert!(holds(&st, "a & b | !c"), "& binds tighter: (a & b) | !c");
+        assert!(!holds(&st, "a & b | c") && holds(&st, "n > 2 | b"));
     }
 
     #[test]

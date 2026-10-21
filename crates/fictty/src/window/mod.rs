@@ -882,8 +882,13 @@ impl Portal {
         let (w, h) = (float_side(fl.width.as_ref(), cell.w), float_side(fl.height.as_ref(), cell.h));
         // Its float sizes it, not `size`: it fills the box.
         let n = Node { size: None, min: None, max: None, ..n };
+        // It covers what's under it with the screen's background, unless it has one of its own:
+        // then only that, so a colour with alpha (`"#24252299"`, a scrim over a picture) lets
+        // what's under it show.
+        let own = style::resolve(st, &n);
+        let covers = own.ink.bg.is_none() && own.gradient.is_none();
         let shown = self.node(st, lk, &n, false, path, cx);
-        let face = div().id(SharedString::from(format!("float-{path}"))).flex().flex_col().flex_none().w(w).h(h).max_w_full().max_h_full().bg(lk.bg).occlude().child(shown);
+        let face = div().id(SharedString::from(format!("float-{path}"))).flex().flex_col().flex_none().w(w).h(h).max_w_full().max_h_full().when(covers, |d| d.bg(lk.bg)).occlude().child(shown);
         wrap.child(face).into_any_element()
     }
 

@@ -20,7 +20,7 @@ a `[type]` placeholder until the step named).
 |---|---|
 | `id` | Stable identity: selection, folds, carets and scroll survive a push; `patch` replaces the node alone; focusable nodes need one |
 | `bind` | The store entry or data source it reads (`"books.running"`, `"@notes"` for another list's selected row) |
-| `when` | Shown only while a condition holds: `"dialog"`, `"!dialog"`, `"mode=edit"`, `"$width>=80"`, joined with ` & `. A hidden node takes no room or focus |
+| `when` | Shown only while a condition holds: `"dialog"`, `"!dialog"`, `"mode=edit"`, `"$width>=80"`, joined with ` & ` (all) or ` | ` (any). A hidden node takes no room or focus |
 | `on` | A condition, read as `when` is, that puts the node in its `on` state (theme part `button.on`): a toggle as one node |
 | `size`, `min`, `max` | Its share of its row or column: cells (`12`), `"48px"`, `"30%"`, `"*"`, `"2*"`, `"fit"`; `min` and `max` bound it in any length |
 | `pad`, `margin` | Space inside and outside: one length, `[x, y]` or `[top, right, bottom, left]`, in cells, `"8px"` or a theme `space` name (`"s2"`) |
