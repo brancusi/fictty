@@ -134,7 +134,8 @@ fn ink(lk: &Look, g: &Seg, base: Ink) -> Ink {
     ink
 }
 
-/// A type role on an element: its font, size, weight, line height and tabular numbers.
+/// A type role on an element: its font, size, weight, line height, tabular numbers and other
+/// OpenType features.
 pub fn typed<E: Styled>(mut el: E, role: Option<&Role>, fonts: &dyn Fn(&str) -> String) -> E {
     let Some(r) = role else { return el };
     if let Some(f) = r.role.font.as_deref().map(fonts).filter(|f| !f.is_empty()) {
@@ -149,8 +150,13 @@ pub fn typed<E: Styled>(mut el: E, role: Option<&Role>, fonts: &dyn Fn(&str) -> 
     if let Some(w) = r.role.weight {
         el = el.font_weight(FontWeight(w as f32));
     }
-    if r.role.tabular {
-        el.text_style().get_or_insert_with(Default::default).font_features = Some(FontFeatures(Arc::new(vec![("tnum".into(), 1)])));
+    // One list: setting features replaces any set before.
+    let mut features: Vec<(String, u32)> = r.role.features.iter().map(|(t, n)| (t.clone(), *n)).collect();
+    if r.role.tabular && !r.role.features.contains_key("tnum") {
+        features.push(("tnum".into(), 1));
+    }
+    if !features.is_empty() {
+        el.text_style().get_or_insert_with(Default::default).font_features = Some(FontFeatures(Arc::new(features)));
     }
     el
 }

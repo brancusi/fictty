@@ -168,7 +168,9 @@ pub struct Shadow {
 }
 
 /// A type role: a font (a `fonts` name or a family), size and line height in pixels, a weight
-/// (100–900), letter spacing in pixels, and whether numbers are tabular.
+/// (100–900), letter spacing in pixels, whether numbers are tabular, and OpenType features on
+/// or off by tag (`{"calt": false, "liga": false}` turns a code font's ligatures off; a number
+/// picks an alternate, `{"ss02": 1}`).
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct TypeRole {
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -183,6 +185,25 @@ pub struct TypeRole {
     pub tracking: Option<f32>,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub tabular: bool,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty", deserialize_with = "features")]
+    pub features: BTreeMap<String, u32>,
+}
+
+/// OpenType features by tag (four letters), each `true`, `false` or a number (`1` for on).
+fn features<'de, D: serde::Deserializer<'de>>(d: D) -> Result<BTreeMap<String, u32>, D::Error> {
+    let mut out = BTreeMap::new();
+    for (tag, v) in BTreeMap::<String, Value>::deserialize(d)? {
+        if tag.len() != 4 || !tag.is_ascii() {
+            return Err(wrong("a font feature's tag is four letters (calt, liga, ss01)", &Value::String(tag)));
+        }
+        let n = match &v {
+            Value::Bool(b) => u32::from(*b),
+            Value::Number(n) => n.as_u64().and_then(|n| u32::try_from(n).ok()).ok_or_else(|| wrong("a font feature is true, false or a number", &v))?,
+            _ => return Err(wrong("a font feature is true, false or a number", &v)),
+        };
+        out.insert(tag, n);
+    }
+    Ok(out)
 }
 
 /// A background: a colour, or a gradient between two at an angle (degrees, 180 is top to
@@ -2438,6 +2459,14 @@ mod tests {
         assert_eq!(grid_lines(&[1, 1, 2, 1, 5], 3), vec![vec![(0, 0, 1), (1, 1, 1)], vec![(2, 0, 2), (3, 2, 1)], vec![(4, 0, 3)]]);
         assert!(grid_lines(&[], 3).is_empty());
         assert_eq!(grid_lines(&[1, 1], 0), vec![vec![(0, 0, 1)], vec![(1, 0, 1)]], "no columns is one");
+    }
+
+    #[test]
+    fn a_type_roles_features_read_as_on_off_or_a_number_by_four_letter_tag() {
+        let r: TypeRole = serde_json::from_value(json!({"font": "Fira Code", "features": {"calt": false, "liga": false, "ss02": 1, "cv01": true}})).unwrap();
+        assert_eq!(r.features.into_iter().collect::<Vec<_>>(), [("calt".into(), 0), ("cv01".into(), 1), ("liga".into(), 0), ("ss02".into(), 1)]);
+        assert!(serde_json::from_value::<TypeRole>(json!({"features": {"ligatures": false}})).is_err());
+        assert!(serde_json::from_value::<TypeRole>(json!({"features": {"calt": "off"}})).is_err());
     }
 
     #[test]

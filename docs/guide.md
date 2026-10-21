@@ -461,7 +461,9 @@ a family (`"Georgia"`) or a font file beside the themes (`"fonts/Anton.ttf"`), l
 time it's needed; a file that doesn't load is a problem, and its text falls back to the default. A node asks for a role through its style, `"style": {"type": "display"}`
 (a node's own `type` is its kind), and markup asks with `<display>…</>`: a line takes the first
 role it names. A role named like a part (`title`) is a problem, since `<title>` would take the
-part's ink as well. `tabular` lines numbers up; `tracking` reads back but isn't drawn yet. Text
+part's ink as well. `tabular` lines numbers up; `features` turns OpenType features on or
+off by tag (`{"calt": false, "liga": false}` for a code font without ligatures, `{"ss02": 1}`
+for an alternate set); `tracking` reads back but isn't drawn yet. Text
 wraps; `"wrap": false` keeps each line on one, and `"lines": 2` shows at most two. A line that
 doesn't fit ends in `…`: a row keeps the part after its tab (a time, a count) whole while it
 can, and `keep` (cells) holds room for the left before the right is cut too. The readback marks
