@@ -36,6 +36,9 @@ pub struct Shown {
     /// along it: scrolled past, and what it holds.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub scroll: Option<(f32, usize)>,
+    /// A `resize` node's height, in pixels, while its handle has set one (dragging, or kept).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resize: Option<f32>,
     /// How many rows a list lays out to a line, while it's more than one (its `cols`, counted
     /// for the width it had when they fit as many as there's room for).
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -134,6 +137,7 @@ fn shown(st: &State, n: &Node, depth: usize, key: &str, (rects, cut): Frame) -> 
         drop: st.drag.as_ref().filter(|d| n.id.as_deref() == Some(d.id.as_str())).and_then(|d| d.over.as_ref()).map(|o| (o.row, o.side.name().to_string())),
         footer: s_footer(st, n),
         scroll: s_scroll(st, n),
+        resize: state::resized(st, n).map(f32::round),
         cols: Some(state::per_line(st, n)).filter(|c| *c > 1),
         entries: if n.field().is_some() { state::doc_keys(st, n).len() } else { 0 },
         mixed: state::doc_key(st, n).is_some_and(|k| k.starts_with(state::MIXED)),
@@ -234,6 +238,11 @@ fn s_scroll(st: &State, n: &Node) -> Option<(f32, usize)> {
         let (view, content) = local.extent?;
         return (content > view + 0.5).then(|| ((local.offset * 10.).round() / 10., content.round() as usize));
     }
+    if n.field().is_some() {
+        // An editor's, in rows, while its text is longer than it shows.
+        let (at, total, shown) = state::editor_rows(st, n.id.as_deref()?)?;
+        return (shown > 0 && total > shown).then_some((at as f32, total));
+    }
     n.rows()?;
     let lines = state::Lines::of(st, n);
     let at = lines.offset(Some(local));
@@ -300,6 +309,9 @@ fn outline_with(shown: &[Shown], styled: bool) -> String {
         }
         if let Some((at, of)) = s.scroll {
             line.push_str(&format!(" (scroll {at}/{of})"));
+        }
+        if let Some(h) = s.resize {
+            line.push_str(&format!(" (resize {h}px)"));
         }
         if s.entries > 1 {
             line.push_str(&format!(" ({} entries{})", s.entries, if s.mixed { ", mixed" } else { "" }));

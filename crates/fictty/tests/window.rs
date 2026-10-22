@@ -2237,3 +2237,54 @@ fn square_cards_size_their_columns_from_a_store_key() {
     assert!(tall > 1 && tall <= wide, "a card {wide} cells wide is {tall} tall (a cell is taller than wide)");
 }
 
+
+/// Files, and a caption editor beside them whose bottom edge drags it taller or shorter. The
+/// editor is 110 px tall: its handle (the bottom 8 px) is under the middle of its fifth row.
+fn resizable(text: &str) -> Value {
+    json!({
+        "data": {"files": {"value": [{"id": "a"}, {"id": "b"}]}},
+        "store": {"caption/a": text, "caption/b": "short"},
+        "root": {"type": "row", "children": [
+            {"type": "list", "id": "files", "bind": "files", "item": "{id}", "size": 10},
+            {"type": "col", "children": [
+                {"type": "editor", "id": "caption", "bind": "@files", "doc": "caption/{id}", "size": "110px", "min": "60px", "max": "200px",
+                 "resize": "ui.caption_height"},
+                {"type": "text", "text": "below"}]}]}
+    })
+}
+
+#[test]
+fn a_resize_handle_drags_a_node_taller_and_the_store_keeps_it_across_rows() {
+    let mut s = window(resizable("one"), 60, 14);
+    let e = node(&mut s, "caption").rect.unwrap();
+    assert_eq!(node(&mut s, "caption").resize, None, "no height set yet: its size holds");
+    // Down two rows from the handle: 48 px taller, following the mouse before it lets go.
+    s.mouse("press", e.x + 4, e.y + 4).mouse("drag", e.x + 4, e.y + 5);
+    assert_eq!(node(&mut s, "caption").resize, Some(134.), "the frame follows the drag");
+    assert!(!s.state().store.contains_key("ui.caption_height"), "nothing kept until it lets go");
+    s.mouse("drag", e.x + 4, e.y + 6).mouse("release", e.x + 4, e.y + 6);
+    assert_eq!(s.state().store["ui.caption_height"].read()["value"], json!(158.0));
+    let r = node(&mut s, "caption").rect.unwrap();
+    assert_eq!((r.height, node(&mut s, "caption").resize), (7, Some(158.)), "158 px is six and a half rows");
+    assert!(fictty::readback::outline(&s.readback()).contains("(resize 158px)"), "the readback says so");
+    // Another row selected: the same height, since the key isn't the row's.
+    s.msg(Msg::Click { id: "files".into(), row: Some(1), tab: None });
+    assert_eq!(node(&mut s, "caption").rect.unwrap().height, 7);
+    // Past its `max`, it stops there. Its handle is now under the middle of its seventh row.
+    s.mouse("press", e.x + 4, e.y + 6).mouse("drag", e.x + 4, e.y + 12).mouse("release", e.x + 4, e.y + 12);
+    assert!(node(&mut s, "caption").rect.unwrap().height <= 9, "held to its max (200 px)");
+}
+
+#[test]
+fn an_editor_with_more_text_than_it_shows_reads_back_its_scroll() {
+    let long = (1..=12).map(|i| format!("line {i}")).collect::<Vec<_>>().join("\n");
+    let mut s = window(resizable(&long), 60, 14);
+    let n = node(&mut s, "caption");
+    let (at, of) = n.scroll.expect("more text than it shows: a scrollbar");
+    assert_eq!((at, of), (0., 12));
+    let e = node(&mut s, "caption").rect.unwrap();
+    s.mouse("wheel-down", e.x + 4, e.y + 1);
+    assert!(node(&mut s, "caption").scroll.unwrap().0 > 0., "the wheel scrolls it, and the readback follows");
+    s.request(json!({"op": "write", "key": "ui.caption_height", "write": "put", "value": 400}));
+    assert_eq!(node(&mut s, "caption").scroll.map(|x| x.1), Some(12), "held to 200 px, it still doesn't show all twelve lines");
+}

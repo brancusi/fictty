@@ -454,6 +454,12 @@ pub struct Node {
     /// it is (the wheel, Page Up and Down, the focus brought into view); the offset is kept by id.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub scroll: bool,
+    /// A drag handle on its bottom edge (the window): dragging it sets how tall the node is, kept
+    /// in the store under this key (a template; pixels, a number) when the drag lets go, so it
+    /// holds across rows and sessions. Down a column, a height kept there stands for `size`,
+    /// within `min` and `max` and never under a line; with none, `size` holds.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resize: Option<String>,
     #[serde(flatten)]
     pub kind: Kind,
 }
@@ -511,6 +517,7 @@ impl Default for Node {
             aspect: None,
             span: None,
             scroll: false,
+            resize: None,
             kind: Kind::Text { text: String::new(), wrap: None, lines: None },
         }
     }

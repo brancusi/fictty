@@ -17,8 +17,8 @@ use std::collections::BTreeMap;
 pub const STATES: [&str; 7] = ["hover", "focused", "active", "selected", "on", "disabled", "blur"];
 
 /// The parts the runtime draws inside a node, besides each component's own (its `type`).
-const INNER: [&str; 34] = [
-    "drag.ghost", "drop.hover", "drop.index", "row.pending", "screen", "panel", "border", "title", "row", "empty", "status", "status.error", "toast", "table.header", "table.total", "tabs.selected", "tabs.idle",
+const INNER: [&str; 35] = [
+    "resize.handle", "drag.ghost", "drop.hover", "drop.index", "row.pending", "screen", "panel", "border", "title", "row", "empty", "status", "status.error", "toast", "table.header", "table.total", "tabs.selected", "tabs.idle",
     "tabs.underline", "editor.caret", "editor.selection", "input.placeholder", "md.heading", "md.bullet", "md.quote", "md.code",
     "md.task", "md.done", "md.link", "scrollbar", "scrollbar.thumb", "tree.guide", "bars.label", "gauge.fill", "spinner",
 ];
@@ -54,6 +54,7 @@ const DEFAULT_PARTS: &str = r#"{
     "row.selected.blur": {"fg": "fg", "bg": "hover"},
     "scrollbar": {"shape": "thin"},
     "scrollbar.thumb": {"bg": "dim", "radius": 3, "opacity": 0.5},
+    "resize.handle": {"bg": "dim", "radius": 2, "opacity": 0.45, "cursor": "resize"},
     "drag.ghost": {"opacity": 0.4},
     "drop.hover": {"bg": "accent", "radius": 2},
     "drop.index": {"fg": "bg", "bg": "accent", "pad": [0, "4px"], "radius": 3},
@@ -86,7 +87,7 @@ fn defaults() -> &'static BTreeMap<String, Part> {
 /// The shapes a style can ask a component to take.
 const SHAPES: [&str; 11] = ["underline", "pill", "segment", "plain", "thin", "overlay", "none", "rounded", "square", "double", "thick"];
 
-const CURSORS: [&str; 4] = ["default", "pointer", "text", "grab"];
+const CURSORS: [&str; 5] = ["default", "pointer", "text", "grab", "resize"];
 
 const LINES: [&str; 3] = ["solid", "dashed", "double"];
 
@@ -874,6 +875,9 @@ pub fn problems(st: &State, nodes: &[&Node]) -> Vec<String> {
         } else if n.scroll && n.id.is_none() {
             out.push(format!("{} {who}: scroll keeps its offset by id, so it needs an id", n.kind_name()));
         }
+        if n.resize.is_some() && n.id.is_none() {
+            out.push(format!("{} {who}: resize drags a node the window finds by id, so it needs an id", n.kind_name()));
+        }
         match n.cols() {
             Some(crate::model::Cols::Fill { .. }) if n.id.is_none() => {
                 out.push(format!("{} {who}: cols {{\"min\": …}} counts from the width it was laid out across, kept by id, so it needs an id", n.kind_name()));
@@ -1118,7 +1122,7 @@ mod tests {
             "theme t: space big: \"huge\" isn't cells or pixels",
             "list l: it skips \"header\", which isn't one of its row variants",
             "x: \"violet\" isn't a token or a colour",
-            "x: cursor \"hand\" isn't one of default, pointer, text, grab",
+            "x: cursor \"hand\" isn't one of default, pointer, text, grab, resize",
         ]);
     }
 }

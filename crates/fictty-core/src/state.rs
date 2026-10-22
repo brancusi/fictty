@@ -429,6 +429,10 @@ pub struct Local {
     /// selected when it comes.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub want: Option<String>,
+    /// How tall a `resize` node is while its handle is being dragged, in pixels; the store
+    /// keeps the height once the drag lets go.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sizing: Option<f32>,
     /// The size of the area its parent laid it out in, last frame, for a `when` that reads
     /// `$width` or `$height` (the view reports it).
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -928,6 +932,14 @@ pub enum Msg {
     /// The cells an editor node got in the last frame (the view reports them; the runtime sends
     /// this when they differ from what the editor has).
     Size { id: String, width: u16, height: u16 },
+    /// A `resize` node's handle dragged to `height` pixels: the node follows while it moves, and
+    /// when it lets go (`done`) the height goes into the store under its `resize` key.
+    Resize {
+        id: String,
+        height: f32,
+        #[serde(default)]
+        done: bool,
+    },
     /// Replace the layers only.
     Layers { layers: Vec<LayerSpec> },
     /// Move the focus to a node (one that takes it), and nothing else: no click action runs.
@@ -987,7 +999,7 @@ pub enum Pick {
 pub fn update(st: &mut State, msg: Msg) -> Vec<Effect> {
     let checks = matches!(msg, Msg::Push { .. } | Msg::Patch { .. } | Msg::Data { .. } | Msg::Write { .. } | Msg::Theme { .. } | Msg::Key { .. } | Msg::Font { .. });
     let writes = st.store_writes;
-    let quiet = matches!(msg, Msg::Tick { .. } | Msg::Hover { .. } | Msg::Lift { .. } | Msg::Carry { .. } | Msg::Bring { .. } | Msg::Stats { .. } | Msg::Activity { .. } | Msg::Caps { .. } | Msg::Size { .. } | Msg::Extent { .. } | Msg::Revealed | Msg::Heights { .. });
+    let quiet = matches!(msg, Msg::Tick { .. } | Msg::Hover { .. } | Msg::Lift { .. } | Msg::Carry { .. } | Msg::Bring { .. } | Msg::Stats { .. } | Msg::Activity { .. } | Msg::Caps { .. } | Msg::Size { .. } | Msg::Resize { done: false, .. } | Msg::Extent { .. } | Msg::Revealed | Msg::Heights { .. });
     // A source's new value changes only the rows of the nodes that read it.
     let only = match &msg {
         Msg::Data { name, .. } => Some(name.clone()),
@@ -1587,6 +1599,19 @@ fn apply(st: &mut State, msg: Msg) -> Vec<Effect> {
         }
         Msg::Activity { op, what, at } => {
             log(st, op, what, at);
+            vec![]
+        }
+        Msg::Resize { id, height, done } => {
+            let Some(key) = st.node(&id).and_then(|n| n.resize.clone()) else { return vec![] };
+            let height = height.max(st.caps.cell_h.max(1.)).round();
+            st.local.entry(id).or_default().sizing = (!done).then_some(height);
+            if done {
+                let key = fill_over(st, &key);
+                if let Err(e) = write_entry(st, &key, Write::Put { value: height.into() }, None, "person") {
+                    st.status = Some(format!("resize: {e}"));
+                }
+                settle(st);
+            }
             vec![]
         }
         Msg::Size { id, width, height } => {
@@ -4115,6 +4140,38 @@ pub fn title(st: &State) -> Option<String> {
 /// A template outside any node filled in (the title, a list's `cols`): each placeholder's path
 /// read as a bind is (a store entry, a source, `@id` a list's selected row), then the template
 /// filled as a text's is.
+/// How tall a `resize` node is to be, in pixels: as its handle is being dragged, else the height
+/// kept under its key (a number, or `"180px"`), never under a line; none when nothing says.
+pub fn resized(st: &State, n: &Node) -> Option<f32> {
+    let key = n.resize.as_deref()?;
+    let held = n.id.as_deref().and_then(|id| st.local.get(id)).and_then(|l| l.sizing);
+    let kept = || match st.store.get(&fill_over(st, key)).map(|e| &e.body) {
+        Some(Body::Value { value: Value::Number(v) }) => v.as_f64().map(|v| v as f32),
+        Some(Body::Value { value: Value::String(v) }) => v.trim().trim_end_matches("px").trim().parse().ok(),
+        _ => None,
+    };
+    held.or_else(kept).filter(|h| h.is_finite() && *h > 0.).map(|h| h.max(st.caps.cell_h.max(1.)))
+}
+
+/// Where an editor's view of its text is and how much there is, in rows: the rows scrolled past,
+/// the rows the text wraps to, the rows it shows. For its scrollbar and the readback.
+pub fn editor_rows(st: &State, id: &str) -> Option<(usize, usize, usize)> {
+    let (key, view) = field_view(st, id)?;
+    let Some(Body::Text { doc }) = st.store.get(&key).map(|e| &e.body) else { return None };
+    let l = caretline::layout::Layout::of(doc, view);
+    let (mut total, mut above) = (0, 0);
+    for line in 0..=l.last_line() {
+        if line == view.scroll.line {
+            above = total + view.scroll.row;
+        }
+        total += l.line_rows(line);
+        if total >= 100_000 {
+            break;
+        }
+    }
+    Some((above, total, view.text_rows()))
+}
+
 pub fn fill_over(st: &State, t: &str) -> String {
     let mut scope = Value::Object(Default::default());
     let mut rest = t;

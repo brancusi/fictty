@@ -29,6 +29,7 @@ a `[type]` placeholder until the step named).
 | `aspect` | Width over height, `1.5` or `"16/9"` |
 | `span` | In a `grid`, how many columns it takes |
 | `scroll` | A `col`, `grid` or `each` scrolls down, a `row` across, with its offset kept in the state by id |
+| `resize` | A store key (a template): a drag handle on the node's bottom edge sets its height, kept there in pixels when the drag lets go; down a column that height stands for `size`, within `min` and `max` (window only) |
 | `variant`, `tone`, `style` | A named look from the theme, a meaning for its text colour (`warn`, `neg`, `accent`), and its own whole style (`fg`, `bg`, `type`, `pad`, `radius`, `border`, `shadow`, `ring`, `opacity`, `cursor` and the rest) |
 | `border`, `edge`, `title` | A border, its shape (`rounded`, `double`, `thick`, `plain`); a `title` draws one with the title in it |
 | `backdrop` | A card behind the node: `fill`, `fill2` (a gradient down), `border`, `radius`, `shadow`, `glow` |
@@ -217,6 +218,11 @@ A multi-line text editor. Fields: `text` (seeds the entry), `bind` (the entry, d
  "placeholder": "Write…",
  "links": [{"kind": "wiki", "click": {"select": "{$match}", "in": "notes"}}]}
 ```
+
+While its text is longer than it shows, it draws the scrollbar lists have and the readback shows
+`(scroll 3/12)`, rows scrolled past and rows its text wraps to. With `"resize": "ui.caption_h"`
+its bottom edge has a handle that drags it taller or shorter; the height is kept under that key,
+not the row's, so it holds whichever row the editor shows.
 
 **Window:** partial: it draws, types, selects, scrolls and styles Markdown and links, and
 Daybook's box and link clicks run in the window (`tests/journal.rs`). Step 5 moves the last grid

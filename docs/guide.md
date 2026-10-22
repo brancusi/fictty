@@ -409,6 +409,15 @@ document with its undo history), each with a revision (`rev`) and who wrote it l
   holds more than it shows, a column draws a scrollbar and the readback shows `(scroll 12/40)`,
   cells scrolled past and cells held (`scroll` in the JSON, and `extent` in its `get --state`
   view state). `scroll` on anything else, or without an id, is a problem.
+- **A handle to resize.** `"resize": "<store key>"` on a node with an id gives it a grip on its
+  bottom edge (the `resize.handle` part; its cursor is `resize`): dragging it makes the node
+  taller or shorter, following the mouse (the height held in its `get --state` view state as `sizing`),
+  and when the button comes up the height goes into the store under that key, in pixels. Down a
+  column, a height held there stands for the node's `size`, within its `min` and `max` and never
+  under a line; with none, `size` holds. The key is the app's to choose: one that isn't a row's
+  (`ui.caption_h`) keeps the height whichever row an editor shows; an agent sets it with `put`.
+  The readback shows `(resize 180px)`. An editor with more text than it shows draws a scrollbar
+  and reads back `(scroll 3/12)`, in rows.
 
 ## Themes
 
@@ -459,7 +468,7 @@ name); `radius` (pixels or a
 `"2px dashed accent"`, `"accent"`); `shadow` (a
 `depth` name, or `none`); `ring` (`width`, `offset`, `color`); `shape` (tabs `underline`, `pill`,
 `segment`, `plain`; a scrollbar `thin`, `overlay`, `none`; an edge `rounded`, `square`, `double`,
-`thick`); `opacity`; `cursor` (`default`, `pointer`, `text`, `grab`). A style never arranges: no
+`thick`); `opacity`; `cursor` (`default`, `pointer`, `text`, `grab`, `resize`). A style never arranges: no
 size, gap or position. The scales let a theme change its whole feel in a few lines; `fonts`
 names families or font files that type roles use. The window draws all of it.
 

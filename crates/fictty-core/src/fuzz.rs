@@ -857,6 +857,7 @@ mod tests {
             bringing: 0,
             drop: None,
             scroll: None,
+            resize: None,
             cols: None,
             entries: 0,
             mixed: false,

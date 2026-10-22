@@ -16,6 +16,17 @@ Six days of work after the last tag: a fuzz driver and a pseudo-terminal sim, th
 native GPUI window on macOS (phase 0, then phase 1's steps 1 to 4), a public demo, two dogfooding
 apps (Daybook and Nocturne) and the fixes they found.
 
+### 22 October: a handle to resize, and editors' scrollbars
+
+- `"resize": "<store key>"` on a node: a grip on its bottom edge (the `resize.handle` part, a
+  `resize` cursor) drags it taller or shorter. The node follows the mouse (`Msg::Resize`, the
+  height held in its view state as `sizing`), and when it lets go the height goes into the store
+  under the key, in pixels, so it outlives the session and, with a key that isn't a row's, holds
+  across rows (Caption Genius's caption fields). Down a column the height stands for `size`,
+  within `min` and `max`. The readback shows `(resize 180px)`.
+- An editor with more text than it shows draws the scrollbar lists have, and the readback shows
+  its `(scroll 3/12)` in rows (`state::editor_rows`).
+
 ### 17 October: rows as nodes (step 4) and the demo audit
 
 **Lists, trees and tables**

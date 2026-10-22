@@ -21,7 +21,7 @@ use crate::model::{Align, Aspect, Filled, Fit, Float, Justify, Kind, Len, Lens, 
 use crate::state::{self, Msg, State};
 use anyhow::Result;
 use gpui::{
-    AnyElement, App, Application, Bounds, ObjectFit, StyledImage, img, ClipboardItem, Context, DefiniteLength, DispatchPhase, FocusHandle, HighlightStyle, KeyDownEvent, MouseButton, MouseDownEvent, MouseMoveEvent, Pixels,
+    AnyElement, App, Application, Bounds, CursorStyle, ObjectFit, StyledImage, img, ClipboardItem, Context, DefiniteLength, DispatchPhase, FocusHandle, HighlightStyle, KeyDownEvent, MouseButton, MouseDownEvent, MouseMoveEvent, Pixels,
     MouseUpEvent, ExternalPaths, Point, ScrollWheelEvent, SharedString, StyledText, Window, WindowBounds, WindowOptions, canvas, div, font, prelude::*, px, relative, size,
 };
 use serde_json::{Value, json};
@@ -186,6 +186,9 @@ struct Portal {
     shown: Rc<RefCell<DrawnHits>>,
     /// The editor a press in its text started a drag in, until the button comes up.
     drag: Option<String>,
+    /// A `resize` handle being dragged, until the button comes up: the node, where the mouse
+    /// went down, how tall the node was then and how tall the drag has made it, in pixels.
+    sizing: Option<(String, f32, f32, f32)>,
     /// The wheel's travel over a node, not yet a whole scroll step.
     wheel: (String, f32),
     /// When (on the logical clock) the frame being built changes by itself next.
@@ -242,7 +245,7 @@ impl Portal {
         engine.send(Msg::Caps { caps: state::Caps { graphics: false, cell_w: cell.w, cell_h: cell.h }, text_sizing: false });
         let focus = cx.focus_handle();
         focus.focus(window);
-        Portal { engine, focus, cell, screen: (0, 0), laid: Shared::default(), shown: Rc::default(), drag: None, wheel: (String::new(), 0.0), wake: None, faces: HashMap::new(), fitting: 0, loose: None, row: None, press: None, per_line: HashMap::new(), brought: None, title: None }
+        Portal { engine, focus, cell, screen: (0, 0), laid: Shared::default(), shown: Rc::default(), drag: None, sizing: None, wheel: (String::new(), 0.0), wake: None, faces: HashMap::new(), fitting: 0, loose: None, row: None, press: None, per_line: HashMap::new(), brought: None, title: None }
     }
 
     fn send(&mut self, msg: Msg, cx: &mut Context<Self>) {
@@ -299,6 +302,13 @@ impl Portal {
         }
         if e.dragging() && self.press.is_some() {
             return self.carry(e.position, cx);
+        }
+        if let Some((id, from, was, _)) = self.sizing.clone().filter(|_| e.dragging()) {
+            let height = was + (f32::from(e.position.y) - from);
+            if let Some(s) = self.sizing.as_mut() {
+                s.3 = height;
+            }
+            return self.send(Msg::Resize { id, height, done: false }, cx);
         }
         if let Some(id) = self.drag.clone().filter(|_| e.dragging()) {
             if let Some((col, row)) = self.in_text(&id, e.position) {
@@ -389,6 +399,9 @@ impl Portal {
     /// The button came up: a press that never moved is the click it was; a drag lets go.
     fn up(&mut self, cx: &mut Context<Self>) {
         self.drag = None;
+        if let Some((id, _, _, height)) = self.sizing.take() {
+            self.send(Msg::Resize { id, height, done: true }, cx);
+        }
         if let Some(p) = self.press.take() {
             self.send(if p.lifted { Msg::Release } else { p.click }, cx);
         }
@@ -620,6 +633,15 @@ impl Portal {
         if !state::shown(st, n) {
             return div().into_any_element();
         }
+        // A height its handle set stands for its `size` down a column (`min` and `max` still hold).
+        let held;
+        let n = match state::resized(st, n).filter(|_| !along_row) {
+            Some(h) => {
+                held = Node { size: Some(Size::Spec(format!("{h}px"))), ..n.clone() };
+                &held
+            }
+            None => n,
+        };
         let id = n.id.clone().unwrap_or_default();
         let key = if id.is_empty() { path.to_string() } else { id.clone() };
         let focused = !id.is_empty() && st.focus.as_deref() == Some(id.as_str());
@@ -830,6 +852,9 @@ impl Portal {
         };
         self.fitting -= fits as usize;
         el = el.child(body);
+        if n.resize.is_some() && !id.is_empty() && !along_row {
+            el = el.child(self.handle(st, lk, &id, cx));
+        }
         // A press on a node with an id that nothing inside it took (its rows, tabs, text and
         // buttons take their own): the core passes it on to the nearest `click`.
         if !id.is_empty() {
@@ -1278,6 +1303,38 @@ impl Portal {
             .into_any_element()
     }
 
+    /// A `resize` node's handle: a grip (the `resize.handle` part) on its bottom edge. A press
+    /// there starts a drag that sets how tall the node is (`Msg::Resize`), from how tall it was.
+    fn handle(&self, st: &State, lk: &Look, id: &str, cx: &mut Context<Self>) -> AnyElement {
+        let grip = lk.boxed(div().w(px(28.)).h(px(3.)), &style::inner(st, "resize.handle", &[]), (self.cell.w, self.cell.h), [0.; 4]);
+        let target = id.to_string();
+        div()
+            .id(SharedString::from(format!("resize-{id}")))
+            .absolute()
+            .left_0()
+            .right_0()
+            .bottom_0()
+            .h(px(8.))
+            .flex()
+            .items_end()
+            .justify_center()
+            .pb(px(1.))
+            .cursor(CursorStyle::ResizeUpDown)
+            .child(grip)
+            .on_mouse_down(
+                MouseButton::Left,
+                cx.listener(move |this, e: &MouseDownEvent, _, cx| {
+                    cx.stop_propagation();
+                    // How tall it is now: its own box as the last frame laid it out.
+                    let was = this.shown.borrow().iter().find(|(_, h)| h.id == target && h.row.is_none() && !h.text && h.part.is_none()).map(|(b, _)| f32::from(b.size.height));
+                    if let Some(was) = was {
+                        this.sizing = Some((target.clone(), f32::from(e.position.y), was, was));
+                    }
+                }),
+            )
+            .into_any_element()
+    }
+
     /// A list's scrollbar while it has more lines than it shows: a thumb as tall as the share
     /// shown, where the view is, from the `scrollbar` and `scrollbar.thumb` parts (`shape:
     /// "none"` draws none).
@@ -1389,6 +1446,10 @@ impl Portal {
                     text = text.child(div().absolute().left(px(left)).top(px(top + 3.)).w(px(2.)).h(px(cell.h - 6.)).bg(caret));
                 }
             }
+        }
+        // More text than it shows: the scrollbar lists have, where the view is in it.
+        if !single {
+            text = text.children(state::editor_rows(st, id).and_then(|(at, total, shown)| self.scrollbar(st, lk, at as f32, total as f32, shown as f32)));
         }
         let (press, wheel) = (id.to_string(), id.to_string());
         div()

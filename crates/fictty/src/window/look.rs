@@ -191,6 +191,7 @@ impl<'a> Look<'a> {
             Some("pointer") => el.cursor(CursorStyle::PointingHand),
             Some("text") => el.cursor(CursorStyle::IBeam),
             Some("grab") => el.cursor(CursorStyle::OpenHand),
+            Some("resize") => el.cursor(CursorStyle::ResizeUpDown),
             _ => el,
         }
     }
