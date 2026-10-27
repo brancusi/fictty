@@ -112,6 +112,10 @@ pub struct State {
     /// it's done (`Msg::Revealed`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reveal: Option<String>,
+    /// The node a wheel or trackpad gesture is moving, and when it last moved it: the gesture's
+    /// until it pauses (`LATCH_MS`), whatever the pointer passes over (`Msg::Wheel`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub latch: Option<(String, u64)>,
     /// Keys typed into an editor whose hosted text is still loading: (entry, editor, key), typed
     /// in order once it lands.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -441,6 +445,9 @@ pub struct Local {
     /// across a row), fractions too.
     #[serde(default, skip_serializing_if = "is_nothing")]
     pub offset: f32,
+    /// Part of a row the wheel has moved an editor by, not yet a whole one.
+    #[serde(default, skip_serializing_if = "is_nothing")]
+    pub wheel: f32,
     /// A scrolling container's view and what it holds, in cells along it, as the last frame laid
     /// them out (the view reports it).
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -814,6 +821,63 @@ fn pan_from(st: &mut State, id: &str, lines: f32) {
     }
 }
 
+/// How long a wheel or trackpad gesture keeps its node after its last move: a trackpad's
+/// momentum keeps it, a pause lets it go.
+pub const LATCH_MS: u64 = 150;
+
+/// The wheel over node `id`, as browsers and macOS scroll: a gesture moves the node it started
+/// in until it pauses, never what the pointer passes over on the way (an editor in a scrolling
+/// column); a new one moves the innermost of `id` and the scrollers around it that has room to
+/// move that way, so a field at its end, or with nothing more to show, hands it on.
+fn wheel(st: &mut State, id: &str, lines: f32) {
+    if lines == 0. {
+        return;
+    }
+    let now = st.now_ms;
+    let held = st.latch.as_ref().filter(|(l, at)| now.saturating_sub(*at) <= LATCH_MS && st.node(l).is_some()).map(|(l, _)| l.clone());
+    let target = held.unwrap_or_else(|| {
+        let mut chain = vec![id.to_string()];
+        chain.extend(scrollers_around(st, id).into_iter().filter(|s| s != id));
+        chain.into_iter().find(|t| room(st, t, lines)).unwrap_or_else(|| id.to_string())
+    });
+    st.latch = Some((target.clone(), now));
+    let Some(n) = st.node(&target) else { return };
+    if n.field().is_some() {
+        // An editor scrolls by whole rows: what's less than one waits for more.
+        let local = st.local.entry(target.clone()).or_default();
+        let total = local.wheel + lines;
+        let rows = total.trunc();
+        local.wheel = total - rows;
+        if rows != 0. {
+            on_doc(st, &target, caretline::Msg::Scroll { rows: rows as i32 }, "person");
+        }
+    } else if n.rows().is_some() || matches!(n.kind, Kind::Table { .. }) {
+        pan(st, &target, lines);
+    } else {
+        scroll_by(st, &target, lines);
+    }
+}
+
+/// Whether node `id` can move `lines`' way: an editor, list or scroller with more to show there.
+fn room(st: &State, id: &str, lines: f32) -> bool {
+    let Some(n) = st.node(id) else { return false };
+    let down = lines > 0.;
+    if n.field().is_some() {
+        return editor_rows(st, id).is_some_and(|(above, total, shown)| if down { above + shown < total } else { above > 0 });
+    }
+    let Some(local) = st.local.get(id) else { return false };
+    if n.scrolls_down().is_some() {
+        let Some((view, content)) = local.extent else { return false };
+        return if down { local.offset < content - view - 0.01 } else { local.offset > 0.01 };
+    }
+    if (n.rows().is_some() || matches!(n.kind, Kind::Table { .. })) && local.rows > 0 {
+        let lines = Lines::of(st, n);
+        let at = lines.offset(Some(local));
+        return if down { at < lines.most() - 0.001 } else { at > 0.001 };
+    }
+    false
+}
+
 /// Scroll a container by `cells` along it, kept inside what it holds: what it couldn't take.
 fn scroll_by(st: &mut State, id: &str, cells: f32) -> f32 {
     let local = st.local.entry(id.to_string()).or_default();
@@ -943,6 +1007,10 @@ pub enum Msg {
     /// node can't take (a list at its end, a node that doesn't scroll) goes to the scroller
     /// around it.
     Pan { id: String, lines: f32 },
+    /// The wheel or the trackpad moved by `lines` cells (fractions too) over node `id` (a list,
+    /// an editor or a scrolling container): the gesture's node moves (`State::latch`), or at
+    /// its start the innermost of `id` and the scrollers around it with room to move that way.
+    Wheel { id: String, lines: f32 },
     /// A scrolling container's view and what it holds, in cells along it, as a frame laid them
     /// out.
     Extent { id: String, view: f32, content: f32 },
@@ -1286,7 +1354,7 @@ fn apply(st: &mut State, msg: Msg) -> Vec<Effect> {
             fx.extend(release(st));
             fx
         }
-        Msg::Click { id, .. } | Msg::Pick { id, .. } | Msg::Point { id, .. } | Msg::Scroll { id, .. } | Msg::Press { id, .. } if !reachable(st, &id) => vec![],
+        Msg::Click { id, .. } | Msg::Pick { id, .. } | Msg::Point { id, .. } | Msg::Scroll { id, .. } | Msg::Wheel { id, .. } | Msg::Press { id, .. } if !reachable(st, &id) => vec![],
         Msg::Press { id, row, part } => {
             let Some(n) = st.node(&id) else { return vec![] };
             let click = if part == "fold" && matches!(n.kind, Kind::Tree { .. }) {
@@ -1533,7 +1601,7 @@ fn apply(st: &mut State, msg: Msg) -> Vec<Effect> {
             editor_effects(st, fx)
         }
         Msg::Scroll { id, by } if st.node(&id).is_some_and(|n| n.field().is_some()) => {
-            on_doc(st, &id, caretline::Msg::Scroll { rows: by as i32 * 3 }, "person");
+            wheel(st, &id, by as f32 * 3.0);
             vec![]
         }
         Msg::Scroll { id, by } => {
@@ -1556,6 +1624,10 @@ fn apply(st: &mut State, msg: Msg) -> Vec<Effect> {
         }
         Msg::Pan { id, lines } => {
             pan_from(st, &id, lines);
+            vec![]
+        }
+        Msg::Wheel { id, lines } => {
+            wheel(st, &id, lines);
             vec![]
         }
         Msg::Extent { id, view, content } => {
@@ -4555,7 +4627,7 @@ mod tests {
         // The editor back, with a different seed: the note wins over the seed.
         let mut again = note();
         if let Some(c) = again.root.children_mut() {
-            c[0].kind = Kind::Editor { text: "a new seed".into(), doc: None, placeholder: None, syntax: None, readonly: false, tab: None, tasks: None, caret: None, links: vec![], ordered: vec![] };
+            c[0].kind = Kind::Editor { text: "a new seed".into(), doc: None, placeholder: None, syntax: None, readonly: false, tab: None, tasks: None, caret: None, links: vec![], ordered: vec![], lines: None };
         }
         update(&mut st, Msg::Push { ui: again });
         assert_eq!(text_of(&st, "note"), "hi!");

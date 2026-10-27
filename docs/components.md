@@ -211,7 +211,8 @@ A multi-line text editor. Fields: `text` (seeds the entry), `bind` (the entry, d
 `doc` (the entry's name as a template over the bound value: `"note/{id}"`), `placeholder`,
 `syntax: "markdown"` (styled headings, lists, quotes, code, task boxes), `readonly`, `tab`
 (`indent`, `indent-lines`), `tasks` (`toggle`, `cycle`), `caret` (`start`, `end`), `links`
-(`wiki`, `tag`, `url`, each with `click` and `s-click`), `ordered` (`["1.", "a.", "i."]`).
+(`wiki`, `tag`, `url`, each with `click` and `s-click`), `ordered` (`["1.", "a.", "i."]`),
+`lines` (with `size: "fit"`: `{"min": 1, "max": 6}`, how tall it grows in lines of its own text).
 
 ```json
 {"type": "editor", "id": "body", "bind": "@notes", "doc": "note/{id}", "syntax": "markdown",
@@ -219,8 +220,15 @@ A multi-line text editor. Fields: `text` (seeds the entry), `bind` (the entry, d
  "links": [{"kind": "wiki", "click": {"select": "{$match}", "in": "notes"}}]}
 ```
 
-While its text is longer than it shows, it draws the scrollbar lists have and the readback shows
-`(scroll 3/12)`, rows scrolled past and rows its text wraps to. With `"resize": "ui.caption_h"`
+Its text wraps. While its text is longer than it shows, it draws the scrollbar lists have, a
+fade over each edge the text goes on past (the `editor.fade` part's colour, else the field's
+background), and the readback shows `(scroll 3/12)`, rows scrolled past and rows its text wraps
+to. Its text takes its type role's size and line height (`"style": {"type": "caption"}`, or the
+`editor` part's `type`), still monospace, so a field can be smaller than the screen's text; its
+columns, rows and clicks follow. It looks as the `editor` part says, by state: `editor.focused`,
+`editor.hover`, `editor.readonly` (with `readonly`), with `editor.caret`, `editor.selection` and
+`input.placeholder` inside. An `input` the same, with `input`, `input.focused` (a ring by
+default); one that holds more than it shows ends in `…` until it's focused. With `"resize": "ui.caption_h"`
 its bottom edge has a handle that drags it taller or shorter; the height is kept under that key,
 not the row's, so it holds whichever row the editor shows.
 

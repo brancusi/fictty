@@ -410,8 +410,12 @@ document with its undo history), each with a revision (`rev`) and who wrote it l
   it (a share there is as long as what it shows, since there's no room to share), the rest of
   the screen keeps its place, and its offset is in the state by its `id` (it needs one), in
   cells, fractions too. The wheel and a trackpad scroll it (a row takes the vertical wheel
-  across too); over a list, the list scrolls first and the scroller around it takes what the
-  list can't, at its end. Page Down and Page Up scroll the scroller around the focus by its
+  across too). A gesture keeps moving what it started in until it pauses (150 ms on the
+  screen's clock, so a trackpad's momentum stays with it), whatever the pointer passes over: a
+  column scrolled past a field keeps scrolling. A new gesture moves the innermost list, editor
+  or scroller under the pointer that has more to show that way, else the next scroller out, so
+  a field with nothing more to show, or at its end, hands the wheel on (`State::latch`,
+  `Msg::Wheel`). Page Down and Page Up scroll the scroller around the focus by its
   view less a line. Wherever the focus goes (Tab onto a field below the fold, a click, an
   agent's `focus`), or the row it's on in a list, the scrollers around it bring it into view,
   by as little as shows it; a list's selected row is what's brought in, so arrowing through a

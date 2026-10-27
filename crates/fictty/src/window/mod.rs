@@ -79,6 +79,9 @@ struct Laid {
     /// Each editor's text area, each list's and table's rows' box, and each fitting grid's
     /// bounds, to fit cells into: the room each has.
     sizes: Vec<(String, Bounds<Pixels>)>,
+    /// The cell of each editor whose text is a size of its own (its type role's), to fit its
+    /// columns and rows into rather than the screen's.
+    cells: HashMap<String, Cell>,
     /// How tall each `fit` row a list built is: the list, the row's key, its bounds.
     heights: Vec<(String, String, Bounds<Pixels>)>,
     /// The area each node whose `when` reads `$width` or `$height` was laid out in.
@@ -195,11 +198,11 @@ struct Portal {
     shown: Rc<RefCell<DrawnHits>>,
     /// The editor a press in its text started a drag in, until the button comes up.
     drag: Option<String>,
+    /// The cell of each editor whose text is a size of its own, as last drawn.
+    field_cells: HashMap<String, Cell>,
     /// A `resize` handle being dragged, until the button comes up: the node, where the mouse
     /// went down, how tall the node was then and how tall the drag has made it, in pixels.
     sizing: Option<(String, f32, f32, f32)>,
-    /// The wheel's travel over a node, not yet a whole scroll step.
-    wheel: (String, f32),
     /// When (on the logical clock) the frame being built changes by itself next.
     wake: Option<u64>,
     /// The font files the themes name, by path, and the family each loaded as (empty when it
@@ -254,7 +257,7 @@ impl Portal {
         engine.send(Msg::Caps { caps: state::Caps { graphics: false, cell_w: cell.w, cell_h: cell.h }, text_sizing: false });
         let focus = cx.focus_handle();
         focus.focus(window);
-        Portal { engine, focus, cell, screen: (0, 0), laid: Shared::default(), shown: Rc::default(), drag: None, sizing: None, wheel: (String::new(), 0.0), wake: None, faces: HashMap::new(), fitting: 0, loose: None, row: None, press: None, per_line: HashMap::new(), brought: None, title: None }
+        Portal { engine, focus, cell, screen: (0, 0), laid: Shared::default(), shown: Rc::default(), drag: None, field_cells: HashMap::new(), sizing: None, wake: None, faces: HashMap::new(), fitting: 0, loose: None, row: None, press: None, per_line: HashMap::new(), brought: None, title: None }
     }
 
     fn send(&mut self, msg: Msg, cx: &mut Context<Self>) {
@@ -267,36 +270,18 @@ impl Portal {
         self.wake = Some(self.wake.map_or(at, |w| w.min(at)));
     }
 
-    /// The wheel over `id`: a mouse wheel's notch is a step (three rows, as in a terminal), and
-    /// a trackpad's travel a step each three rows of it.
-    /// The wheel or the trackpad over a list: its view moves by as much as the fingers did, a
-    /// pixel at a time (a line is `line_h` pixels); a mouse wheel's notch is three lines.
+    /// The wheel or the trackpad over a list or an editor: as many cells as the fingers moved, a
+    /// pixel at a time (a line is `line_h` pixels); a mouse wheel's notch is three lines. Which
+    /// node it moves is the state's to say (`Msg::Wheel`: the gesture's, or the innermost with
+    /// room), so the innermost node under the pointer sends it and nothing around it does.
     fn pan(&mut self, id: &str, e: &ScrollWheelEvent, line_h: f32, cx: &mut Context<Self>) {
-        // The list takes the wheel; what it can't take goes on to its scroller in the state.
         cx.stop_propagation();
         let lines = match e.delta {
             gpui::ScrollDelta::Lines(l) => -l.y * 3.0,
             gpui::ScrollDelta::Pixels(p) => -f32::from(p.y) / line_h.max(1.0),
         };
         if lines != 0.0 {
-            self.send(Msg::Pan { id: id.to_string(), lines }, cx);
-        }
-    }
-
-    fn wheel(&mut self, id: &str, e: &ScrollWheelEvent, cx: &mut Context<Self>) {
-        cx.stop_propagation();
-        if self.wheel.0 != id {
-            self.wheel = (id.to_string(), 0.0);
-        }
-        let step = 3.0 * self.cell.h;
-        self.wheel.1 -= match e.delta {
-            gpui::ScrollDelta::Lines(l) => l.y * step,
-            gpui::ScrollDelta::Pixels(p) => f32::from(p.y),
-        };
-        let by = (self.wheel.1 / step).trunc();
-        if by != 0.0 {
-            self.wheel.1 -= by * step;
-            self.send(Msg::Scroll { id: id.to_string(), by: by as isize }, cx);
+            self.send(Msg::Wheel { id: id.to_string(), lines }, cx);
         }
     }
 
@@ -463,7 +448,8 @@ impl Portal {
 
     /// The cell `at` falls on in editor `id`'s text, in the last painted frame.
     fn in_text(&self, id: &str, at: Point<Pixels>) -> Option<(u16, u16)> {
-        self.shown.borrow().iter().rev().find(|(_, h)| h.text && h.id == id).map(|(b, _)| self.cell.within(*b, at))
+        let cell = self.field_cells.get(id).copied().unwrap_or(self.cell);
+        self.shown.borrow().iter().rev().find(|(_, h)| h.text && h.id == id).map(|(b, _)| cell.within(*b, at))
     }
 }
 
@@ -1039,7 +1025,7 @@ impl Portal {
             .min_h(px(0.))
             .overflow_hidden()
             .child(measure_whole(&self.laid, move |l, b| l.sizes.push((fits, b))))
-            .on_scroll_wheel(cx.listener(move |this, e: &ScrollWheelEvent, _, cx| this.wheel(&wheel, e, cx)))
+            .on_scroll_wheel(cx.listener(move |this, e: &ScrollWheelEvent, _, cx| this.pan(&wheel, e, cell.h, cx)))
             .children(body);
         div().flex().flex_col().size_full().child(head).child(rows_area).children(foot).into_any_element()
     }
@@ -1159,7 +1145,7 @@ impl Portal {
                 };
                 if px_moved != 0. {
                     cx.stop_propagation();
-                    this.send(Msg::Pan { id: wheel.clone(), lines: px_moved / along }, cx);
+                    this.send(Msg::Wheel { id: wheel.clone(), lines: px_moved / along }, cx);
                 }
             }))
             .child(content)
@@ -1399,9 +1385,19 @@ impl Portal {
         let marked = lk.ink(&style::inner(st, "editor.selection", &[]).ink).bg.unwrap_or(lk.ring);
         let caret = lk.ink(&style::inner(st, "editor.caret", &[]).ink).bg.unwrap_or(lk.accent);
         let placeholder = lk.ink(&style::inner(st, "input.placeholder", &[]).ink);
-        let cell = self.cell;
         let field = n.field().expect("a text field");
         let single = field.line;
+        // Its text in its type role's size (`style: {"type": "caption"}`), still monospace: its
+        // cells are the screen's, scaled, so caretline's columns and rows land where it draws.
+        let look = style::resolve(st, n);
+        let size = look.role.as_ref().and_then(|r| r.role.size).unwrap_or(TYPE);
+        let cell = Cell { w: self.cell.w * size / TYPE, h: look.role.as_ref().and_then(|r| r.role.line).unwrap_or(self.cell.h * size / TYPE) };
+        if cell != self.cell {
+            self.field_cells.insert(id.to_string(), cell);
+            self.laid.borrow_mut().cells.insert(id.to_string(), cell);
+        } else {
+            self.field_cells.remove(id);
+        }
         let doc = state::field_view(st, id).and_then(|(key, view)| match st.store.get(&key).map(|e| &e.body) {
             Some(crate::store::Body::Text { doc }) => Some((caretline::view::render(doc, view), doc)),
             _ => None,
@@ -1410,9 +1406,9 @@ impl Portal {
         if single {
             text = text.h(px(cell.h)).flex_none();
         } else if n.size.as_ref().is_some_and(|s| s.measure() == Measure::Fit) {
-            // As tall as its text wraps to at its width, a line at least.
+            // As tall as its text wraps to at its width, a line at least, within its `lines`.
             let rows = doc.as_ref().map_or(1, |(_, d)| state::field_view(st, id).map_or(1, |(_, view)| wrapped_rows(d, view)));
-            text = text.h(px(rows.max(1) as f32 * cell.h)).flex_none();
+            text = text.h(px(field.lines.hold(rows.max(1)) as f32 * cell.h)).flex_none();
         }
         let (fits, under) = (id.to_string(), id.to_string());
         text = text.child(measure_whole(&self.laid, move |l, b| l.sizes.push((fits, b))));
@@ -1474,6 +1470,17 @@ impl Portal {
                             }
                         }
                     }
+                    // A one-line field that holds more than it shows ends in "…" while it isn't
+                    // being typed in, so it's plain there's more.
+                    if single && !focused && y == 0 && line_overflows(d, frame.width) {
+                        let cut = row.char_indices().nth(frame.width.saturating_sub(1) as usize).map_or(row.len(), |(i, _)| i);
+                        row.truncate(cut);
+                        row.push('…');
+                        runs.retain_mut(|(r, _)| {
+                            r.end = r.end.min(cut);
+                            r.start < r.end
+                        });
+                    }
                     let top = y as f32 * cell.h;
                     for (a, b) in marks {
                         text = text.child(div().absolute().left(px(a as f32 * cell.w)).top(px(top)).w(px((b - a) as f32 * cell.w)).h(px(cell.h)).bg(marked));
@@ -1492,9 +1499,18 @@ impl Portal {
                 }
             }
         }
-        // More text than it shows: the scrollbar lists have, where the view is in it.
-        if !single {
-            text = text.children(state::editor_rows(st, id).and_then(|(at, total, shown)| self.scrollbar(st, lk, at as f32, total as f32, shown as f32)));
+        // More text than it shows: the scrollbar lists have, where the view is in it, and a fade
+        // over the edge the text goes on past (the `editor.fade` part's colour, else what's
+        // behind the field).
+        if !single && let Some((at, total, shown)) = state::editor_rows(st, id) {
+            text = text.children(self.scrollbar(st, lk, at as f32, total as f32, shown as f32));
+            let fade = lk.ink(&style::inner(st, "editor.fade", &[]).ink).bg.or(lk.ink(&look.ink).bg).unwrap_or(lk.bg);
+            let edge = |top: bool| {
+                let stops = (gpui::linear_color_stop(fade, 0.), gpui::linear_color_stop(fade.opacity(0.), 1.));
+                let d = div().absolute().left_0().right_0().h(px(cell.h * 0.9));
+                if top { d.top_0().bg(gpui::linear_gradient(180., stops.0, stops.1)) } else { d.bottom_0().bg(gpui::linear_gradient(0., stops.0, stops.1)) }
+            };
+            text = text.when(at > 0, |t| t.child(edge(true))).when(at + shown < total, |t| t.child(edge(false)));
         }
         let (press, wheel) = (id.to_string(), id.to_string());
         div()
@@ -1509,8 +1525,8 @@ impl Portal {
             // grid, so text drawn any other size would part from them. (Proportional editors
             // are phase 4 in native.md.)
             .font_family(MONO)
-            .text_size(px(TYPE))
-            .line_height(px(ROW))
+            .text_size(px(size))
+            .line_height(px(cell.h))
             .font_weight(gpui::FontWeight::NORMAL)
             .when(single, |d| d.justify_center())
             // A press in the text puts the caret there (twice a word, three times the line) and
@@ -1524,10 +1540,16 @@ impl Portal {
                     this.send(Msg::Point { id: press.clone(), col, row, extend: e.modifiers.shift }, cx);
                 }),
             )
-            .on_scroll_wheel(cx.listener(move |this, e: &ScrollWheelEvent, _, cx| this.wheel(&wheel, e, cx)))
+            .on_scroll_wheel(cx.listener(move |this, e: &ScrollWheelEvent, _, cx| this.pan(&wheel, e, cell.h, cx)))
             .child(text)
             .into_any_element()
     }
+}
+
+/// Whether a one-line document is longer than `width` columns (a wide character counted as one,
+/// so one that's just too long may not say).
+fn line_overflows(doc: &caretline::Document, width: u16) -> bool {
+    doc.text.line(0).chars().filter(|c| !matches!(c, '\n' | '\r')).count() > width as usize
 }
 
 /// The rows a document wraps to in its view, as far as a thousand: a `fit` editor's height.
@@ -1751,7 +1773,7 @@ fn handover(laid: &Shared, shown: &RefCell<DrawnHits>, engine: &Engine, cell: Ce
         // and nothing lands on it.
         rects: l.rects.into_iter().filter(|(_, b)| !b.is_empty()).map(|(id, b)| (id, cell.rect(b))).collect(),
         hits: l.hits.iter().filter(|(b, _)| !b.is_empty()).map(|(b, h)| Hit { rect: cell.rect(*b), ..h.clone() }).collect(),
-        sizes: l.sizes.into_iter().map(|(id, b)| { let (w, h) = cell.fit(b); (id, w, h) }).collect(),
+        sizes: l.sizes.into_iter().map(|(id, b)| { let (w, h) = l.cells.get(&id).unwrap_or(&cell).fit(b); (id, w, h) }).collect(),
         heights: l.heights.into_iter().map(|(id, key, b)| (id, key, f32::from(b.size.height) / cell.h)).collect(),
         areas: l.areas.into_iter().map(|(id, b)| { let (w, h) = cell.fit(b); (id, w, h) }).collect(),
         wake,

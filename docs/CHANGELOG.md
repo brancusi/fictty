@@ -16,6 +16,21 @@ Six days of work after the last tag: a fuzz driver and a pseudo-terminal sim, th
 native GPUI window on macOS (phase 0, then phase 1's steps 1 to 4), a public demo, two dogfooding
 apps (Daybook and Nocturne) and the fixes they found.
 
+### 27 October: the wheel latches, and fields read better
+
+- A wheel or trackpad gesture keeps moving what it started in until it pauses (`LATCH_MS`,
+  150 ms on the screen's clock), as browsers and macOS do: a column scrolled past an editor
+  keeps scrolling. A new gesture moves the innermost list, editor or scroller under the pointer
+  with more to show that way, else the next scroller out, so a field with nothing more to show
+  hands it on (`Msg::Wheel`, `State::latch`). Editors scroll a trackpad's part of a row too.
+- An editor's text takes its type role's size and line height, still monospace: its cells are
+  the screen's scaled, so a field can be smaller and its columns, rows, clicks (the window's and
+  an agent's `mouse`) and caret follow.
+- `"lines": {"min": 1, "max": 6}` on a `fit` editor: how tall it grows, in its own lines.
+- A fade over an editor's edge its text goes on past (`editor.fade`), beside the scrollbar; a
+  one-line field holding more than it shows ends in `…` until focused; a `readonly` field is in
+  the `readonly` state (`editor.readonly`).
+
 ### 27 October: group headings in a list, and a quoted value as a condition
 
 - `"section": {"by": "grp", "row": <node>}` on a list (or tree) heads each group of consecutive

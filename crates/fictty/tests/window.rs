@@ -1505,7 +1505,14 @@ fn the_focus_is_scrolled_into_view_and_page_down_pages() {
     assert_eq!(node(&mut s, "body").scroll.map(|(a, _)| a), Some(0.), "a paste reveals the focus as a key does");
 }
 
-/// The wheel over a list scrolls the list; at its end, the scroller around it takes the rest.
+/// A pause on the screen's clock long enough to end a wheel gesture (`state::LATCH_MS`).
+fn pause(s: &mut fictty::Headless) {
+    let now = s.state().now_ms;
+    s.msg(Msg::Tick { now_ms: now + 1000 });
+}
+
+/// The wheel over a list scrolls the list; once it's at its end, the next gesture goes to the
+/// scroller around it.
 #[test]
 fn the_wheel_scrolls_a_list_first_then_what_holds_it() {
     let items: Vec<Value> = (0..12).map(|i| json!({"id": format!("i{i}"), "name": format!("item {i}")})).collect();
@@ -1521,7 +1528,73 @@ fn the_wheel_scrolls_a_list_first_then_what_holds_it() {
     for _ in 0..5 {
         s.mouse("wheel-down", l.x + 2, l.y + 2);
     }
-    assert!(node(&mut s, "body").scroll.unwrap().0 > 0., "the column took what the list couldn't");
+    assert_eq!(node(&mut s, "body").scroll.map(|(a, _)| a), Some(0.), "the gesture stays the list's at its end");
+    pause(&mut s);
+    s.mouse("wheel-down", l.x + 2, l.y + 2);
+    assert!(node(&mut s, "body").scroll.unwrap().0 > 0., "a new one goes to the column, the list having no more");
+}
+
+/// A column of fields, scrolling: two editors with more text than they show, one without.
+fn inspector() -> fictty::Headless {
+    let long: Vec<String> = (0..30).map(|i| format!("line {i}")).collect();
+    let mut kids = vec![json!({"type": "text", "size": 4, "text": "top"}),
+        json!({"type": "editor", "id": "short", "size": 3, "text": "one line"}),
+        json!({"type": "editor", "id": "long", "size": 4, "text": long.join("\n")})];
+    kids.extend((0..20).map(|i| json!({"type": "text", "text": format!("after {i}")})));
+    window(json!({"root": {"type": "col", "id": "body", "scroll": true, "children": kids}}), 40, 12)
+}
+
+/// A gesture belongs to what it started in: passing over a field on the way doesn't take it,
+/// as in a browser.
+#[test]
+fn a_gesture_keeps_scrolling_what_it_started_in_over_a_field() {
+    let mut s = inspector();
+    let top = node(&mut s, "body").rect.unwrap();
+    // Started over the column's own text: the column moves, and goes on moving with the pointer
+    // over the long editor, whose text stays where it is.
+    s.msg(Msg::Wheel { id: "body".into(), lines: 2.0 });
+    let long = node(&mut s, "long").rect.unwrap();
+    for _ in 0..3 {
+        s.mouse("wheel-down", long.x + 2, long.y + 1);
+    }
+    assert!(node(&mut s, "body").scroll.unwrap().0 >= 10., "{:?}", node(&mut s, "body").scroll);
+    assert_eq!(s.state().local["long"].editors["long"].scroll.line, 0, "the field didn't take it");
+    assert_eq!(s.state().latch.as_ref().map(|l| l.0.as_str()), Some("body"));
+    let _ = top;
+}
+
+/// A new gesture over a field scrolls it while it has more to show that way; at its end, or
+/// with nothing more to show, the gesture goes to the scroller around it.
+#[test]
+fn a_new_gesture_over_a_field_scrolls_it_then_hands_on() {
+    let mut s = inspector();
+    let short = node(&mut s, "short").rect.unwrap();
+    s.mouse("wheel-down", short.x + 2, short.y + 1);
+    assert!(node(&mut s, "body").scroll.unwrap().0 > 0., "a field with nothing more to show hands it on");
+    pause(&mut s);
+    s.msg(Msg::Pan { id: "body".into(), lines: -100.0 });
+    let long = node(&mut s, "long").rect.unwrap();
+    s.mouse("wheel-down", long.x + 2, long.y + 1);
+    assert_eq!(s.state().local["long"].editors["long"].scroll.line, 3, "the long field scrolls a notch");
+    assert_eq!(node(&mut s, "body").scroll.map(|(a, _)| a), Some(0.), "and the column stays");
+    // To its end, in one long gesture: it stops there, the column still.
+    for _ in 0..20 {
+        s.mouse("wheel-down", long.x + 2, long.y + 1);
+    }
+    assert_eq!(node(&mut s, "body").scroll.map(|(a, _)| a), Some(0.));
+    pause(&mut s);
+    s.mouse("wheel-down", long.x + 2, long.y + 1);
+    assert!(node(&mut s, "body").scroll.unwrap().0 > 0., "the next gesture goes on to the column");
+    // A trackpad's part of a row adds up in the field.
+    pause(&mut s);
+    s.msg(Msg::Pan { id: "body".into(), lines: -100.0 });
+    pause(&mut s);
+    s.msg(Msg::Wheel { id: "long".into(), lines: -100.0 });
+    pause(&mut s);
+    for _ in 0..4 {
+        s.msg(Msg::Wheel { id: "long".into(), lines: 0.5 });
+    }
+    assert_eq!(s.state().local["long"].editors["long"].scroll.line, 2, "four half rows are two");
 }
 
 /// A row with `scroll` scrolls across, and the wheel moves it; `scroll` needs an id and a
@@ -2384,4 +2457,49 @@ fn a_sectioned_list_scrolls_by_its_headings_and_rows_and_fits_cols_by_width() {
     s.keys(&["g"]);
     assert_eq!(s.state().local["l"].selected, 0);
     assert!(s.at_part("l", 0, "$section").is_some(), "back at the top, the first heading shows");
+}
+
+/// A field's text in its type role's size: still monospace, its own cells smaller than the
+/// screen's, so it holds more columns, and a press lands on the character drawn there.
+#[test]
+fn a_field_in_a_smaller_type_holds_more_and_a_press_lands_where_it_draws() {
+    let text = "abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+    let ui = json!({"root": {"type": "col", "children": [
+        {"type": "editor", "id": "big", "size": 3, "text": text},
+        {"type": "editor", "id": "small", "size": 3, "text": text, "style": {"type": "note"}}]}});
+    let dir = std::env::temp_dir().join(format!("fnote-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("t.json"), json!({"t": {"type": {"note": {"size": 10.5}}}}).to_string()).unwrap();
+    let mut s = App::new(serde_json::from_value(ui).unwrap()).themes_file(&dir.join("t.json")).unwrap().in_window(40, 10).unwrap();
+    let cols = |s: &mut fictty::Headless, id: &str| s.state().local[id].editors[id].viewport.width;
+    let (big, small) = (cols(&mut s, "big"), cols(&mut s, "small"));
+    assert!(small as f32 >= big as f32 * 1.25, "a quarter smaller holds a third more: {small} against {big}");
+    // A press ten screen cells in lands on the character drawn there: about thirteen in.
+    let t = s.text_at("small").unwrap();
+    s.mouse("press", t.x + 10, t.y).mouse("release", t.x + 10, t.y);
+    let head = s.state().local["small"].editors["small"].selection.primary().head;
+    assert!((12..=14).contains(&head), "the caret at {head}");
+}
+
+/// `lines` holds a `fit` editor between so many of its own lines: one line of text takes the
+/// least, a long one the most, and scrolls.
+#[test]
+fn lines_hold_a_fit_editor_between_its_own_lines() {
+    let ui = json!({"root": {"type": "col", "children": [
+        {"type": "editor", "id": "e", "size": "fit", "lines": {"min": 2, "max": 4}, "text": "one line"},
+        {"type": "text", "id": "after", "text": "after"}]}, "focus": "e"});
+    let mut s = window(ui, 30, 20);
+    assert_eq!(s.text_at("e").unwrap().height, 2, "the least, for one line");
+    let long: Vec<String> = (0..10).map(|i| format!("line {i}")).collect();
+    s.request(json!({"op": "write", "write": "put", "key": "e", "value": long.join("\n")}));
+    assert_eq!(s.text_at("e").unwrap().height, 4, "the most, for ten");
+    assert!(node(&mut s, "e").scroll.is_some(), "and it scrolls past it");
+}
+
+#[test]
+fn a_read_only_field_is_in_its_readonly_state() {
+    let mut s = window(json!({"root": {"type": "col", "children": [
+        {"type": "editor", "id": "log", "readonly": true, "text": "x"}, {"type": "editor", "id": "e", "text": "y"}]}}), 30, 8);
+    assert!(node(&mut s, "log").style.states.contains(&"readonly".to_string()));
+    assert!(!node(&mut s, "e").style.states.contains(&"readonly".to_string()));
 }

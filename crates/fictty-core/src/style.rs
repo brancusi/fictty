@@ -14,7 +14,7 @@ use std::collections::BTreeMap;
 /// The states a part can be suffixed with, in the order their parts layer: `row.selected.blur`
 /// is `row`, then `row.selected`, then `row.blur`, then `row.selected.blur`. `active`,
 /// `selected` and `disabled` don't hold for a node yet (nothing in `State` says so).
-pub const STATES: [&str; 7] = ["hover", "focused", "active", "selected", "on", "disabled", "blur"];
+pub const STATES: [&str; 8] = ["hover", "focused", "active", "selected", "on", "readonly", "disabled", "blur"];
 
 /// The parts the runtime draws inside a node, besides each component's own (its `type`).
 const INNER: [&str; 35] = [
@@ -586,6 +586,7 @@ pub fn states(st: &State, n: &Node) -> Vec<&'static str> {
             "hover" => hover,
             "focused" => focused,
             "on" => state::is_on(st, n),
+            "readonly" => n.field().is_some_and(|f| f.readonly),
             "blur" => n.focusable() && !focused,
             _ => false,
         })

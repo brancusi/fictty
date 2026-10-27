@@ -326,6 +326,16 @@ pub trait Frame {
     }
 }
 
+/// A cell of the screen inside an editor's text (`col`, `row` from its corner) as a cell of the
+/// editor's own: the same, unless its text is a size of its own (a type role), whose cells are
+/// smaller or bigger than the screen's.
+fn in_field(st: &State, h: &Hit, col: u16, row: u16) -> (u16, u16) {
+    let Some((_, v)) = crate::state::field_view(st, &h.id) else { return (col, row) };
+    let scale = |own: f32, shown: u16| if shown > 0 && (own / shown as f32 - 1.).abs() > 0.15 { own / shown as f32 } else { 1. };
+    let (sx, sy) = (scale(v.viewport.width as f32, h.rect.width), scale(v.viewport.text_rows() as f32, h.rect.height));
+    ((col as f32 * sx).floor() as u16, (row as f32 * sy).floor() as u16)
+}
+
 /// A mouse event as a message, by what was drawn under it last frame (the innermost hit).
 /// A press in an editor's text starts a drag (`drag`), and moves with the button held stretch its
 /// selection until the button comes up.
@@ -336,6 +346,7 @@ fn pointer(kind: Pointer, x: u16, y: u16, hits: &[Hit], st: &State, drag: &mut O
             let (id, r) = drag.as_ref()?;
             let col = x.saturating_sub(r.x).min(r.width.saturating_sub(1));
             let row = y.saturating_sub(r.y).min(r.height);
+            let (col, row) = in_field(st, &Hit { rect: *r, id: id.clone(), row: None, tab: None, text: true, part: None }, col, row);
             Some(Msg::Drag { id: id.clone(), col, row })
         }
         Pointer::Release => {
@@ -346,7 +357,8 @@ fn pointer(kind: Pointer, x: u16, y: u16, hits: &[Hit], st: &State, drag: &mut O
             let h = at(false)?;
             if h.text {
                 *drag = Some((h.id.clone(), h.rect));
-                return Some(Msg::Point { id: h.id.clone(), col: x - h.rect.x, row: y - h.rect.y, extend: shift });
+                let (col, row) = in_field(st, h, x - h.rect.x, y - h.rect.y);
+                return Some(Msg::Point { id: h.id.clone(), col, row, extend: shift });
             }
             if let (Some(row), Some(part)) = (h.row, &h.part) {
                 return Some(Msg::Press { id: h.id.clone(), row, part: part.clone() });

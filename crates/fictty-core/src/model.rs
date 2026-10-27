@@ -741,6 +741,10 @@ pub enum Kind {
         /// style. A `{"list_style": "next"}` key changes one list's style.
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         ordered: Vec<String>,
+        /// With `size: fit`, how tall it grows, in lines of its own text (its type role's, which
+        /// may be smaller than the screen's): `{"min": 1, "max": 6}`. Past `max` it scrolls.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        lines: Option<Span>,
     },
     /// A one-line field (caretline, single-line): an editor whose text never holds a line
     /// break. Enter runs the node's `keys.enter`, so a form submits with a store action.
@@ -1578,6 +1582,25 @@ pub struct Field<'a> {
     pub links: &'a [LinkSpec],
     /// Ordered lists kept in number, with these marker styles by depth.
     pub ordered: &'a [String],
+    /// How many of its own lines a `fit` editor is, at least and at most.
+    pub lines: Span,
+}
+
+/// A count held between a least and a most, either open.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct Span {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub min: Option<u16>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max: Option<u16>,
+}
+
+impl Span {
+    /// `n` held inside the span.
+    pub fn hold(&self, n: usize) -> usize {
+        let n = self.max.map_or(n, |m| n.min(m as usize));
+        self.min.map_or(n, |m| n.max(m as usize))
+    }
 }
 
 /// A kind of link in an editor's text and what a click on one does (see `Kind::Editor`).
@@ -1947,7 +1970,7 @@ impl Node {
     /// An editor or an input: the text component's settings.
     pub fn field(&self) -> Option<Field<'_>> {
         match &self.kind {
-            Kind::Editor { text, doc, placeholder, syntax, readonly, tab, tasks, caret, links, ordered } => Some(Field {
+            Kind::Editor { text, doc, placeholder, syntax, readonly, tab, tasks, caret, links, ordered, lines } => Some(Field {
                 seed: text,
                 doc: doc.as_deref(),
                 placeholder: placeholder.as_deref(),
@@ -1962,6 +1985,7 @@ impl Node {
                 caret_end: caret.as_deref() == Some("end"),
                 links,
                 ordered,
+                lines: lines.unwrap_or_default(),
             }),
             Kind::Input { text, placeholder, accept, required } => Some(Field {
                 seed: text,
@@ -1978,6 +2002,7 @@ impl Node {
                 caret_end: false,
                 links: &[],
                 ordered: &[],
+                lines: Span::default(),
             }),
             _ => None,
         }
