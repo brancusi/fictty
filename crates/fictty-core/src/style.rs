@@ -17,9 +17,9 @@ use std::collections::BTreeMap;
 pub const STATES: [&str; 8] = ["hover", "focused", "active", "selected", "on", "readonly", "disabled", "blur"];
 
 /// The parts the runtime draws inside a node, besides each component's own (its `type`).
-const INNER: [&str; 35] = [
+const INNER: [&str; 36] = [
     "resize.handle", "drag.ghost", "drop.hover", "drop.index", "row.pending", "screen", "panel", "border", "title", "row", "empty", "status", "status.error", "toast", "table.header", "table.total", "tabs.selected", "tabs.idle",
-    "tabs.underline", "editor.caret", "editor.selection", "input.placeholder", "md.heading", "md.bullet", "md.quote", "md.code",
+    "tabs.underline", "editor.caret", "editor.selection", "editor.fade", "input.placeholder", "md.heading", "md.bullet", "md.quote", "md.code",
     "md.task", "md.done", "md.link", "scrollbar", "scrollbar.thumb", "tree.guide", "bars.label", "gauge.fill", "spinner",
 ];
 
@@ -1086,6 +1086,15 @@ mod tests {
             json!({"type": "text", "text": "hi"}),
         );
         assert_eq!(st.problems, vec!["theme t: no part is called \"drop.hovr\"".to_string()]);
+    }
+
+    #[test]
+    fn a_fields_own_parts_are_known() {
+        let st = screen(
+            json!({"parts": {"editor.fade": {"bg": "panel"}, "editor.readonly": "d", "editor.focused": "b", "input.focused": "b"}}),
+            json!({"type": "editor", "id": "e", "text": "hi"}),
+        );
+        assert!(st.problems.is_empty(), "{:?}", st.problems);
     }
 
     #[test]
