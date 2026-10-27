@@ -278,6 +278,28 @@ mod window {
             "store": {"msgs": msgs, "cards": cards}, "focus": "chat"}), 60, 14);
     }
 
+    /// A gallery in groups (`section`), filtered and picked from: headings come and go as the
+    /// filter takes rows away, and keys, picks and the wheel move over rows only.
+    #[test]
+    fn a_sectioned_gallery_in_the_window() {
+        let rows: Vec<Value> = (0..30).map(|i| json!({"id": format!("p{i}"), "name": format!("pic {i}"), "grp": if i % 11 == 10 { String::new() } else { format!("g{}", i / 7) }, "note": if i % 2 == 0 { "a summary that wraps onto a second line here" } else { "short" }})).collect();
+        let ui = json!({"root": {"type": "col", "children": [
+            {"type": "input", "id": "find", "placeholder": "find"},
+            {"type": "list", "id": "files", "multi": true, "bind": "rows", "filter": "find", "cols": {"min": 12},
+             "row": {"type": "col", "size": 3, "children": [{"type": "text", "size": 1, "text": "{$item.name}"}]},
+             "section": {"by": "grp", "row": {"type": "col", "size": "fit", "children": [
+                {"type": "text", "text": "<b>{$item.grp}</> · {$item.$rows}"}, {"type": "text", "text": "{$item.note}"}]}}},
+            {"type": "text", "id": "in", "bind": "@files", "when": "'{grp}'", "size": 1, "text": "in {grp}"}]},
+            "store": {"rows": rows}, "focus": "files"});
+        let make = move || App::new(serde_json::from_value(ui.clone()).unwrap()).in_window(44, 14).unwrap();
+        let mut keys = Config::default().keys;
+        keys.extend(["s-down", "s-up", "d-a", "esc", "j", "k", "left", "right", "1", "g"].map(String::from));
+        let cfg = Config { terminal: false, keys, ..cfg() };
+        if let Err(f) = fuzz::run(make, &mut checks(), &cfg) {
+            panic!("{f}");
+        }
+    }
+
     #[test]
     fn an_editor_in_the_window() {
         let text = "# Notes\n\nHello world, a line\n- one\n  - nested\n- [ ] a task\n\n1. first\n2. second\n\nwide 漢字 and 🙂\n";

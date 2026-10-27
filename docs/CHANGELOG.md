@@ -16,6 +16,20 @@ Six days of work after the last tag: a fuzz driver and a pseudo-terminal sim, th
 native GPUI window on macOS (phase 0, then phase 1's steps 1 to 4), a public demo, two dogfooding
 apps (Daybook and Nocturne) and the fixes they found.
 
+### 27 October: group headings in a list, and a quoted value as a condition
+
+- `"section": {"by": "grp", "row": <node>}` on a list (or tree) heads each group of consecutive
+  rows with the same `by` value with a node across the whole width, filled from the group's first
+  row (`{$item.$rows}`: how many it has). In a `cols` grid each group starts a line of its own.
+  `state::Lines` lays the lines out (a heading, or rows side by side), so keys, paging, the
+  wheel, following the selection, the window and the readback all agree; headings take no
+  selection or picks, ↑/↓ keep the place along a line, and a heading is measured as it shows.
+  Drags and files let go over a heading land before its group's first row; rows a
+  `drop.optimistic` shows take the group they were let go in. The readback says
+  `(3 sections, in "Alpha")`. Asked for by Caption Genius, for an artist's selections in groups.
+- `"when": "'{grp}'"`: a value in single quotes by itself holds unless it's empty, `false` or 0,
+  for a field filled in that isn't a flag.
+
 ### 22 October: a handle to resize, and editors' scrollbars
 
 - `"resize": "<store key>"` on a node: a grip on its bottom edge (the `resize.handle` part, a

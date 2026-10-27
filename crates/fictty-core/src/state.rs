@@ -458,21 +458,31 @@ fn is_zero(n: &u16) -> bool {
 /// A list's (tree's, table's) lines as its view lays them out: rows `cols` to a line, each line as
 /// tall as its tallest row in cells (the template's height, or as measured for `fit` rows), and
 /// the view's height in cells (`Local::rows`, from the frame). `top` is in lines, fractions too.
-/// Following the selection, the wheel, paging, what's in view, what the window builds and the
-/// readback's scroll all ask here, so every list scrolls by the same arithmetic.
+/// A list with a `section` has a heading line before each group, and a group's rows start a line
+/// of their own. Following the selection, the wheel, paging, what's in view, what the window
+/// builds and the readback's scroll all ask here, so every list scrolls by the same arithmetic.
 pub struct Lines<'a> {
     pub count: usize,
     pub cols: usize,
     pub view: f32,
-    tall: Tall<'a>,
+    node: &'a Node,
+    rows: &'a [Value],
+    heights: Option<&'a BTreeMap<String, f32>>,
+    /// A row's height: every row's, or for `fit` rows the height of one not measured yet (those
+    /// measured, on average).
+    per: f32,
+    fits: bool,
+    /// With a `section`, each line in order; without, line `l` is rows `l * cols` on.
+    layout: Option<Vec<Line>>,
 }
 
-enum Tall<'a> {
-    Each(f32),
-    /// `fit` rows: each line's height worked out when it's asked for (only those near the view
-    /// are, but for a list as long as all its lines), from the heights measured by row key, a
-    /// row not yet measured taken as `guess`.
-    Measured { node: &'a Node, rows: &'a [Value], heights: Option<&'a BTreeMap<String, f32>>, guess: f32 },
+/// One of a list's lines.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Line {
+    /// A group's heading: its first row, and how many rows the group has.
+    Heading { first: usize, rows: usize },
+    /// Rows `from..to`, side by side.
+    Rows { from: usize, to: usize },
 }
 
 /// What a `fit` row's measured height is kept by: its key (`key`, default `id`), else where it is.
@@ -480,43 +490,145 @@ pub fn height_key(n: &Node, r: &Value, k: usize) -> String {
     key_of(n, r).unwrap_or_else(|| format!("#{k}"))
 }
 
+/// What a group heading's measured height is kept by, beside the rows' (`§` and the group).
+pub fn heading_key(group: &str) -> String {
+    format!("§{group}")
+}
+
+/// A sectioned list's lines: a heading where the group changes to one that isn't empty, then the
+/// group's rows `cols` to a line.
+fn layout(s: &crate::model::Section, rows: &[Value], cols: usize) -> Vec<Line> {
+    let mut out = Vec::new();
+    let mut k = 0;
+    while k < rows.len() {
+        let group = s.of(&rows[k]);
+        let end = (k + 1..rows.len()).find(|&j| s.of(&rows[j]) != group).unwrap_or(rows.len());
+        if !group.is_empty() {
+            out.push(Line::Heading { first: k, rows: end - k });
+        }
+        let mut from = k;
+        while from < end {
+            let to = (from + cols).min(end);
+            out.push(Line::Rows { from, to });
+            from = to;
+        }
+        k = end;
+    }
+    out
+}
+
 impl<'a> Lines<'a> {
     pub fn of(st: &'a State, n: &'a Node) -> Lines<'a> {
-        let cols = per_line(st, n);
+        let cols = per_line(st, n).max(1);
         let rows = items(st, n);
-        let count = rows.len().div_ceil(cols);
         let local = n.id.as_deref().and_then(|id| st.local.get(id));
         let view = local.map_or(0., |l| l.rows as f32);
         let per = n.rows().map_or(1, crate::model::Rows::height) as f32;
-        let tall = match n.rows().filter(|r| r.fits()) {
-            // A row not built yet is as tall as those measured, on average.
-            Some(_) => {
-                let heights = local.map(|l| &l.heights).filter(|h| !h.is_empty());
-                let guess = heights.map_or(per, |h| h.values().sum::<f32>() / h.len() as f32);
-                Tall::Measured { node: n, rows, heights, guess }
+        let fits = n.rows().is_some_and(|r| r.fits());
+        let heights = local.map(|l| &l.heights).filter(|h| !h.is_empty());
+        // A row not built yet is as tall as those measured, on average (headings aside).
+        let per = match heights.filter(|_| fits) {
+            Some(h) => {
+                let (sum, n) = h.iter().filter(|(k, _)| !k.starts_with('§')).fold((0., 0), |(s, n), (_, v)| (s + v, n + 1));
+                if n > 0 { sum / n as f32 } else { per }
             }
-            None => Tall::Each(per),
+            None => per,
         };
-        Lines { count, cols, view, tall }
+        let layout = n.rows().and_then(|r| r.section.as_ref()).map(|s| layout(s, rows, cols));
+        let count = layout.as_ref().map_or(rows.len().div_ceil(cols), Vec::len);
+        Lines { count, cols, view, node: n, rows, heights, per, fits, layout }
+    }
+
+    /// Every line's height, when they're all one (rows of a height, no headings).
+    fn uniform(&self) -> Option<f32> {
+        (!self.fits && self.layout.is_none()).then_some(self.per)
+    }
+
+    /// Line `line`: a heading, or the rows on it.
+    pub fn line(&self, line: usize) -> Line {
+        match &self.layout {
+            Some(l) => l.get(line).copied().unwrap_or(Line::Rows { from: self.rows.len(), to: self.rows.len() }),
+            None => Line::Rows { from: (line * self.cols).min(self.rows.len()), to: ((line + 1) * self.cols).min(self.rows.len()) },
+        }
+    }
+
+    /// The rows on line `line` (none on a heading).
+    pub fn rows_in(&self, line: usize) -> std::ops::Range<usize> {
+        match self.line(line) {
+            Line::Heading { first, .. } => first..first,
+            Line::Rows { from, to } => from..to,
+        }
+    }
+
+    /// The line row `row` is on.
+    pub fn line_of(&self, row: usize) -> usize {
+        match &self.layout {
+            None => row / self.cols,
+            Some(l) => l
+                .partition_point(|x| match *x {
+                    Line::Heading { first, .. } => first <= row,
+                    Line::Rows { from, .. } => from <= row,
+                })
+                .saturating_sub(1),
+        }
+    }
+
+    /// The row a line up or down (`down`) from row `sel` lands on: the same place along the
+    /// next line of rows, or its last; `sel` itself at either end.
+    pub fn vertical(&self, sel: usize, down: bool) -> usize {
+        if self.layout.is_none() {
+            return match down {
+                true if sel + self.cols < self.rows.len() => sel + self.cols,
+                true => sel,
+                false => sel.checked_sub(self.cols).unwrap_or(sel),
+            };
+        }
+        let at = self.line_of(sel);
+        let along = sel - self.rows_in(at).start;
+        let mut l = at;
+        loop {
+            l = match down {
+                true if l + 1 < self.count => l + 1,
+                false if l > 0 => l - 1,
+                _ => return sel,
+            };
+            let r = self.rows_in(l);
+            if !r.is_empty() {
+                return (r.start + along).min(r.end - 1);
+            }
+        }
+    }
+
+    /// How tall row `k` is, in cells.
+    fn row_height(&self, k: usize) -> f32 {
+        match self.heights.filter(|_| self.fits) {
+            Some(h) => h.get(&height_key(self.node, &self.rows[k], k)).copied().unwrap_or(self.per),
+            None => self.per,
+        }
     }
 
     /// How tall line `line` is, in cells.
     pub fn height(&self, line: usize) -> f32 {
-        match &self.tall {
-            Tall::Each(h) => *h,
-            Tall::Measured { node, rows, heights, guess } => {
-                let row = |k: usize| heights.and_then(|h| h.get(&height_key(node, &rows[k], k))).copied().unwrap_or(*guess);
-                (line * self.cols..((line + 1) * self.cols).min(rows.len())).map(row).fold(0., f32::max)
+        if let Some(h) = self.uniform() {
+            return h.max(0.05);
+        }
+        match self.line(line) {
+            Line::Heading { first, .. } => {
+                let s = self.node.rows().and_then(|r| r.section.as_ref());
+                let measured = s.and_then(|s| self.heights.and_then(|h| h.get(&heading_key(&s.of(&self.rows[first])))));
+                // Not measured yet: two lines, a title and a little room.
+                measured.copied().or_else(|| s.and_then(|s| s.height())).unwrap_or(2.)
             }
+            Line::Rows { from, to } => (from..to).map(|k| self.row_height(k)).fold(0., f32::max),
         }
         .max(0.05)
     }
 
     /// How tall all the lines are, in cells: what a `fit` list would take with room.
     pub fn total(&self) -> f32 {
-        match &self.tall {
-            Tall::Each(h) => h * self.count as f32,
-            Tall::Measured { .. } => (0..self.count).map(|l| self.height(l)).sum(),
+        match self.uniform() {
+            Some(h) => h * self.count as f32,
+            None => (0..self.count).map(|l| self.height(l)).sum(),
         }
     }
 
@@ -527,9 +639,9 @@ impl<'a> Lines<'a> {
 
     /// How many lines show whole from line `from` (one at least).
     pub fn fitting_from(&self, from: usize) -> usize {
-        match &self.tall {
-            Tall::Each(h) => ((self.room() / h.max(0.05)).floor() as usize).max(1),
-            Tall::Measured { .. } => {
+        match self.uniform() {
+            Some(h) => ((self.room() / h.max(0.05)).floor() as usize).max(1),
+            None => {
                 let (mut sum, mut n) = (0., 0);
                 for l in from..self.count {
                     sum += self.height(l);
@@ -543,11 +655,17 @@ impl<'a> Lines<'a> {
         }
     }
 
+    /// How many rows the lines that show whole from line `from` hold: what a page moves by.
+    pub fn rows_fitting_from(&self, from: usize) -> usize {
+        let to = (from + self.fitting_from(from)).min(self.count);
+        (from..to).map(|l| self.rows_in(l).len()).sum::<usize>().max(1)
+    }
+
     /// The furthest `top` goes: the last line ending at the view's bottom.
     pub fn most(&self) -> f32 {
-        match &self.tall {
-            Tall::Each(_) => self.count.saturating_sub(self.fitting_from(0)) as f32,
-            Tall::Measured { .. } => {
+        match self.uniform() {
+            Some(_) => self.count.saturating_sub(self.fitting_from(0)) as f32,
+            None => {
                 let mut sum = 0.;
                 for l in (0..self.count).rev() {
                     let h = self.height(l);
@@ -562,31 +680,38 @@ impl<'a> Lines<'a> {
     }
 
     /// The `top` that shows line `line` whole at the view's bottom (its start, if it's taller).
+    /// A group's first line of rows brings its heading in too.
     fn follow(&self, line: usize) -> f32 {
-        match &self.tall {
-            Tall::Each(_) => (line + 1).saturating_sub(self.fitting_from(0)) as f32,
-            Tall::Measured { .. } => {
-                let (mut sum, mut k) = (0., line + 1);
-                while k > 0 {
-                    let h = self.height(k - 1);
-                    if sum + h > self.room() + 0.01 && k <= line {
-                        break;
-                    }
-                    sum += h;
-                    k -= 1;
-                }
-                k as f32
-            }
+        if self.uniform().is_some() {
+            return (line + 1).saturating_sub(self.fitting_from(0)) as f32;
         }
+        let (mut sum, mut k) = (0., line + 1);
+        while k > 0 {
+            let h = self.height(k - 1);
+            if sum + h > self.room() + 0.01 && k <= line {
+                break;
+            }
+            sum += h;
+            k -= 1;
+        }
+        k as f32
     }
 
     /// Where the view starts, in lines: where the wheel left it, else where it keeps the
     /// selection in view, never past the last whole view.
     pub fn offset(&self, local: Option<&Local>) -> f32 {
-        let line = local.map_or(0, |l| l.selected) / self.cols.max(1);
+        let line = self.line_of(local.map_or(0, |l| l.selected));
         match local.and_then(|l| l.top) {
             Some(top) => top.clamp(0., self.most()),
-            None => self.follow(line).min(self.most()),
+            None => {
+                let top = self.follow(line);
+                // The first rows of a group show with its heading, when there's room.
+                let top = match line.checked_sub(1).map(|h| (h, self.line(h))) {
+                    Some((h, Line::Heading { .. })) if top as usize == line && self.height(h) + self.height(line) <= self.room() => h as f32,
+                    _ => top,
+                };
+                top.min(self.most())
+            }
         }
     }
 
@@ -651,10 +776,10 @@ impl<'a> Lines<'a> {
     pub fn y(&self, top: f32, line: usize) -> f32 {
         let from = top.floor().max(0.) as usize;
         let start = -top.fract() * self.height(from);
-        match &self.tall {
-            Tall::Each(h) => start + (line as f32 - from as f32) * h,
-            Tall::Measured { .. } if line >= from => start + (from..line).map(|l| self.height(l)).sum::<f32>(),
-            Tall::Measured { .. } => start - (line..from).map(|l| self.height(l)).sum::<f32>(),
+        match self.uniform() {
+            Some(h) => start + (line as f32 - from as f32) * h,
+            None if line >= from => start + (from..line).map(|l| self.height(l)).sum::<f32>(),
+            None => start - (line..from).map(|l| self.height(l)).sum::<f32>(),
         }
     }
 
@@ -737,7 +862,7 @@ fn page(st: &mut State, dir: isize) -> Vec<Effect> {
     let Some(focus) = st.focus.clone() else { return vec![] };
     if let Some(n) = st.node(&focus).filter(|n| n.rows().is_some() || matches!(n.kind, Kind::Table { .. })) {
         let lines = Lines::of(st, n);
-        let by = lines.fitting_from(lines.offset(st.local.get(&focus)).floor() as usize) * lines.cols;
+        let by = lines.rows_fitting_from(lines.offset(st.local.get(&focus)).floor() as usize);
         return step(st, move |sel, len| if dir > 0 { (sel + by).min(len.saturating_sub(1)) } else { sel.saturating_sub(by) });
     }
     if let Some(s) = scrollers_around(st, &focus).into_iter().next() {
@@ -1785,11 +1910,21 @@ fn optimistic(st: &mut State, d: &Drag, over: &Over, argv: Vec<String>) {
     let mut rows = items(st, n).to_vec();
     let key = |r: &Value| key_of(n, r);
     let at = over.row + usize::from(over.side == Side::After);
+    // In a sectioned list, what lands shows in the group of the row it was let go beside, so
+    // the group isn't split around it before the app answers.
+    let section = n.rows().and_then(|r| r.section.as_ref()).filter(|s| !s.by.contains('.'));
+    let group = section.and_then(|s| rows.get(over.row).map(|r| (s.by.clone(), lookup(r, &s.by).cloned().unwrap_or(Value::Null))));
+    let regroup = |mut r: Value| {
+        if let (Some((by, g)), Value::Object(m)) = (&group, &mut r) {
+            m.insert(by.clone(), g.clone());
+        }
+        r
+    };
     if d.files.is_empty() {
         if over.key.as_ref().is_some_and(|k| d.keys.contains(k)) {
             return;
         }
-        let carried: Vec<Value> = rows.iter().filter(|r| key(r).is_some_and(|k| d.keys.contains(&k))).cloned().collect();
+        let carried: Vec<Value> = rows.iter().filter(|r| key(r).is_some_and(|k| d.keys.contains(&k))).cloned().map(regroup).collect();
         let before = rows[..at.min(rows.len())].iter().filter(|r| key(r).is_some_and(|k| d.keys.contains(&k))).count();
         rows.retain(|r| !key(r).is_some_and(|k| d.keys.contains(&k)));
         let at = (at - before).min(rows.len());
@@ -1804,7 +1939,7 @@ fn optimistic(st: &mut State, d: &Drag, over: &Over, argv: Vec<String>) {
                 m.insert(field.clone(), format!("pending:{path}").into());
                 m.insert("$pending".into(), true.into());
             }
-            row
+            regroup(row)
         }).collect();
         let at = at.min(rows.len());
         rows.splice(at..at, made);
@@ -3096,14 +3231,8 @@ fn act(st: &mut State, a: Action) -> Vec<Effect> {
         Action::Named(n) => match n.as_str() {
             "quit" => vec![Effect::Quit],
             "refresh" => refresh(st),
-            "down" => {
-                let by = focused_cols(st);
-                step(st, move |sel, len| if sel + by < len { sel + by } else { sel })
-            }
-            "up" => {
-                let by = focused_cols(st);
-                step(st, move |sel, _| sel.checked_sub(by).unwrap_or(sel))
-            }
+            "down" => vertical(st, true),
+            "up" => vertical(st, false),
             "next_row" => step(st, |sel, len| (sel + 1).min(len.saturating_sub(1))),
             "prev_row" => step(st, |sel, _| sel.saturating_sub(1)),
             "page_down" => page(st, 1),
@@ -3118,14 +3247,8 @@ fn act(st: &mut State, a: Action) -> Vec<Effect> {
             "leave" => leave(st),
             "focus_next" => cycle(st, 1),
             "focus_prev" => cycle(st, -1),
-            "extend_down" => {
-                let by = focused_cols(st) as isize;
-                extend(st, by)
-            }
-            "extend_up" => {
-                let by = focused_cols(st) as isize;
-                extend(st, -by)
-            }
+            "extend_down" => extend(st, true),
+            "extend_up" => extend(st, false),
             "pick_all" => pick_all(st),
             "unpick" => {
                 if let Some(l) = st.focus.clone().and_then(|f| st.local.get_mut(&f)) {
@@ -3251,7 +3374,7 @@ fn pick(st: &mut State, id: &str, row: usize, how: Pick) {
         }
     };
     let lines = Lines::of(st, n);
-    let shows = lines.in_view(st.local.get(id).and_then(|l| l.top), to / lines.cols.max(1));
+    let shows = lines.in_view(st.local.get(id).and_then(|l| l.top), lines.line_of(to));
     let local = st.local.entry(id.to_string()).or_default();
     local.picked = if set.len() > 1 { set.iter().filter_map(|r| keys.get(*r).cloned().flatten()).collect() } else { vec![] };
     local.anchor = if how == Pick::Toggle { Some(key) } else { anchor };
@@ -3262,19 +3385,27 @@ fn pick(st: &mut State, id: &str, row: usize, how: Pick) {
     }
 }
 
-/// How many rows to a line the focused node lays out.
-fn focused_cols(st: &State) -> usize {
-    st.focus.as_deref().and_then(|f| st.node(f)).map_or(1, |n| per_line(st, n))
+/// The row a line down (or up) from the focused list's selection: in a grid the same place on
+/// the next line of rows (`Lines::vertical`), else the next row.
+fn line_away(st: &State, down: bool) -> Option<(String, usize)> {
+    let id = st.focus.clone()?;
+    let n = st.node(&id)?;
+    let at = selected(st, &id);
+    Some((id, Lines::of(st, n).vertical(at, down)))
 }
 
-/// ⇧↓ and ⇧↑ on a `multi` list: the range from the anchor grows or shrinks by a row.
-fn extend(st: &mut State, dir: isize) -> Vec<Effect> {
-    let Some(id) = st.focus.clone() else { return vec![] };
-    let Some(n) = st.node(&id) else { return vec![] };
-    let len = items(st, n).len();
-    let at = selected(st, &id);
-    let Some(to) = at.checked_add_signed(dir).filter(|t| *t < len) else { return vec![] };
-    pick(st, &id, to, Pick::Range);
+/// ↓ and ↑: the selection a line down or up.
+fn vertical(st: &mut State, down: bool) -> Vec<Effect> {
+    let Some((_, to)) = line_away(st, down) else { return vec![] };
+    step(st, move |sel, len| if to < len { to } else { sel })
+}
+
+/// ⇧↓ and ⇧↑ on a `multi` list: the range from the anchor grows or shrinks by a line.
+fn extend(st: &mut State, down: bool) -> Vec<Effect> {
+    let Some((id, to)) = line_away(st, down) else { return vec![] };
+    if to != selected(st, &id) {
+        pick(st, &id, to, Pick::Range);
+    }
     vec![]
 }
 
@@ -3529,7 +3660,7 @@ fn step_in(st: &mut State, id: &str, f: impl Fn(usize, usize) -> usize) -> Vec<E
     // have the selection follow the row it left.
     let key = rows.get(to).and_then(|r| key_of(n, r));
     let lines = Lines::of(st, n);
-    let shows = lines.in_view(st.local.get(&id).and_then(|l| l.top), to / lines.cols.max(1));
+    let shows = lines.in_view(st.local.get(&id).and_then(|l| l.top), lines.line_of(to));
     let local = st.local.entry(id).or_default();
     local.selected = to;
     local.key = key;
@@ -4070,6 +4201,12 @@ pub fn holds_in(st: &State, cond: &str, size: Option<(u16, u16)>) -> bool {
     let cond = cond.trim();
     if let Some(rest) = cond.strip_prefix('!') {
         return !holds_in(st, rest, size);
+    }
+    // A value in single quotes by itself holds unless it's empty, `false` or 0: `'{grp}'` on a
+    // node bound to a list's selection holds while the row has a group.
+    if let Some(v) = cond.strip_prefix('\'').and_then(|c| c.strip_suffix('\'')).filter(|v| !v.contains('\'')) {
+        let v = v.trim();
+        return !v.is_empty() && v != "false" && v.parse::<f64>().ok() != Some(0.);
     }
     let found = ["!=", ">=", "<=", "=", ">", "<"].iter().find_map(|op| cond.split_once(op).map(|(a, b)| (a.trim(), *op, b.trim())));
     let read = |bind: &str| -> Option<Value> {
@@ -4830,6 +4967,11 @@ mod tests {
         // Values written in, as a row template fills `{$item.…}`: no bind is called that.
         assert!(holds(&st, "true") && !holds(&st, "false") && holds(&st, "2") && !holds(&st, "0") && !holds(&st, ""));
         assert!(holds(&st, "'excluded'=excluded") && !holds(&st, "'waiting'=excluded") && holds(&st, "'waiting'=excluded | 'waiting'=waiting"));
+        // A quoted value by itself holds unless it's empty, false or 0; a bare name is still a bind.
+        assert!(holds(&st, "'tony-g01'") && holds(&st, "'g0'") && holds(&st, "'true'"));
+        assert!(!holds(&st, "''") && !holds(&st, "'false'") && !holds(&st, "'0'") && !holds(&st, "' '"));
+        assert!(!holds(&st, "tony-g01"), "a name with no entry doesn't hold");
+        assert!(holds(&st, "'g1' & !''") && !holds(&st, "'g1' & ''"));
         assert!(!holds(&st, "nothing") && !holds(&st, "mode=edit") && holds(&st, "mode!=edit"), "an unset bind is as it was");
     }
 
@@ -5034,6 +5176,37 @@ mod tests {
         assert_eq!(ids(&st), ["r3", "r1", "r2", "r0"], "another run ending changes nothing");
         update(&mut st, Msg::Ran { argv, result: Err("failed".into()) });
         assert_eq!(ids(&st), ["r1", "r2", "r0", "r3"]);
+    }
+
+    /// In a sectioned list, rows shown before the app answers take the group of the row they
+    /// were let go beside, so the group keeps one heading, filled from a row that isn't pending.
+    #[test]
+    fn an_optimistic_drop_in_a_sectioned_list_lands_in_the_group_it_was_let_go_in() {
+        let mut st = State::default();
+        let mut ui = gallery(&[0, 1, 2, 3], Some(json!({"name": "adding {$file.name}"})));
+        let rows: Vec<Value> = ["a", "a", "b", "b"].iter().enumerate().map(|(i, g)| json!({"id": format!("r{i}"), "grp": g, "title": format!("group {g}")})).collect();
+        let Kind::List { items: it, rows: look } = &mut ui.root.kind else { panic!() };
+        *it = rows;
+        look.section = Some(serde_json::from_value(json!({"by": "grp", "row": {"type": "text", "text": "{$item.title}"}})).unwrap());
+        update(&mut st, Msg::Push { ui });
+        let groups = |st: &State| {
+            let n = st.node("g").unwrap();
+            let lines = Lines::of(st, n);
+            (0..lines.count).filter_map(|l| if let Line::Heading { first, rows } = lines.line(l) { Some((first, rows)) } else { None }).collect::<Vec<_>>()
+        };
+        assert_eq!(groups(&st), [(0, 2), (2, 2)]);
+        update(&mut st, Msg::Bring { id: Some("g".into()), files: vec!["/x/new.tif".into()], row: Some(2), side: Side::Before });
+        update(&mut st, Msg::Release);
+        assert_eq!(ids(&st), ["r0", "r1", "pending:/x/new.tif", "r2", "r3"]);
+        assert_eq!(groups(&st), [(0, 2), (2, 3)], "the placeholder is b's, not a group of its own");
+        let n = st.node("g").unwrap();
+        let s = n.rows().unwrap().section.as_ref().unwrap();
+        assert_eq!(s.item(&items(&st, n)[2..5])["title"], "group b", "b's heading reads from its first settled row");
+        // A row carried into b shows in b, past the app's answer.
+        update(&mut st, Msg::Lift { id: "g".into(), row: 0 });
+        update(&mut st, Msg::Carry { row: Some(4), side: Side::After });
+        update(&mut st, Msg::Release);
+        assert_eq!(groups(&st)[1].1, 4, "{:?}", ids(&st));
     }
 
     #[test]

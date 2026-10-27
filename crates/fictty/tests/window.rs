@@ -2288,3 +2288,100 @@ fn an_editor_with_more_text_than_it_shows_reads_back_its_scroll() {
     s.request(json!({"op": "write", "key": "ui.caption_height", "write": "put", "value": 400}));
     assert_eq!(node(&mut s, "caption").scroll.map(|x| x.1), Some(12), "held to 200 px, it still doesn't show all twelve lines");
 }
+
+/// A gallery of rows in groups, three to a line: `section` draws each group's heading across the
+/// width before its first row. Groups `a` (3 rows), `b` (2), one row in no group, then `c` (1).
+fn sectioned(extra: Value) -> Value {
+    let groups = [("a", "Alpha"), ("a", "Alpha"), ("a", "Alpha"), ("b", "Beta"), ("b", "Beta"), ("", ""), ("c", "Gamma")];
+    let items: Vec<Value> = groups.iter().enumerate().map(|(i, (g, name))| json!({"id": format!("r{i}"), "name": format!("row {i}"), "grp": g, "grp_name": name})).collect();
+    let mut list = json!({"type": "list", "id": "l", "multi": true, "cols": 3, "items": items,
+        "row": {"type": "text", "size": 2, "text": "{$item.name}"},
+        "section": {"by": "grp", "row": {"type": "col", "size": "fit", "children": [{"type": "text", "text": "{$item.grp_name} · {$item.$rows}"}]}},
+        "drop": {"on": {"put": "moved", "value": {"drag": "{$drag.id}", "to": "{id}", "side": "{$drop.side}"}},
+                 "files": {"put": "brought", "value": {"to": "{id}", "side": "{$drop.side}"}}}});
+    if let (Value::Object(l), Value::Object(e)) = (&mut list, extra) {
+        l.extend(e);
+    }
+    json!({"root": {"type": "col", "children": [list,
+        {"type": "text", "id": "grp", "bind": "@l", "when": "'{grp}'", "size": 1, "text": "in {grp_name}"}]}, "focus": "l"})
+}
+
+#[test]
+fn a_section_heads_each_group_across_the_width_and_takes_no_selection() {
+    let mut s = window(sectioned(json!({})), 60, 30);
+    let at = |s: &mut fictty::Headless, k: usize| s.at("l", Some(k), None).unwrap();
+    let ((x0, y0), (_, y2), (x3, y3)) = (at(&mut s, 0), at(&mut s, 2), at(&mut s, 3));
+    assert_eq!(y2, y0, "a's three share a line");
+    assert_eq!(x3, x0, "b starts a line of its own, under a's first");
+    let (_, hb) = s.at_part("l", 3, "$section").expect("b's heading is drawn");
+    assert!(y2 < hb && hb < y3, "b's heading sits between a's rows and b's");
+    // The row in no group has no heading over it, and starts a line of its own; c's heading follows.
+    assert!(s.at_part("l", 5, "$section").is_none());
+    assert_eq!(at(&mut s, 5).0, x0);
+    assert!(s.at_part("l", 6, "$section").is_some());
+    let outline = fictty::readback::outline(&s.readback());
+    assert!(outline.contains("(3 sections, in \"Alpha · 3\")"), "{outline}");
+    // Keys move over rows only: → along them, ↓ to the same place on the next line of rows.
+    s.keys(&["right", "right", "right"]);
+    assert_eq!(s.state().local["l"].selected, 3, "→ from a's last goes on to b's first");
+    s.keys(&["right", "down"]);
+    assert_eq!(s.state().local["l"].selected, 5, "↓ from b's second lands on the next line's only row");
+    s.keys(&["down"]);
+    assert_eq!(s.state().local["l"].selected, 6);
+    s.keys(&["up", "up"]);
+    assert_eq!(s.state().local["l"].selected, 3, "↑ goes a line of rows up, never onto a heading");
+    s.keys(&["right", "up"]);
+    assert_eq!(s.state().local["l"].selected, 1, "the place along the line is kept");
+    // A pick takes every row and no heading; the count is the rows'.
+    s.keys(&["d-a"]);
+    assert_eq!(node(&mut s, "l").picked.len(), 7);
+    assert_eq!(node(&mut s, "l").rows, Some(7));
+    s.keys(&["esc", "s-down"]);
+    assert_eq!(node(&mut s, "l").picked, vec![1, 2, 3, 4], "⇧↓ takes in a line of rows");
+    // `'{grp}'` holds while the selected row has a group.
+    assert!(shows(&mut s, "grp"));
+    s.request(json!({"op": "set", "id": "l", "selected": 5}));
+    assert!(!shows(&mut s, "grp"), "row 5 is in no group");
+}
+
+#[test]
+fn rows_or_files_let_go_on_a_heading_land_before_its_groups_first_row() {
+    let mut s = window(sectioned(json!({})), 60, 30);
+    let (x, y) = s.at("l", Some(0), None).unwrap();
+    let (hx, hy) = s.at_part("l", 3, "$section").unwrap();
+    s.mouse("press", x, y).mouse("drag", hx, hy);
+    assert_eq!(node(&mut s, "l").drop, Some((3, "before".to_string())));
+    s.mouse("release", hx, hy);
+    assert_eq!(s.state().store.get("moved").map(|e| e.read()["value"].clone()), Some(json!({"drag": "r0", "to": "r3", "side": "before"})));
+    let (cx, cy) = s.at_part("l", 6, "$section").unwrap();
+    s.files(&["/tmp/a.tif"], Some((cx, cy)), true);
+    assert_eq!(s.state().store.get("brought").map(|e| e.read()["value"].clone()), Some(json!({"to": "r6", "side": "before"})));
+    // A press on a heading selects nothing.
+    s.request(json!({"op": "set", "id": "l", "selected": 1}));
+    s.mouse("press", hx, hy).mouse("release", hx, hy);
+    assert_eq!(s.state().local["l"].selected, 1);
+}
+
+#[test]
+fn a_sectioned_list_scrolls_by_its_headings_and_rows_and_fits_cols_by_width() {
+    // Twenty groups of five, at least 12 cells wide, in a view much shorter than them all.
+    let items: Vec<Value> = (0..100).map(|i| json!({"id": format!("r{i}"), "name": format!("row {i}"), "grp": format!("g{}", i / 5), "note": "a summary long enough to wrap onto a second line in a narrow window, and a third"})).collect();
+    let ui = json!({"root": {"type": "list", "id": "l", "cols": {"min": 12}, "items": items,
+        "row": {"type": "text", "size": 2, "text": "{$item.name}"},
+        "section": {"by": "grp", "row": {"type": "col", "size": "fit", "children": [
+            {"type": "text", "text": "group {$item.grp}"}, {"type": "text", "text": "{$item.note}"}]}}}, "focus": "l"});
+    let mut s = window(ui, 40, 12);
+    let per = node(&mut s, "l").cols.unwrap();
+    assert!((2..=3).contains(&per), "40 cells take two or three of twelve, not {per}");
+    s.keys(&["G"]);
+    assert_eq!(s.state().local["l"].selected, 99);
+    assert!(s.at("l", Some(99), None).is_some(), "the last row is brought into view");
+    assert!(node(&mut s, "l").scroll.is_some_and(|(at, of)| at > 0. && of == 20 + 20 * 5usize.div_ceil(per)), "{:?}", node(&mut s, "l").scroll);
+    // The headings were measured as they showed: a wrapped summary makes one taller than a line.
+    let st = s.state();
+    let tall = st.local["l"].heights.get("§g19").copied().expect("the last heading was measured");
+    assert!(tall > 1.5, "a heading with a wrapped summary takes its lines, not {tall}");
+    s.keys(&["g"]);
+    assert_eq!(s.state().local["l"].selected, 0);
+    assert!(s.at_part("l", 0, "$section").is_some(), "back at the top, the first heading shows");
+}

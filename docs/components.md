@@ -255,13 +255,25 @@ as its `size` or `"fit"`). Their titles take `{$rows}`, how many rows they show.
 A selectable list. Row fields: `item`, `row`, `cols` (rows to a line: a count or
 `{"min": "180px"}`, the minimum a template over the store if it likes: `"{ui.size|S=140px;*=200px}"`), `lines`, `mark` and `lead` (what starts the selected and other rows),
 `selected` (its style), `row_variant` with `variants` (a template per kind of row) and `skip`
-(rows that can't be selected), `keep`, `key`, `filter`, `empty`.
+(rows that can't be selected), `keep`, `key`, `filter`, `empty`, `section` (a heading across
+the width wherever the rows' `by` value changes: `{"by": "grp", "row": <node>}`, filled from the
+group's first row, `{$item.$rows}` its count; headings take no selection).
 
 ```json
 {"type": "list", "id": "jobs", "bind": "jobs", "title": "TO DO · {$rows}", "row":
   {"type": "col", "size": "fit", "variant": "card", "children": [
     {"type": "text", "size": "fit", "text": "<b>{$item.title}</>"},
     {"type": "text", "size": 1, "text": "<accent>#{$item.tag}</>"}]}}
+```
+
+A gallery in groups, a heading before each:
+
+```json
+{"type": "list", "id": "files", "multi": true, "bind": "images", "cols": {"min": "210px"},
+ "row": {"type": "col", "size": 9, "children": [{"type": "image", "src": "{$item.file}"}]},
+ "section": {"by": "grp", "row": {"type": "col", "size": "fit", "children": [
+   {"type": "text", "text": "<b>{$item.grp_name}</> · {$item.$rows}"},
+   {"type": "text", "text": "<dim>{$item.grp_note}</>"}]}}}
 ```
 
 **Window:** done.

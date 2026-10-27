@@ -43,6 +43,10 @@ pub struct Shown {
     /// for the width it had when they fit as many as there's room for).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cols: Option<usize>,
+    /// A list's group headings (its `section`), and the one over the selected row: how many
+    /// groups, and that heading's text.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub section: Option<(usize, String)>,
     /// How many entries an editor over a multi-selection edits, and whether they differ.
     #[serde(default, skip_serializing_if = "is_zero")]
     pub entries: usize,
@@ -139,6 +143,7 @@ fn shown(st: &State, n: &Node, depth: usize, key: &str, (rects, cut): Frame) -> 
         scroll: s_scroll(st, n),
         resize: state::resized(st, n).map(f32::round),
         cols: Some(state::per_line(st, n)).filter(|c| *c > 1),
+        section: s_section(st, n),
         entries: if n.field().is_some() { state::doc_keys(st, n).len() } else { 0 },
         mixed: state::doc_key(st, n).is_some_and(|k| k.starts_with(state::MIXED)),
         rect: id.as_deref().and_then(|i| rects.iter().find(|(r, _)| r == i)).map(|(_, r)| *r),
@@ -249,6 +254,23 @@ fn s_scroll(st: &State, n: &Node) -> Option<(f32, usize)> {
     (local.rows > 0 && lines.count > lines.fitting_from(at.floor() as usize)).then(|| ((at * 100.).round() / 100., lines.count))
 }
 
+/// A sectioned list's groups and the heading over its selected row, as the heading reads.
+fn s_section(st: &State, n: &Node) -> Option<(usize, String)> {
+    let s = n.rows()?.section.as_ref()?;
+    let lines = state::Lines::of(st, n);
+    let headings: Vec<(usize, usize)> = (0..lines.count)
+        .filter_map(|l| match lines.line(l) {
+            state::Line::Heading { first, rows } => Some((first, rows)),
+            state::Line::Rows { .. } => None,
+        })
+        .collect();
+    let at = n.id.as_deref().map_or(0, |i| state::selected(st, i));
+    let items = state::items(st, n);
+    let over = headings.iter().rev().find(|(first, rows)| *first <= at && at < first + rows);
+    let text = over.map(|&(first, rows)| row_text(st, &s.row, &s.item(&items[first..first + rows]), (first, items.len()))).unwrap_or_default();
+    Some((headings.len(), text))
+}
+
 /// A table's totals, while it has any.
 fn s_footer(st: &State, n: &Node) -> Option<String> {
     let Kind::Table { columns, .. } = &n.kind else { return None };
@@ -306,6 +328,13 @@ fn outline_with(shown: &[Shown], styled: bool) -> String {
         }
         if let Some(c) = s.cols {
             line.push_str(&format!(" ({c} to a line)"));
+        }
+        if let Some((groups, over)) = &s.section {
+            line.push_str(&format!(" ({groups} section{}", if *groups == 1 { "" } else { "s" }));
+            if !over.is_empty() {
+                line.push_str(&format!(", in \"{over}\""));
+            }
+            line.push(')');
         }
         if let Some((at, of)) = s.scroll {
             line.push_str(&format!(" (scroll {at}/{of})"));

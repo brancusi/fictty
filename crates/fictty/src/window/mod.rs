@@ -104,6 +104,15 @@ fn hit(id: String, row: Option<usize>, tab: Option<usize>, text: bool) -> Hit {
     Hit { rect: Rect::default(), id, row, tab, text, part: None }
 }
 
+/// The part a list's group heading is hit as: its row is the group's first.
+const SECTION: &str = "$section";
+
+/// Whether a drag or a drop can aim at what `h` is: a row, or a group's heading (before its
+/// first row), not a button in a row.
+fn droppable_on(h: &Hit) -> bool {
+    h.part.as_deref().is_none_or(|p| p == SECTION)
+}
+
 /// A canvas that notes, as it's laid out, the bounds it filled: absolute, so it takes no room.
 /// What's noted is what shows: the bounds clipped to what holds it (a node squeezed out of its
 /// parent's room is clipped away, and so is its hit).
@@ -349,8 +358,9 @@ impl Portal {
         }
         let Some(p) = self.press.as_ref() else { return };
         let across = self.per_line.get(&p.id).is_some_and(|c| *c > 1);
-        let over = self.shown.borrow().iter().rev().find(|(b, h)| b.contains(&at) && h.id == p.id && h.part.is_none() && h.row.is_some()).map(|(b, h)| {
-            let before = if across { at.x < b.center().x } else { at.y < b.center().y };
+        let over = self.shown.borrow().iter().rev().find(|(b, h)| b.contains(&at) && h.id == p.id && droppable_on(h) && h.row.is_some()).map(|(b, h)| {
+            // Over a group's heading: before the group's first row.
+            let before = h.part.is_some() || if across { at.x < b.center().x } else { at.y < b.center().y };
             (h.row.unwrap_or_default(), if before { state::Side::Before } else { state::Side::After })
         });
         if over != p.over {
@@ -368,11 +378,11 @@ impl Portal {
     pub(super) fn bring(&mut self, files: Vec<String>, at: Point<Pixels>, cx: &mut Context<Self>) {
         let aim: Aim = {
             let shown = self.shown.borrow();
-            let list = shown.iter().rev().filter(|(b, h)| b.contains(&at) && !h.id.is_empty() && h.part.is_none()).find(|(_, h)| self.engine.takes_files(&h.id));
+            let list = shown.iter().rev().filter(|(b, h)| b.contains(&at) && !h.id.is_empty() && droppable_on(h)).find(|(_, h)| self.engine.takes_files(&h.id));
             match list {
                 Some((b, h)) => {
                     let across = self.per_line.get(&h.id).is_some_and(|c| *c > 1);
-                    let side = |b: &Bounds<Pixels>| if (across && at.x < b.center().x) || (!across && at.y < b.center().y) { state::Side::Before } else { state::Side::After };
+                    let side = |b: &Bounds<Pixels>| if h.part.is_some() || (across && at.x < b.center().x) || (!across && at.y < b.center().y) { state::Side::Before } else { state::Side::After };
                     (Some(h.id.clone()), h.row.map(|r| (r, side(b))))
                 }
                 None => (None, None),
@@ -1200,81 +1210,91 @@ impl Portal {
         if rows.is_empty() {
             return lk.boxed(div(), &style::inner(st, "empty", &[]), (cell.w, cell.h), [0., 8., 0., 8.]).child(look.empty.clone().unwrap_or_else(|| "(nothing)".into())).into_any_element();
         }
-        let mut shown: Vec<AnyElement> = Vec::new();
-        for k in shown_rows(st, n) {
-            let r = &rows[k];
-            // A row is its template's nodes, or its item's text.
-            let body = match (&look.row, &look.item) {
-                (Some(t), _) => {
-                    let was = self.row.replace((id.to_string(), k));
-                    let built = self.node(st, lk, &crate::model::row_instance(t, r, (k, rows.len())), false, &format!("{id}/row{k}"), cx);
-                    self.row = was;
-                    built
-                }
-                (None, Some(t)) => {
-                    let tx = text::Tx { lk, laid: &laid, id, keep: look.keep.map_or(0., |k| k as f32 * cell.w), line_h: cell.h, fitting: self.fitting > 0 };
-                    text::lines(&tx, t, r, Ink::default(), false, None)
-                }
-                // A tree's row without a template shows its `text`.
-                (None, None) if matches!(n.kind, Kind::Tree { .. }) => div().child(crate::model::scalar(r.get("text").or(r.get("value")))).into_any_element(),
-                (None, None) => div().child(crate::model::scalar(Some(r))).into_any_element(),
-            };
-            let body = match &n.kind {
-                Kind::Tree { leaf, .. } => self.tree_row(st, lk, id, k, r, leaf.as_deref(), body, cx),
-                _ => body,
-            };
-            let (target, under) = (id.to_string(), id.to_string());
-            // A focused list's place is its selected row: that's what a scroller brings into view.
-            let here = (st.focus.as_deref() == Some(id) && k == state::selected(st, id)).then(|| measure_whole(&self.laid, |l, b| l.focused = Some(b)));
-            let tall = fits.then(|| {
-                let (list, key) = (id.to_string(), state::height_key(n, r, k));
-                measure_whole(&self.laid, move |l, b| l.heights.push((list, key, b)))
-            });
-            let row = lk
-                .boxed(div().id(k).relative().flex_none(), &style::inner_in(st, n, "row", &style::row_states(st, n, k)), (cell.w, cell.h), [0.; 4])
-                .child(measure(&self.laid, move |l, b| l.hits.push((b, hit(under, Some(k), None, false)))))
-                .children(here)
-                .children(tall)
-                .when_some(row_h, |d, h| d.h(h))
-                .flex()
-                .flex_col()
-                .justify_center()
-                .overflow_hidden()
-                .on_mouse_down(
-                    MouseButton::Left,
-                    cx.listener(move |this, e: &MouseDownEvent, _, cx| {
-                        cx.stop_propagation();
-                        this.row_down(&target, k, droppable, e, cx)
-                    }),
-                )
-                .child(body);
-            let row = self.carried(st, lk, n, k, cols > 1, row);
-            // In its column's slot on the line, a plain box: a slot's own padding would count
-            // before the shares, so a short last line's rows would come out wider. The slot is
-            // the row's height, known, so the line isn't measured from what each row holds
-            // (that measuring cost Nocturne's shelf a quarter of its frame).
-            // A `fit` row's slot is its line's height as last measured, so the line isn't measured
-            // from what's in it either; the row inside is its own height, and says so.
-            let slot_h = row_h.unwrap_or_else(|| px(lines.height(k / cols) * cell.h));
-            let row = if cols > 1 { track_slot(&tracks[k % cols..k % cols + 1], 0., cell).h(slot_h).child(row).into_any_element() } else { row.into_any_element() };
-            shown.push(row);
-        }
-        // Rows `cols` to a line, each line as tall as a row and each row an equal share of it.
-        if cols > 1 {
-            let mut lines = Vec::new();
-            let mut it = shown.into_iter().peekable();
-            while it.peek().is_some() {
-                let mut line: Vec<AnyElement> = it.by_ref().take(cols).collect();
-                for t in line.len()..cols {
-                    line.push(track_slot(&tracks[t..t + 1], 0., cell).into_any_element());
-                }
-                lines.push(div().flex().flex_row().flex_none().w_full().children(line).into_any_element());
-            }
-            shown = lines;
-        }
         // Where the view is, to the pixel: the part of its first line scrolled past moves the
         // rows up by that much.
         let at = lines.offset(st.local.get(id));
+        let mut shown: Vec<AnyElement> = Vec::new();
+        for l in lines.shown(at) {
+            let on_line = match lines.line(l) {
+                state::Line::Heading { first, rows: count } => {
+                    if let Some(s) = look.section.as_ref() {
+                        let heading = self.heading(st, lk, n, id, s, (first, count), cx);
+                        shown.push(heading);
+                    }
+                    continue;
+                }
+                state::Line::Rows { from, to } => from..to,
+            };
+            let mut line: Vec<AnyElement> = Vec::new();
+            for k in on_line.clone() {
+                let r = &rows[k];
+                // A row is its template's nodes, or its item's text.
+                let body = match (&look.row, &look.item) {
+                    (Some(t), _) => {
+                        let was = self.row.replace((id.to_string(), k));
+                        let built = self.node(st, lk, &crate::model::row_instance(t, r, (k, rows.len())), false, &format!("{id}/row{k}"), cx);
+                        self.row = was;
+                        built
+                    }
+                    (None, Some(t)) => {
+                        let tx = text::Tx { lk, laid: &laid, id, keep: look.keep.map_or(0., |k| k as f32 * cell.w), line_h: cell.h, fitting: self.fitting > 0 };
+                        text::lines(&tx, t, r, Ink::default(), false, None)
+                    }
+                    // A tree's row without a template shows its `text`.
+                    (None, None) if matches!(n.kind, Kind::Tree { .. }) => div().child(crate::model::scalar(r.get("text").or(r.get("value")))).into_any_element(),
+                    (None, None) => div().child(crate::model::scalar(Some(r))).into_any_element(),
+                };
+                let body = match &n.kind {
+                    Kind::Tree { leaf, .. } => self.tree_row(st, lk, id, k, r, leaf.as_deref(), body, cx),
+                    _ => body,
+                };
+                let (target, under) = (id.to_string(), id.to_string());
+                // A focused list's place is its selected row: that's what a scroller brings into view.
+                let here = (st.focus.as_deref() == Some(id) && k == state::selected(st, id)).then(|| measure_whole(&self.laid, |l, b| l.focused = Some(b)));
+                let tall = fits.then(|| {
+                    let (list, key) = (id.to_string(), state::height_key(n, r, k));
+                    measure_whole(&self.laid, move |l, b| l.heights.push((list, key, b)))
+                });
+                let row = lk
+                    .boxed(div().id(k).relative().flex_none(), &style::inner_in(st, n, "row", &style::row_states(st, n, k)), (cell.w, cell.h), [0.; 4])
+                    .child(measure(&self.laid, move |l, b| l.hits.push((b, hit(under, Some(k), None, false)))))
+                    .children(here)
+                    .children(tall)
+                    .when_some(row_h, |d, h| d.h(h))
+                    .flex()
+                    .flex_col()
+                    .justify_center()
+                    .overflow_hidden()
+                    .on_mouse_down(
+                        MouseButton::Left,
+                        cx.listener(move |this, e: &MouseDownEvent, _, cx| {
+                            cx.stop_propagation();
+                            this.row_down(&target, k, droppable, e, cx)
+                        }),
+                    )
+                    .child(body);
+                let row = self.carried(st, lk, n, k, cols > 1, row);
+                // In its column's slot on the line, a plain box: a slot's own padding would count
+                // before the shares, so a short last line's rows would come out wider. The slot is
+                // the row's height, known, so the line isn't measured from what each row holds
+                // (that measuring cost Nocturne's shelf a quarter of its frame).
+                // A `fit` row's slot is its line's height as last measured, so the line isn't measured
+                // from what's in it either; the row inside is its own height, and says so.
+                let slot_h = row_h.unwrap_or_else(|| px(lines.height(l) * cell.h));
+                let t = k - on_line.start;
+                let row = if cols > 1 { track_slot(&tracks[t..t + 1], 0., cell).h(slot_h).child(row).into_any_element() } else { row.into_any_element() };
+                line.push(row);
+            }
+            // Rows `cols` to a line, each line as tall as a row and each row an equal share of it.
+            if cols > 1 {
+                for t in line.len()..cols {
+                    line.push(track_slot(&tracks[t..t + 1], 0., cell).into_any_element());
+                }
+                shown.push(div().flex().flex_row().flex_none().w_full().children(line).into_any_element());
+            } else {
+                shown.extend(line);
+            }
+        }
         let first = at.floor() as usize;
         let body = div().flex().flex_col().flex_none().w_full().mt(px(-(at - at.floor()) * lines.height(first) * cell.h)).children(shown);
         let bar = self.scrollbar(st, lk, at, lines.count as f32, lines.fitting_from(first) as f32);
@@ -1300,6 +1320,31 @@ impl Portal {
             .on_scroll_wheel(cx.listener(move |this, e: &ScrollWheelEvent, _, cx| this.pan(&wheel, e, cell.h, cx)))
             .child(body)
             .children(bar)
+            .into_any_element()
+    }
+
+    /// A list's group heading (its `section`), across the whole width before the group's first
+    /// row, filled from that row (`$rows`: how many the group has). It takes no selection; rows
+    /// dragged or files brought over it land before the group's first row.
+    #[allow(clippy::too_many_arguments)]
+    fn heading(&mut self, st: &State, lk: &Look, n: &Node, id: &str, s: &crate::model::Section, (first, count): (usize, usize), cx: &mut Context<Self>) -> AnyElement {
+        let cell = self.cell;
+        let rows = state::items(st, n);
+        let item = s.item(&rows[first..first + count]);
+        let was = self.row.take();
+        let body = self.node(st, lk, &crate::model::row_instance(&s.row, &item, (first, rows.len())), false, &format!("{id}/section{first}"), cx);
+        self.row = was;
+        let (list, key) = (id.to_string(), state::heading_key(&s.of(&rows[first])));
+        let tall = s.height().is_none().then(|| measure_whole(&self.laid, move |l, b| l.heights.push((list, key, b))));
+        let under = Hit { part: Some(SECTION.into()), ..hit(id.to_string(), Some(first), None, false) };
+        lk.boxed(div().relative().flex_none().w_full(), &style::inner_in(st, n, "section", &[]), (cell.w, cell.h), [0.; 4])
+            .child(measure(&self.laid, move |l, b| l.hits.push((b, under))))
+            .children(tall)
+            .when_some(s.height(), |d, h| d.h(px(h * cell.h)).overflow_hidden())
+            .flex()
+            .flex_col()
+            .justify_end()
+            .child(body)
             .into_any_element()
     }
 
@@ -1679,8 +1724,10 @@ fn md_inks<'a>(st: &'a State, lk: &'a Look<'a>) -> impl Fn(Md) -> Ink + 'a {
 fn shown_rows(st: &State, n: &Node) -> std::ops::Range<usize> {
     let lines = state::Lines::of(st, n);
     let shown = lines.shown(lines.offset(n.id.as_deref().and_then(|id| st.local.get(id))));
-    let len = state::items(st, n).len();
-    (shown.start * lines.cols).min(len)..(shown.end * lines.cols).min(len)
+    if shown.is_empty() {
+        return 0..0;
+    }
+    lines.rows_in(shown.start).start..lines.rows_in(shown.end - 1).end
 }
 
 /// A selected row's ink, focused or not.

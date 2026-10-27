@@ -211,7 +211,17 @@ fictty theme paper                                        # choose a loaded them
   by whole lines. `cols: {"min": "180px"}` fits as many to a line as there's room for, each at
   least that wide (a length: cells, pixels or a `space` name): a shelf of covers that reflows
   with the window, with keys moving by the count it has now. The readback says `(5 to a line)`
-  and `cols` in the JSON. The readback's text for such a row is what its nodes show (`/thumbs/a.png ·
+  and `cols` in the JSON. `"section": {"by": "grp", "row": {…}}` heads each group of rows
+  (consecutive rows with the same value at `by`) with a node drawn across the whole width, filled
+  from the group's first row as a row template is (`{$item.grp_name}`, and `{$item.$rows}` for
+  how many rows the group has); a row whose value is empty has no heading. A group's rows start
+  a line of their own. Headings take no selection: ↑/↓ go to the same place on the next line of
+  rows, ←/→, ⌘A, ⇧-ranges, `$picked`, `{$rows}` and `selected` count rows only. A heading is as
+  tall as it draws (or its `size` in cells), measured as it shows, so a summary that wraps is
+  fine. Rows dragged or files let go over a heading land before the group's first row (`$drop`
+  as for that row, side `before`), and rows a `drop.optimistic` shows before the app answers take
+  the group of the row they were let go beside. The readback says `(17 sections, in "1974 · P.S.
+  1")`: how many headings, and the one over the selected row. The readback's text for such a row is what its nodes show (`/thumbs/a.png ·
   a name`). The window draws them; a terminal shows the row's value.
 - **Repeating**: `{"type": "each", "bind": "open", "template": {…}}` draws the template once per
   item of the bound array, top to bottom (`"row": true` side by side). In the template,
@@ -241,6 +251,9 @@ fictty theme paper                                        # choose a loaded them
   In a row template, `{$item.…}` is filled in before the condition is read, so a value stands
   where a bind would: `"{$item.done}"` holds when it's `true` or a number other than 0, and a
   side in single quotes is a value to compare, `"'{$item.state}'=excluded | '{$item.state}'=waiting"`.
+  A value in single quotes by itself holds unless it's empty, `false` or `0`: `"when": "'{grp}'"`
+  on a node bound to `@files` shows while the selected row has a group, whatever it's called (a
+  bare `"{grp}"` would be read as the name of a store entry).
   Its `{field}`s are filled from the node's bound value first (`"bind": "@files", "when":
   "remove/{id}"` reads the selected row's flag). `$width` and `$height`
   are the size of the area the node's parent lays it out in (a container query): a pane beside a

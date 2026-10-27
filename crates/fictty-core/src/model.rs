@@ -848,6 +848,10 @@ fn yes() -> bool {
 ///   its nodes take no clicks or focus of their own.
 /// - `cols`: rows to a line, a grid of them; ↑/↓ move a line, ←/→ a row. A number, or
 ///   `{"min": "180px"}` for as many as fit with each at least that wide (`state::per_line`).
+/// - `section`: a heading across the whole width wherever the rows' `by` value changes, drawn
+///   from its `row` template filled from the first row of the group (`{$item.name}`, and
+///   `{$item.$rows}` for how many rows it has). Headings take no selection, keys or picks: they
+///   only start a new line (`state::Lines`).
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct Rows {
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -878,6 +882,42 @@ pub struct Rows {
     pub key: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub filter: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub section: Option<Section>,
+}
+
+/// A list's group headings (`Rows::section`): the path whose value groups the rows, and the node
+/// drawn as each group's heading.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Section {
+    pub by: String,
+    pub row: Box<Node>,
+}
+
+impl Section {
+    /// The group row `r` is in: its value at `by`, as text (empty: in no group).
+    pub fn of(&self, r: &Value) -> String {
+        scalar(lookup(r, &self.by))
+    }
+
+    /// What a group's heading is filled from: its first row (but a placeholder a drop put there
+    /// before the app answered), with `$rows` how many it has.
+    pub fn item(&self, group: &[Value]) -> Value {
+        let first = group.iter().find(|r| r.get("$pending") != Some(&Value::Bool(true))).or(group.first());
+        let mut v = first.cloned().unwrap_or(Value::Null);
+        if let Value::Object(m) = &mut v {
+            m.insert("$rows".into(), group.len().into());
+        }
+        v
+    }
+
+    /// Its heading's height in cells when its template says (`size` in cells), else none: measured.
+    pub fn height(&self) -> Option<f32> {
+        match self.row.size.as_ref().map(Size::measure) {
+            Some(Measure::Cells(c)) => Some(c.max(1) as f32),
+            _ => None,
+        }
+    }
 }
 
 /// A pixel panel: `fill` (and `fill2` for a vertical gradient), `border`, a corner `radius` and a

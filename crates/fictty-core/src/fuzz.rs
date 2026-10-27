@@ -859,6 +859,7 @@ mod tests {
             scroll: None,
             resize: None,
             cols: None,
+            section: None,
             entries: 0,
             mixed: false,
             rect: r.map(|(x, y, w, h)| Rect::new(x, y, w, h)),
